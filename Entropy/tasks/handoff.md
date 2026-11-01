@@ -1,4 +1,4 @@
-# Handoff: M5 (Android), Stage U-5, 2026-11-01 00:30 UTC
+# Handoff: M5 (Android), Stage U-5, 2026-11-01 01:55 UTC
 
 A new session starts here. CLAUDE.md's workflow still comes first: read `tasks/lessons.md`, then M5 in
 `tasks/todo.md` (Stage U's plans are under "Stage U", the proofs under M5's Review). This file only says where
@@ -7,35 +7,21 @@ things stand and what comes next.
 ## Where things stand
 
 - Branch `m5-android`, draft PR https://github.com/bitwilll/keepcrypt/pull/9. Never push to `main`.
-- Latest commit: U2i4 (the press guard's facts and Ui.on's wait for it; run 41256308347 recorded). Every CI run of the PR
-  is "Entropy Android" (`.github/workflows/entropy-android.yml`).
+- Latest commit: the one recording run 41259598598 (every job green at b184be2) and ticking U2i. Every CI run of
+  the PR is "Entropy Android" (`.github/workflows/entropy-android.yml`).
 - Stage U-4 is closed: CI at `4a1cc07` (run 41211393696) was green in every job, U1b-U1g proven on API 31 and 36.
 - Stage U-5 is under way, without a check-in (M5-72 (h): U-1 to U-5 run without one; U-6 waits for the owner's
   answers to Q77-Q85). Its plan, item by item, is in todo.md's "U-5's plan":
-  - **Done:** U1h (and U1) at 4fe6231; U2h (DeviceChangeTest, 24 changes on four screens, both levels) at 72cd4fa.
-  - **U2i (DoubleTapTest) and its fix, the press guard:** DoubleTapTest found Skip, Match found and Cannot check
-    taking two steps (run 41247649576). The guard (`screens/.../PressGuard.kt`, wired in `Screens.kt`, owned by
-    `MainActivity.pressGuard`, M5-79) makes DoubleTapTest green, but it refuses the first tap on a screen reached
-    with no touch (an in-process model call or the file picker's return): FlowTest, BackupTest, SnapshotDrillTest and
-    one JourneyTest journey fail at the same lines on both levels in runs 41252883580 and 41256308347. Two timing
-    fixes did not touch it (M5-79 (d), (e)). The head (U2i4) gathers the cause: `Ui.on` waits up to 2 s for the guard
-    and, if it never opens, prints `PressGuard.facts` (the view it holds, its age, the model's view) as a probe line.
-    **Read those lines first**, fix the cause in the guard or its wiring, and never weaken the 300 ms rule.
+  - **Done:** U1h (and U1) at 4fe6231; U2h (DeviceChangeTest) at 72cd4fa; U2i (DoubleTapTest) with its fix, the
+    press guard (`screens/.../PressGuard.kt`, wired in `Screens.kt`, owned by `MainActivity.pressGuard`; M5-79), at
+    b184be2, where every job is green. A new view (screen, gate, overlay) takes no touch until 300 ms after the frame
+    that composed it; `Ui.on` waits for the guard as a person sees a screen before pressing (M5-79 (f)).
   - U2j, U2k, U2l and U3h: planned, not started.
-- Budgets: capture 17/16 (run 41252883580), journeys 27/26, ui 26/27; registry stays 30 until a run measures it green.
+- Budgets (M5-30, measured + 25%): capture 17/16, journeys 27/26, ui 26/27, registry 22/22 minutes.
 
 ## Next steps, in order
 
-1. Read CI at the head once its run ends (about 35 minutes after the push). Record each emulator job's result and
-   time in todo.md's Review under U2i3's proof.
-   - Every job green: tick U2i; budget the registry jobs by M5-30 (measured time + 25%, rounded up).
-   - A journey press still refused (a test failing with "timed out: the app shows <screen>" after a tap): check the
-     time between the screen's composition and the tap; the guard must not be weakened below 300 ms. If CI's
-     emulators need it, a test may wait for the guard (a documented wait in Ui.on), never skip it.
-   - A red job: diagnose it from its lines (`mcp__github__get_job_logs`, or download the log and read it); never
-     rerun to green; fix at the root, then a new push.
-   - Watch API 31's capture job: in run 41247649576 its emulator went offline during ControlTest; at 72cd4fa it
-     stayed up (an open item until it recurs or a few runs pass).
+1. Read CI at the head once its run ends (bookkeeping only; it should be green as b184be2 was). Record it briefly.
 2. U2j (probe run, then KillTest), U2k, U2l, U3h, as their items say. Each adds
    its class to `scripts/android-emulator.sh` (the part's run, the pinned orders in `--selftest`, a
    `*-test-fails` case) and to `scripts/android-local.sh`'s run counts, then runs both selftests (lessons.md,

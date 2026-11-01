@@ -667,6 +667,8 @@ jobs:
     # U2i adds DoubleTapTest to the capture part (M5-78 (a)): its jobs are measured at 30 too.
     # Run 41252883580 at 72cd4fa measured the capture jobs with DoubleTapTest whole, 797 s (API 31, with the
     # 16 KB leg) and 754 s (API 36), so 17 and 16 minutes.
+    # Run 41259598598 at b184be2 measured the registry jobs with DeviceChangeTest whole, 1017 s and 1016 s, so 22
+    # minutes each.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
@@ -690,7 +692,7 @@ jobs:
           - api: '31'
             part: registry
             legs: API 31, test registry and edges
-            timeout: 30
+            timeout: 22
           - api: '36'
             part: capture
             legs: API 36, capture
@@ -706,7 +708,7 @@ jobs:
           - api: '36'
             part: registry
             legs: API 36, test registry and edges
-            timeout: 30
+            timeout: 22
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

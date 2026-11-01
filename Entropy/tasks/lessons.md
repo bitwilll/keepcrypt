@@ -78,3 +78,13 @@ diff, and no CI job runs its selftest, so nothing failed.
 **Rule:** A change to android-emulator.sh's parts, its classes or android-instrument.sh's run forms runs
 android-local.sh --selftest too, and the commit's proof names its count. More generally: before a commit, list the
 scripts that read the changed one (grep for its name and its markers) and run their selftests.
+
+## A timing a fix rests on is measured, and an unseen cause is gathered, not guessed (2026-11-01)
+- Mistake: the press guard's first two CI failures were each "fixed" by a timing story (U2i2, U2i3): that UI
+  Automator's idle wait gave every press at least 500 ms after a screen appeared, and then that a late frame report
+  opened the guard late. Neither was measured; the same presses failed at the same lines after the second fix, and the
+  run that printed the guard's own facts showed the tests pressing under 300 ms after composition.
+- Root cause: a claim about how long a test framework waits was taken as fact, and a deterministic failure was read as
+  a timing one without a line that showed the timing.
+- Rule: before a fix rests on a duration, a run or a test prints that duration. When a failure's cause cannot be seen in
+  its lines, the next push adds the lines that show it (a probe of the deciding state), rather than a second guess.

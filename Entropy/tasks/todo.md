@@ -16043,6 +16043,13 @@ instructions forbid any fetch for research, HEAD requests included.
   shownScreen is) and PressGuard.facts names the view it holds, how long ago that was composed and the model's view
   (fixed names and times alone); Ui.on waits up to 2 s for the guard to admit a touch on what it has seen, a wait
   over 300 ms a probe line, and fails with the facts when it does not open. The guard is not weakened.
+  (f) Run 41259598598 at b184be2 is green in every job, and prints no guard that failed to open and no wait over
+  300 ms: the only behaviour that changed from the two red runs is Ui.on's wait for the guard, so on screens reached
+  with no touch the tests had pressed less than 300 ms after the screen was composed (UI Automator's idle wait returned
+  within that time; (d) had assumed it took at least 500 ms, unmeasured). The guard was right: it refused presses no
+  person makes on a screen not yet seen. Ui.on's wait is the tests' side of it, as a person sees a screen before
+  pressing; (d)'s timing from composition stands as the closer reading of "fully drawn". Every journey and DoubleTapTest
+  pass with the guard at 300 ms: U2i is done.
 - the `iosArm64`/`iosSimulatorArm64` targets, `kotlin-native-prebuilt`, skiko, the klib commonizer and the other
   iPhone-only Q67 artifacts, as the iPhone build's inputs;
   Amended at 8x-f (the 8x review; for the owner at the M5 gate, since Q73's answer record says Q67's iPhone-only
@@ -17107,6 +17114,12 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   Proof (M5 commit U2i4, Stage U-5, partial: local; the evidence is CI's next run): MainActivity.pressGuard passed to
   Screens; PressGuard.facts; Ui.guardOpen in Ui.on. Locally: CI's build job's strict Gradle run with every JVM test,
   no warning.
+  CI (Entropy Android 41259598598 at b184be2): every job green on both levels. DoubleTapTest's four tests on both
+  capture jobs (784 s and 818 s, inside 17 and 16 minutes); FlowTest 7, CheckTest 2, MixedJourneyTest and BackupTest
+  with its age -d hand-off on both journeys jobs (1268 s and 1278 s); JourneyTest 4 and StopJourneyTest on both ui jobs
+  (1311 s and 1285 s); SnapshotDrillTest 4, LifecycleTest 8, DeviceChangeTest and CrashTest on both registry jobs (1017 s
+  and 1016 s: 22 minutes each by M5-30). No "the press guard did not open" and no wait over 300 ms printed (M5-79 (f)).
+  U2i is proven with its fix, the press guard.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17492,7 +17505,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       was built. Each change must keep the screen, its page, its gate, the pad's entry and the session (the model's
       own, read in-process), make no new core call, and leave FLAG_SECURE on the new window (its LayoutParams flags
       read in-process). U2d's JVM tests hold the model's side.
-    - [ ] U2i: double taps (DoubleTapTest, capture part, M5-78 (a)): two touches 60 ms apart at one point, injected
+    - [x] U2i: double taps (DoubleTapTest, capture part, M5-78 (a)): two touches 60 ms apart at one point, injected
       (Ui.doubleTap, no UI Automator click), on four privacy gates' buttons (the words', the collision report's, the
       registration QR's, D's), on each one-way choice and its confirm (Skip, Match found, Cannot check) and on Show
       words: the state after is exactly one step on, never two (the model's screen and gate read in-process; the
