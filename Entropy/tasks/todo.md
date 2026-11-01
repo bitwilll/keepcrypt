@@ -15995,6 +15995,11 @@ dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it u
   deaths; AwayTest drops that case, and (b) above describes what the ViewModel's end does. (e) Both emulator images run
   three-button navigation, so the back test switches gesture navigation on for itself (cmd overlay enable-exclusive
   of the gestural navigation bar) and puts three-button navigation back in a finally, so the gesture itself is tested.
+- M5-82 (2026-11-01), Stage U-5, U2l: (a) IdleClockTest makes its ten-minute run on API 36 alone, as the plan said
+  ("one idle run on the real clock on API 36"); on API 31 it passes at once with a line naming why, so the script's
+  runs stay the same on both levels. (b) API 36's registry job is measured at 40 minutes for that run, API 31's at 30
+  (M5-76 (f)). (c) ScanRefusedTest's setup to the check QR goes through the model (an edge test); its scans and the
+  system's prompts are pressed on the screen.
 - M5-78 (2026-10-31), Stage U-5: (a) U2i's DoubleTapTest (four short journeys, about 6 minutes) runs in the capture
   part, after PhoneMotionTest, not the ui part the plan named: the capture jobs (503-535 s) are the run's shortest and
   the ui jobs (1241-1284 s) its longest, so the run's wall time stays where it is; the capture jobs are measured at 30
@@ -17188,6 +17193,12 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   Proof (M5 commit U2k2, Stage U-5, partial: local; CI's registry jobs at the next push): AwayTest drops the
   destroyed-while-away case (M5-81 (d)) and switches gesture navigation on for its back test (M5-81 (e)). Locally:
   both test APKs built by the strict Gradle run, no warning; banned-api-check.sh clean.
+  Proof (M5 commit U2l, Stage U-5, partial: local; CI's registry jobs at the next push): ScanRefusedTest and
+  IdleClockTest in the registry part after AwayTest (the pinned orders, two failing cases; android-emulator.sh
+  --selftest 64 passed; android-local.sh's whole run twenty-two runs, its registry part eleven, --selftest 47
+  passed); API 36's registry job measured at 40 minutes. The gate refused a template in an AssertionError's message
+  (KtLog), made a concatenation before the commit. Locally: both test APKs built by the strict Gradle run, no warning;
+  banned-api-check.sh clean, 411 files; --workflows clean.
 - [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
@@ -17621,11 +17632,13 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       left edge, the Back key where the switch does not take, named so) doing what the model's back does:
       nothing on the dice (its rolls kept) and the seal card, the check QR back to the seal card (BackTest's JVM table
       holds every screen).
-    - [ ] U2l: the camera denied twice (pm revoke between, the second denial with "don't ask again"): the scan
-      screen shows SCAN_REFUSED (CheckScreens' line: type the go-ahead code instead) and Type code still reaches the
-      code entry, the check open; and one idle run on the real clock on API 36 (its registry job): the cover at 30 s
-      and, while something is held, the warning at 9 minutes and the wipe at 10 (the job's budget re-measured for
-      those 10 minutes, M5-76 (f)).
+    - [ ] U2l: the camera denied twice and the idle rules on the real clock (registry part after AwayTest, M5-82):
+      ScanRefusedTest: CAMERA revoked and its user flags cleared first (and after, in a finally); the check QR's Scan
+      and the system's prompt denied: SCAN_REFUSED; Back, Scan, the second prompt denied (Android keeps it): SCAN_REFUSED;
+      a third Scan: no prompt, refused at once; the same check QR throughout, Type code reaching the code entry.
+      IdleClockTest, on API 36 alone (it passes at once elsewhere, saying so): a words page left untouched, the cover
+      at 30 s, the warning at 9 minutes and the wipe at 10 from the last input, each within 2.5 s on the model's
+      clock, the wipe on Go offline with the Idle notice, the slot at home.
     - [ ] U3h: the layout check: CaptureTest's walk reads every node's bounds in-process at CI's window (720x1280,
       density 320) and on a 412 dp phone (wm size 1080x2424 and wm density 420, put back in a finally): no text node
       outside its screen's window or cut by its parent, each control's touch target at least 48 dp, the docs' texts
