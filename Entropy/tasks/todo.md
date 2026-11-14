@@ -1835,7 +1835,7 @@ Nothing else on your Mac or in the repo changed. From now on, no simulator, `xco
       for the gate: every Proof still cites a CI run, and a local run is reported as local. Tests run on the project's
       own AVD, never on the owner's Medium_Phone.
 
-### Raised by Stage U's map (Q77-Q85, 2026-10-29)
+### Raised by Stage U's map (Q77-Q85, 2026-10-29; answered 2026-11-14)
 Stage U's read-only map (M5-72) audited every screen against the docs and the Pi. These nine need the owner: each
 changes a doc, overrides a lead decision or accepts a residual. Stages U-1 to U-5 go on meanwhile; U-6 waits for these.
 77. **Screen orientation** (Kit.kt:99-106; SecureActivity.kt:45, :80-83; the manifest sets neither)
@@ -1846,6 +1846,7 @@ changes a doc, overrides a lead decision or accepts a residual. Stages U-1 to U-
     the read-back loses which insert to read; and a recreation drops a pending picker answer, since nothing is saved.
     Otherwise: landscape stays allowed; the actions move into the scrolling column once they pass a share of the window,
     and the pickers' request codes survive a recreation; both with emulator tests.
+    - Answered 2026-11-14: "Lock to portrait" (as recommended).
 78. **Which system font scales every screen supports** (Drawing.kt:198-223; MA:31 and swb:286 name blind and
     low-vision users; CI runs at 1.0)
     Recommended: the full system range, 1.3 on API 31-33 and 2.0 on API 34+. At 1.15 the braille faces' dot numbers
@@ -1853,6 +1854,7 @@ changes a doc, overrides a lead decision or accepts a residual. Stages U-1 to U-
     wholly on screen; at 2.0 Home, the BIP39 entry and the code entry lose controls. Parts that grow move into the
     scrolling column, and the capture walk runs at 1.3 on API 31 and 2.0 on API 36.
     Otherwise: support up to 1.15 only, fixing the dot numbers and the confirm there, with a line in mobile-apps.md.
+    - Answered 2026-11-14: "Full range" (as recommended): 1.3 on API 31-33, 2.0 on API 34+.
 79. **TalkBack on the Protected pads** (read-back, backup confirm, Check a backup's passphrase, the BIP39 passphrase;
     Pads.kt:228-233; M5-46; swb:278)
     Recommended: each Protected key carries its letter as text marked isSensitiveData (as the secret nodes are), keeping
@@ -1861,26 +1863,32 @@ changes a doc, overrides a lead decision or accepts a residual. Stages U-1 to U-
     sensitive node after each press, so the keys expose no more; on API 31-33, which has no sensitive mark, this joins
     the residual MA:74 accepts for the words.
     Otherwise: keep role-only keys, and swb:286 says a phone ceremony cannot be finished with TalkBack.
+    - Answered 2026-11-14: "Label the keys" (as recommended).
 80. **Under the 30-second cover and the idle warning** (Screens.kt:50-61, :218-241)
     Recommended: (a) the screen beneath is unreadable to accessibility services (its semantics cleared) while the cover
     or the warning is up; today the words, D and the passphrases stay in the accessibility tree under a cover drawn on
     top. (b) Accessibility reading counts as input (accessibility-focus events reset the idle clock); today only touches
     do, so a braille-display reader who reads without touching is covered at 30 s and wiped at 10 minutes mid-reading.
     Otherwise: the cover stays visual only and only touches count, said in mobile-apps.md's TalkBack line.
+    - Answered 2026-11-14: "Hide + count reading" (as recommended): (a) and (b) both.
 81. **Where a wipe lands when the phone is still offline** (PF:127 "returns Home"; MA:34 adopts the Pi's rules;
     group 15 and M5-50 land every discard on Go offline: CeremonyModel.kt:1529-1535)
     Recommended: Home with the notice when the phone is still offline (idle, 60 s away, leaving a Protected screen), and
     Go offline only when it went online, as PF:127 says.
     Otherwise: Go offline after every discard, as built, and mobile-apps.md:34 says so.
+    - Answered 2026-11-14: "Home with the notice" (as recommended).
 82. **Is the privacy gate a Public screen, as on the Pi?** (pi/app/src/screen.rs:289; CeremonyModel.kt:442-443, :1794)
     Recommended: Public. Today the gate is a flag on the Protected screen behind it, so leaving the app on the gate
     discards at once and the gate is covered after 30 s, though it shows no secret: a phone call on a 24-word seed's
     second gate destroys the session. As Public, leaving keeps the session 60 s and there is no 30-second cover.
     Otherwise: the gate stays part of the Protected screen, said in MA:34.
+    - Answered 2026-11-14: "Keep it secret-class" (the Otherwise): the gate stays part of the Protected screen behind
+      it, leaving on it discards at once, and MA:34 says so.
 83. **The headphones warning on every privacy gate** (Screens.kt:237, :288-291; swb:286 names only the words)
     Recommended: on every gate. TalkBack also speaks the backup passphrase, D, the BIP39 passphrase and every letter
     typed on a Protected pad, behind gates that carry no warning today. swb:286 gains the wider wording.
     Otherwise: the words' gate only, as swb:286 reads.
+    - Answered 2026-11-14: "On every gate" (as recommended); swb:286 gains the wider wording.
 84. **API 31-33's accessibility residual and the shipping APK's resource ids** (SecureActivity.kt:50-52;
     MainActivity.kt:70; MA:74)
     Recommended: accept both as part of the API 31-33 residual MA:74 already accepts for the words, and say so in MA:74:
@@ -1889,11 +1897,15 @@ changes a doc, overrides a lead decision or accepts a residual. Stages U-1 to U-
     name which nodes hold secrets (the capture tests read them).
     Otherwise: minSdk 34, or the app refuses to start a ceremony while a non-tool accessibility service is enabled; and
     shipping builds drop testTagsAsResourceId, the tests reading tags in-process.
+    - Answered 2026-11-14: "Require Android 14+" (the first Otherwise): minSdk 34, and shipping builds drop
+      testTagsAsResourceId, the tests reading tags in-process. This changes Q56's "Android 12+": the API 31 legs, P0's
+      phone, mobile-apps.md, build-plan.md and every "API 31" proof are re-planned in U-6 (the lead's to list).
 85. **A cue when a screen's text scrolls** (Kit.kt:103; 21h's off-screen confirm choice)
     Recommended: a "More below" line, which TalkBack reads too, whenever the text column can scroll further. At 1.0 in
     CI's window the seal card's check QR starts about 490 dp down, and the checklist, the collision result and the words
     page run below the fold with no sign.
     Otherwise: a rule naming what must be above the fold (the check QR, the confirm's choices), the rest allowed below.
+    - Answered 2026-11-14: "More below" line (as recommended).
 
 ## M0: Repo bootstrap
 
