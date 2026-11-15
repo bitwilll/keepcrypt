@@ -40,7 +40,8 @@
 # their SHA-256, kept 14 days.
 #
 # Then the emulators (M5 group 6, commit 8), on those signed bytes, in the eight leg jobs at once:
-# system-images;android-31;default;x86_64 and system-images;android-36;default;x86_64, each API
+# system-images;android-34;default;x86_64 and system-images;android-36;default;x86_64 (API 34, the minSdk
+# from Q84, M5-84 (c); API 31 until commit U3n), each API
 # level's leg in four parts, one a job (scripts/android-emulator.sh --part; commits U1a, U1a2 and U1e):
 # capture (the capture harness, its positive controls and first frames, PhoneMotionTest and DoubleTapTest), the
 # shipping journeys (FlowTest, CheckTest, MixedJourneyTest and BackupTest), ui (JourneyTest, U1's journeys through the UI
@@ -48,7 +49,7 @@
 # edges (SnapshotDrillTest, the test-registry app's, then LifecycleTest, DeviceChangeTest, AwayTest, ScanRefusedTest, IdleClockTest, KillTest's runs
 # around the kills and CrashTest); and, from
 # commit 14, the 16 KB-page
-# system-images;android-36;google_apis_ps16k;x86_64 (the ARM and 16 KB leg) after API 31's capture
+# system-images;android-36;google_apis_ps16k;x86_64 (the ARM and 16 KB leg) after API 34's capture
 # part, in its job. Each leg job installs the emulator and the three images with sdkmanager into
 # their own SDK root ($HOME/kc-sdk; the runner's SDK is left as it is), with the SDK licence
 # accepted (Q54), cached by actions/cache under a key made of the four revisions sdkmanager offers
@@ -66,8 +67,8 @@
 # before the leg as entropy-ci.yml installs it, decrypts the file through scripts/age-interop.py's
 # pty driver with the passphrase the test reported, which never reaches the log, a file or logcat.
 # The shell's screencap of capture-control's two screens (its first screen and a gate seed's words
-# page) is kept by API 31's and API 36's capture parts and uploaded by each capture job after its
-# legs, as android-control-captures-api31 and android-control-captures-api36, the owner's screen
+# page) is kept by API 34's and API 36's capture parts and uploaded by each capture job after its
+# legs, as android-control-captures-api34 and android-control-captures-api36, the owner's screen
 # review of the positive control (M5-68 (f)).
 #
 # Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
@@ -676,30 +677,33 @@ jobs:
     # U2k adds AwayTest (the screen off, the activity destroyed while away, the back gesture): measured at 30.
     # U2l adds ScanRefusedTest and IdleClockTest, whose run on the real clock (API 36 alone) waits ten minutes:
     # API 36's registry job is measured at 40.
+    # U3n (Q84, M5-84 (c)): minSdk 34 retires API 31; API 34's default image, the lowest level the app
+    # installs on, takes its four jobs, each measured at the 90-minute ceiling (M5-30) until a run
+    # measures it whole; the 16 KB leg stays on API 36's ps16k image, after API 34's capture part.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
       fail-fast: false
       matrix:
         # Each API level's leg as its four parts, one a job (scripts/android-emulator.sh --part,
-        # whose header lists what each runs), and the 16 KB leg in API 31's capture job.
+        # whose header lists what each runs), and the 16 KB leg in API 34's capture job.
         include:
-          - api: '31'
+          - api: '34'
             part: capture
-            legs: API 31, capture, then 16 KB pages
-            timeout: 30
-          - api: '31'
+            legs: API 34, capture, then 16 KB pages
+            timeout: 90
+          - api: '34'
             part: journeys
-            legs: API 31, journeys
-            timeout: 27
-          - api: '31'
+            legs: API 34, journeys
+            timeout: 90
+          - api: '34'
             part: ui
-            legs: API 31, journeys through the UI alone
-            timeout: 26
-          - api: '31'
+            legs: API 34, journeys through the UI alone
+            timeout: 90
+          - api: '34'
             part: registry
-            legs: API 31, test registry and edges
-            timeout: 30
+            legs: API 34, test registry and edges
+            timeout: 90
           - api: '36'
             part: capture
             legs: API 36, capture
@@ -780,17 +784,17 @@ jobs:
               "$RUNNER_TEMP/sdk-list.txt"
           }
           emu=$(rev emulator)
-          i31=$(rev 'system-images;android-31;default;x86_64')
+          i34=$(rev 'system-images;android-34;default;x86_64')
           i36=$(rev 'system-images;android-36;default;x86_64')
           i16k=$(rev 'system-images;android-36;google_apis_ps16k;x86_64')
-          [ -n "$emu" ] && [ -n "$i31" ] && [ -n "$i36" ] && [ -n "$i16k" ] || fail "sdkmanager --list does not offer all four"
-          echo "emulator $emu; system-images;android-31;default;x86_64 $i31; system-images;android-36;default;x86_64 $i36; system-images;android-36;google_apis_ps16k;x86_64 $i16k"
+          [ -n "$emu" ] && [ -n "$i34" ] && [ -n "$i36" ] && [ -n "$i16k" ] || fail "sdkmanager --list does not offer all four"
+          echo "emulator $emu; system-images;android-34;default;x86_64 $i34; system-images;android-36;default;x86_64 $i36; system-images;android-36;google_apis_ps16k;x86_64 $i16k"
           {
             echo "KC_EMULATOR_REV=$emu"
-            echo "KC_IMAGE_31_REV=$i31"
+            echo "KC_IMAGE_34_REV=$i34"
             echo "KC_IMAGE_36_REV=$i36"
             echo "KC_IMAGE_16K_REV=$i16k"
-            echo "KC_EMULATOR_KEY=emulator-$emu-android-31-$i31-android-36-$i36-ps16k-$i16k"
+            echo "KC_EMULATOR_KEY=emulator-$emu-android-34-$i34-android-36-$i36-ps16k-$i16k"
           } >> "$GITHUB_ENV"
       - name: The emulator and system images from the cache (keyed on their revisions)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
@@ -810,7 +814,7 @@ jobs:
           sdkmanager=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
           { yes || :; } | "$sdkmanager" --sdk_root="$sdk" --licenses > /dev/null
           ls "$sdk/licenses"
-          "$sdkmanager" --sdk_root="$sdk" --install emulator 'system-images;android-31;default;x86_64' \
+          "$sdkmanager" --sdk_root="$sdk" --install emulator 'system-images;android-34;default;x86_64' \
             'system-images;android-36;default;x86_64' 'system-images;android-36;google_apis_ps16k;x86_64' \
             > "$RUNNER_TEMP/sdk-install.txt" || { tail -n 40 "$RUNNER_TEMP/sdk-install.txt"; fail "sdkmanager --install failed"; }
           "$sdkmanager" --sdk_root="$sdk" --list_installed | tee "$RUNNER_TEMP/sdk-installed.txt"
@@ -819,7 +823,7 @@ jobs:
               "$RUNNER_TEMP/sdk-installed.txt"
           }
           [ "$(installed emulator)" = "$KC_EMULATOR_REV" ] || fail "the emulator installed is not $KC_EMULATOR_REV"
-          [ "$(installed 'system-images;android-31;default;x86_64')" = "$KC_IMAGE_31_REV" ] || fail "the API 31 image is not $KC_IMAGE_31_REV"
+          [ "$(installed 'system-images;android-34;default;x86_64')" = "$KC_IMAGE_34_REV" ] || fail "the API 34 image is not $KC_IMAGE_34_REV"
           [ "$(installed 'system-images;android-36;default;x86_64')" = "$KC_IMAGE_36_REV" ] || fail "the API 36 image is not $KC_IMAGE_36_REV"
           [ "$(installed 'system-images;android-36;google_apis_ps16k;x86_64')" = "$KC_IMAGE_16K_REV" ] || fail "the 16 KB-page image is not $KC_IMAGE_16K_REV"
           # The emulator's qemu links Ubuntu's PulseAudio client library, which the runner image lacks
@@ -855,8 +859,8 @@ jobs:
           python3 -I scripts/android-age-check.py --selftest
       # The legs, on the build job's signed bytes as checked above (group 6; the header of
       # scripts/android-emulator.sh lists what each part runs): this job's part of the leg on its API
-      # level, 31 or 36 (--part capture, journeys or registry, each on its own boot and ending with
-      # the nothing-persisted listing), then, in API 31's capture job, the ARM and 16 KB leg on the
+      # level, 34 or 36 (--part capture, journeys or registry, each on its own boot and ending with
+      # the nothing-persisted listing), then, in API 34's capture job, the ARM and 16 KB leg on the
       # 16 KB-page image (its page size, and NativeTest for x86_64 and each ARM ABI the image lists).
       # The 16 KB leg runs whenever the install passed, even after the capture part failed, so one red
       # leg never hides the other's evidence; the job still fails on any red leg.
@@ -866,13 +870,13 @@ jobs:
           KC_PART: ${{ matrix.part }}
         run: sh scripts/android-emulator.sh --part "$KC_PART" "$KC_API" "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-$KC_API"
       - name: Emulator 16 KB pages (system-images;android-36;google_apis_ps16k;x86_64)
-        if: ${{ matrix.api == '31' && matrix.part == 'capture' && !cancelled() && steps.emulator-install.outcome == 'success' }}
+        if: ${{ matrix.api == '34' && matrix.part == 'capture' && !cancelled() && steps.emulator-install.outcome == 'success' }}
         run: sh scripts/android-emulator.sh 16k "$HOME/kc-sdk" "$ANDROID_HOME/platform-tools/adb" "$RUNNER_TEMP/apks" "$RUNNER_TEMP/emulator-16k"
       # The positive control's captures (M5 group 6, control (a); lead decision M5-68 (f)), the owner's
       # screen review, kept 14 days, each capture job's under its own name
-      # (android-control-captures-api31, android-control-captures-api36): the shell's screencap of each
+      # (android-control-captures-api34, android-control-captures-api36): the shell's screencap of each
       # of capture-control's two screens that scripts/android-emulator.sh kept in this job's capture
-      # part of the API 31 or 36 leg (WORK_DIR/captures/), its first screen and dice-99-words12's first
+      # part of the API 34 or 36 leg (WORK_DIR/captures/), its first screen and dice-99-words12's first
       # words page, drawn by the app's own words composable with no FLAG_SECURE. Gate-seed vectors only
       # (kcr.json's public seeds), never Reveal D, and never a capture of the app, which no step
       # writes. After a failed leg too, so a leg that kept its captures still has them reviewed; a

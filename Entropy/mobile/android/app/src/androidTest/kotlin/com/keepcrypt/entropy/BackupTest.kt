@@ -34,7 +34,7 @@ import org.junit.runner.RunWith
 
 /**
  * The encrypted backup and Check a backup on the phone (tasks/todo.md, M5 group 18), run on the shipping
- * app in the API 31 and 36 legs by scripts/android-instrument.sh's age: form, which pipes this run's raw
+ * app in the API 34 and 36 legs by scripts/android-instrument.sh's age: form, which pipes this run's raw
  * output straight into scripts/android-age-check.py, the CI age -d hand-off. A dice-only seed of
  * vectors/kcr.json's public gate seed dice-50-words12 (the CI throwaway seed) goes through the model's
  * entry points to its wallet summary (the words and the read-back are FlowTest's); the offer, the save

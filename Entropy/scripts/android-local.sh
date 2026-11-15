@@ -10,7 +10,7 @@
 # Usage: scripts/android-local.sh [--part PART] [APK_DIR]
 #   PART     capture, journeys, ui or registry: one part of the leg (android-emulator.sh --part, as CI's
 #            leg jobs run it; M5 commit U1a), for a check of the classes a change touches. capture
-#            also runs the second boot below (NativeTest, which CI runs in API 31's capture job on
+#            also runs the second boot below (NativeTest, which CI runs in API 34's capture job on
 #            the 16 KB-page image, and the Camera2 check); journeys, ui and registry end after the leg.
 #            With no --part, the whole run below.
 #   APK_DIR  the five signed APKs android-emulator.sh installs (app-shipping-release,
@@ -76,7 +76,9 @@
 #      arm64-v8a (kc37's own ABI, so the library runs natively), then the class through
 #      android-instrument.sh's judge. It runs on this boot, since on the first CrashTest, the leg's
 #      last run, leaves its crash in the crash buffer that every later judge reads whole. Then the
-#      Camera2 check (M5-59; CI's AVDs have no camera). The shipping app, CAMERA granted from the
+#      Camera2 check (M5-59; CI's AVDs have no camera). The test-registry app (the one APK whose nodes
+#      carry their test tags as resource ids, Q84: the shipping app's carry none, and its scanner is the
+#      same code), CAMERA granted from the
 #      shell (pm grant) and the phone offline, is driven through the UI from the shell (uiautomator
 #      dump for each screen's test tags, input tap) to a dice-only 12-word seed of 50 rolls, Check now,
 #      Show check QR and Scan go-ahead QR. Its camera client must be listed among dumpsys media.camera's active
@@ -218,7 +220,7 @@ screen() { cat "$s/ui" 2>/dev/null || echo launcher; }
 # once the scan screen has been drawn.
 scanning() {
   echo scan > "$s/ui"
-  [ -n "${KC_NO_CLIENT:-}" ] || { [ -n "${KC_NO_REGISTRY_CLIENT:-}" ] && [ "$(cat "$s/pkg")" = com.keepcrypt.entropy.testregistry ]; } ||
+  [ -n "${KC_NO_CLIENT:-}" ] || { [ -n "${KC_NO_SCENE_CLIENT:-}" ] && [ -f "$s/walked" ]; } ||
     echo on > "$s/camera"
   if [ -n "${KC_DECODE:-}" ] && [ -f "$s/walked" ] && [ -f "$s/poster" ] && [ "$(cat "$s/pkg")" = com.keepcrypt.entropy.testregistry ]; then
     : > "$s/decode"
@@ -451,7 +453,7 @@ CONFIG
   run no-client KC_NO_CLIENT=1
   run camera-stuck KC_CAMERA_STUCK=1
   run scan-left KC_DECODE=1 KC_AFTER=launcher
-  run scan-no-client KC_NO_REGISTRY_CLIENT=1
+  run scan-no-client KC_NO_SCENE_CLIENT=1
   run fetched KC_FETCH=1 KC_DECODE=1
   run fetched-flags KC_FETCH_FLAGS=1 KC_DECODE=1
   run version KC_VERSION=37.2.99.0 KC_DECODE=1
@@ -563,7 +565,7 @@ CONFIG
     fi
     check "$1" "$ok" "the emulator stopped"
   }
-  camera_passes='pass: local camera: the camera client of com.keepcrypt.entropy is listed in dumpsys media.camera while the scan screen shows'
+  camera_passes='pass: local camera: the camera client of com.keepcrypt.entropy.testregistry is listed in dumpsys media.camera while the scan screen shows'
   expect pass 0 "local: made the AVD kc37" \
     "local: not made on kc37 (ro.debuggable=0): com.keepcrypt.entropy.CaptureTest#disableSecureWindowsShowsTheScreenOnlyWhileSet" \
     "local: no adb root on kc37: adb root says: adbd cannot run as root in production builds" \
@@ -624,9 +626,9 @@ CONFIG
   else
     check port-taken no "nothing booted"
   fi
-  expect no-client 1 "FAIL: local: camera: com.keepcrypt.entropy's camera client is not listed in dumpsys media.camera within 10 s of the scan screen"
+  expect no-client 1 "FAIL: local: camera: com.keepcrypt.entropy.testregistry's camera client is not listed in dumpsys media.camera within 10 s of the scan screen"
   stopped no-client
-  expect camera-stuck 1 "$camera_passes" "FAIL: local: camera: com.keepcrypt.entropy's camera client is still listed 10 s after Home"
+  expect camera-stuck 1 "$camera_passes" "FAIL: local: camera: com.keepcrypt.entropy.testregistry's camera client is still listed 10 s after Home"
   expect scan-left 1 "$camera_passes" "local: camera: no collision_text on screen within 10 s" \
     "FAIL: local: camera: com.keepcrypt.entropy.testregistry's scan screen went without the collision result"
   expect scan-no-client 1 "$camera_passes" \
@@ -1088,7 +1090,7 @@ elif ! sh "$here/android-instrument.sh" "$adb" "$serial" "$api" "$shipping.test"
 else
   echo "pass: local native library: NativeTest on $avd's arm64-v8a, natively: JNI_OnLoad, the self-test and dice-50-words12's Seal ID through the bridge"
 fi
-p=$shipping
+p=$registry
 if ! to_scan "$p"; then
   fail_later "camera: $p did not reach the scan screen"
 elif ! client "$p" yes 10; then

@@ -65,7 +65,7 @@ import org.junit.runner.RunWith
 /**
  * U1's journeys from First launch to Finish through the UI alone (tasks/todo.md, Stage U's U1 and its
  * commit plan's U-4; lead decision M5-72 (a)), run by scripts/android-instrument.sh on the shipping app in
- * the API 31 and 36 ui jobs (android-emulator.sh's ui part, M5-76 (g)). Every input is the user's, made on the screen: UI Automator taps the
+ * the API 34 and 36 ui jobs (android-emulator.sh's ui part, M5-76 (g)). Every input is the user's, made on the screen: UI Automator taps the
  * Public controls by their resource ids, the dice faces are pressed on the Public pad by their
  * accessibility click and confirmed by tap (Ui.tapRolls), the go-ahead code is tapped on the Crockford pad
  * (Ui.tapCode) and the read-back's letters are touched on the Protected letter pad (Ui.typeLetters), so

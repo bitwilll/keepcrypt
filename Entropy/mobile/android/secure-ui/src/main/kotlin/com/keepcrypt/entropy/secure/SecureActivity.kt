@@ -15,12 +15,12 @@ import java.util.function.Consumer
  * - FLAG_SECURE before super.onCreate, so before any content: screenshots and recordings of the
  *   window come out black, and it never reaches a cast or a non-secure display.
  * - Other apps' overlay windows hidden while it shows (HIDE_OVERLAY_WINDOWS in the manifest), and
- *   on Android 13+ no screenshot of it in the recents list.
+ *   no screenshot of it in the recents list.
  * - On the root view, so for every view under it: touches dropped while another window covers it
  *   (tapjacking), no autofill, and no content capture (the root opts out itself; FLAG_SECURE's
- *   effect on content capture is applied by the capture service, not by the app); on Android 14+ it
- *   is accessibility-data sensitive, so only accessibility tools (TalkBack and its braille displays
- *   among them) read it.
+ *   effect on content capture is applied by the capture service, not by the app); and
+ *   accessibility-data sensitive, so only accessibility tools (TalkBack and its braille displays
+ *   among them) read it. The app needs Android 14 (minSdk 34, Q84), so each of these is always set.
  * - No saved instance state: the Bundle Android keeps across a process death is left empty, and
  *   onCreate never reads one, so nothing of a session can come back from it.
  * - The app's comings and goings, for the ceremony model: onAppReturned on every start, onAppResumed
@@ -39,17 +39,13 @@ abstract class SecureActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         window.setHideOverlayWindows(true)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            setRecentsScreenshotEnabled(false)
-        }
+        setRecentsScreenshotEnabled(false)
         super.onCreate(null)
         window.decorView.apply {
             filterTouchesWhenObscured = true
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
             importantForContentCapture = View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                setAccessibilityDataSensitive(View.ACCESSIBILITY_DATA_SENSITIVE_YES)
-            }
+            setAccessibilityDataSensitive(View.ACCESSIBILITY_DATA_SENSITIVE_YES)
         }
     }
 

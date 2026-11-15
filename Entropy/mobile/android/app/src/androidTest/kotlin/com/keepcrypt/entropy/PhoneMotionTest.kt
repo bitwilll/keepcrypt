@@ -24,7 +24,7 @@ import org.junit.runner.RunWith
 /**
  * PhoneMotion, the motion-source seam's Android end (SensorMotionSource.kt; tasks/todo.md, M5 group
  * 15; lead decision M5-51), on the emulator's own sensors, run by scripts/android-instrument.sh on the
- * shipping app in the API 31 and 36 legs. The app is in front, as it is whenever Device entropy runs
+ * shipping app in the API 34 and 36 legs. The app is in front, as it is whenever Device entropy runs
  * PhoneMotion (Android delivers no continuous sensor's events to an idle app). A probe line names the
  * sensors the image lists. The test listens to the same default accelerometer and gyroscope itself,
  * then starts a PhoneMotion on the main thread, as the ceremony model does:

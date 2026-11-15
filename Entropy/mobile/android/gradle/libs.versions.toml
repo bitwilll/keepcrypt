@@ -41,7 +41,8 @@ junit = "4.13.2"
 # The Android SDK and NDK the modules build with (read by every module's build file).
 android-compile-sdk = "37"
 android-target-sdk = "36"
-android-min-sdk = "31"
+# minSdk 34, Android 14 (Q84, 2026-11-14): every level the app installs on has the data-sensitive mark.
+android-min-sdk = "34"
 android-build-tools = "36.0.0"
 android-ndk = "30.0.16248370"
 

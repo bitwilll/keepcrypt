@@ -6,7 +6,6 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Rect
-import android.os.Build
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
@@ -42,6 +41,11 @@ import org.junit.Assert.fail
  * region for the frame checker.
  */
 internal object Capture {
+    init {
+        // Before any activity of the app is made: the tests read the screens' test tags in-process (Tags; Q84).
+        Tags.install()
+    }
+
     /**
      * capture-control's package: the positive control, the same first screen (ControlActivity) and a
      * gate seed's words page (WordsActivity), each with no FLAG_SECURE.
@@ -92,7 +96,7 @@ internal object Capture {
     fun shellText(command: String): String = String(shell(command), Charsets.UTF_8).trim()
 
     /**
-     * The shell's stdout and stderr for command, through executeShellCommandRwe (API 31, the minSdk),
+     * The shell's stdout and stderr for command, through executeShellCommandRwe (API 31 and later),
      * whose three descriptors are stdout, stdin and stderr: stdin is closed at once, then stdout is
      * read to its end, then stderr.
      */
@@ -347,7 +351,7 @@ internal object Capture {
 
     /**
      * A node of the app's windows as UiAutomation reads it: its text, its resource name (a Compose test
-     * tag), whether it is marked accessibility-data sensitive (Android 14+; false before), whether it
+     * tag, which the tests' own reading gives it: Tags), whether it is marked accessibility-data sensitive, whether it
      * lies on screen and its bounds there, in the display's pixels, and its pane title and content
      * description (U3g; fixed names). No data class: its text is never part of a printed value.
      */
@@ -380,16 +384,14 @@ internal object Capture {
      */
     fun nodes(pkg: String): List<NodeFacts> {
         val found = ArrayList<NodeFacts>()
-        val marked = Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE
         fun read(node: AccessibilityNodeInfo) {
-            val sensitive = marked && node.isAccessibilityDataSensitive
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
             found.add(
                 NodeFacts(
                     node.text?.toString(),
                     node.viewIdResourceName,
-                    sensitive,
+                    node.isAccessibilityDataSensitive,
                     node.isVisibleToUser,
                     bounds,
                     node.paneTitle?.toString(),

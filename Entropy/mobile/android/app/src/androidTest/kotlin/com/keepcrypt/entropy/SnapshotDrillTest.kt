@@ -42,7 +42,7 @@ import org.junit.runner.RunWith
 
 /**
  * The owner's P4 drill on the phone (tasks/todo.md, M5 group 16), run by scripts/android-instrument.sh
- * on the test-registry app, the only one that trusts the test registry key, in the API 31 and 36 legs,
+ * on the test-registry app, the only one that trusts the test registry key, in the API 34 and 36 legs,
  * through UI Automator as FlowTest is (Ui).
  *
  * The scanned go-ahead QRs (P4's first and third steps; commit 18): vectors/kcr.json's two go-ahead QR

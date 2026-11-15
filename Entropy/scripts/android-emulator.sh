@@ -4,13 +4,13 @@
 # already built, signed and checked, runs the capture harness and the app's instrumented tests on
 # them (or, on the 16 KB-page image, the native-library leg below), prints the platform probe's facts
 # and shuts the emulator down. The workflow runs each API level's leg as its four parts, one a job
-# (M5 commit U1a, lead decision M5-72 (h)), and the 16 KB-page image after API 31's capture part in
+# (M5 commit U1a, lead decision M5-72 (h)), and the 16 KB-page image after API 34's capture part in
 # that part's job, all on the same signed bytes.
 #
 # Usage: scripts/android-emulator.sh [--part PART] API SDK_ROOT ADB APK_DIR WORK_DIR
 #   PART     capture, journeys, ui or registry: that part of the leg alone (below); with no --part,
 #            every part, in the steps' order. Not with 16k, which has no parts.
-#   API      31 or 36: system-images;android-API;default;x86_64; or 16k:
+#   API      34 or 36: system-images;android-API;default;x86_64; or 16k:
 #            system-images;android-36;google_apis_ps16k;x86_64, the 16 KB-page image (group 6)
 #   SDK_ROOT the emulator's SDK root (sdkmanager --sdk_root), holding emulator/ and that image (the
 #            script adds the empty platforms/ and the platform-tools/ link the emulator looks for)
@@ -106,7 +106,7 @@
 #      package records live outside these directories. The listing ends with a line of its own, so one cut short
 #      fails too. The positive control follows: a file planted as root in /data/user/0/PKG must be the same listing's one new
 #      hit (the listing before and that file), and is then removed. On a user build (--booted on kc37: ro.debuggable=0) adb root is refused, so
-#      the listing is printed as not made there, CI's API 31 and 36 legs making it; on the CI images a
+#      the listing is printed as not made there, CI's API 34 and 36 legs making it; on the CI images a
 #      root shell that does not come fails the leg.
 # The parts (--part; M5 commit U1a, lead decision M5-72 (h)), each on its own boot, so that the
 # workflow runs them side by side, one a job: capture, the shipping journeys, the journeys through the
@@ -153,7 +153,7 @@
 # FlowTest, CheckTest, MixedJourneyTest and the age: BackupTest; ui's JourneyTest and the gone: StopJourneyTest; registry's SnapshotDrillTest, LifecycleTest, DeviceChangeTest, AwayTest, ScanRefusedTest, IdleClockTest, KillTest's four runs and the
 # killed CrashTest, last; and the four parts' runs are together the whole leg's, each once, so a part that
 # drops or adds a class fails. The workflow's emulators matrix (.github/workflows/entropy-android.yml,
-# read from this checkout) is each part on API 31 and 36, one a job, and no other row, with the steps
+# read from this checkout) is each part on API 34 and 36, one a job, and no other row, with the steps
 # that follow the part (its own, the age, the 16 KB leg, the captures' upload) under their names and
 # conditions (a case of its own: a row dropped would run its part on that level nowhere). Every part ends with step 7's checks; journeys, ui and registry print no
 # line of steps 1, 2, 5 and 6 and keep no capture; a failing class in each part exits 1 at the part's
@@ -349,12 +349,12 @@ EOF
     done
     echo black > "$c/screen" || exit 2
   }
-  # leg NAME [--part PART] [VAR=VALUE...]: one whole leg on API 31 (16k for a NAME that starts with
+  # leg NAME [--part PART] [VAR=VALUE...]: one whole leg on API 34 (16k for a NAME that starts with
   # 16k), or its part PART, in the background, its case directory $st/NAME, with VAR=VALUE set for
   # the stand-ins; its output in out and its exit status in rc.
   leg() {
     case_dir "$1"
-    case $1 in 16k*) lapi=16k limage=android-36/google_apis_ps16k/x86_64 ;; *) lapi=31 limage=android-31/default/x86_64 ;; esac
+    case $1 in 16k*) lapi=16k limage=android-36/google_apis_ps16k/x86_64 ;; *) lapi=34 limage=android-34/default/x86_64 ;; esac
     shift
     lpart=
     if [ "${1:-}" = --part ]; then
@@ -450,11 +450,11 @@ EOF
   booted booted-pass com.keepcrypt.entropy.CaptureTest-disableSecureWindowsShowsTheScreenOnlyWhileSet
   booted booted-class-unheld com.keepcrypt.entropy.NoSuchTest-aTest
   wait
-  expect pass 0 "pass: api=31 control (a) raw frames:" "pass: api=31 control (a) raw frames, words page:" \
-    "probe: api=31 adb exec-out screencap -p (capture-control's first screen), kept as control-api31-first-launch.png: exit 0, 12 bytes" \
-    "probe: api=31 adb exec-out screencap -p (capture-control's words page), kept as control-api31-words.png: exit 0, 12 bytes" \
-    "pass: api=31 first frame (shipping): every frame black" \
-    "pass: api=31 first frame (shipping, its first screen up)" "pass: api=31 first frame (registry, its first screen up)" \
+  expect pass 0 "pass: api=34 control (a) raw frames:" "pass: api=34 control (a) raw frames, words page:" \
+    "probe: api=34 adb exec-out screencap -p (capture-control's first screen), kept as control-api34-first-launch.png: exit 0, 12 bytes" \
+    "probe: api=34 adb exec-out screencap -p (capture-control's words page), kept as control-api34-words.png: exit 0, 12 bytes" \
+    "pass: api=34 first frame (shipping): every frame black" \
+    "pass: api=34 first frame (shipping, its first screen up)" "pass: api=34 first frame (registry, its first screen up)" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.DoubleTapTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
@@ -469,20 +469,20 @@ EOF
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.AwayTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.ScanRefusedTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.IdleClockTest" \
-    "probe: api=31 kill (background): pidof com.keepcrypt.entropy before: 4242; after: " \
-    "probe: api=31 kill (foreground): pidof com.keepcrypt.entropy before: 4242; after: " \
+    "probe: api=34 kill (background): pidof com.keepcrypt.entropy before: 4242; after: " \
+    "probe: api=34 kill (foreground): pidof com.keepcrypt.entropy before: 4242; after: " \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#afterTheBackgroundKill" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#afterTheRunsOwnEnd" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 dumpsys package com.keepcrypt.entropy: no INTERNET" \
-    "pass: api=31 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
-    "probe: api=31 adb root: restarting adbd as root; id -u: 0" \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry): no file in its data directories" \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy), positive control: a file planted as root in its data directory is the listing's one new hit" \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
-    "emulator: api=31: every part (capture, journeys, ui and registry), in the steps' order" \
-    "emulator: api=31: every check passed"
+    "pass: api=34 dumpsys package com.keepcrypt.entropy: no INTERNET" \
+    "pass: api=34 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
+    "probe: api=34 adb root: restarting adbd as root; id -u: 0" \
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry): no file in its data directories" \
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy), positive control: a file planted as root in its data directory is the listing's one new hit" \
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+    "emulator: api=34: every part (capture, journeys, ui and registry), in the steps' order" \
+    "emulator: api=34: every check passed"
   # runs NAME: the leg NAME's instrumented runs, in order, "PACKAGE RUN" a line.
   runs() { sed -n 's/^instrument stub: \([^ ]*\) \([^ ]*\) .*/\1 \2/p' "$st/$1/out"; }
   # order NAME WHAT RUN...: the leg NAME's instrumented runs are exactly RUN..., in that order, each
@@ -526,10 +526,10 @@ EOF
     echo "FAIL capture, journeys, ui and registry: their runs are $(for p in capture journeys ui registry; do runs "$p"; done | tr '\n' ' '), the leg's $(runs pass | tr '\n' ' ')"
   fi
   # The workflow runs the parts (M5 commit U1a3): entropy-android.yml's emulators matrix is each part
-  # on API 31 and on API 36, one a job, each once and no other row, so a row dropped, renamed or
+  # on API 34 and on API 36, one a job, each once and no other row, so a row dropped, renamed or
   # doubled, whose part would then run on that level nowhere, fails here (the build job runs this
   # selftest before any leg job starts). The steps that follow the part run where it holds them: the
-  # part's own step in every job, Ubuntu's age in the journeys jobs, the 16 KB leg in API 31's capture
+  # part's own step in every job, Ubuntu's age in the journeys jobs, the 16 KB leg in API 34's capture
   # job and the captures' upload in the capture jobs, each step's name and condition as written, once.
   # Each row carries its budget, a whole number of minutes (timeout:, which the job's timeout-minutes
   # reads; M5-30), so a row without one cannot leave its job with an empty limit.
@@ -538,7 +538,7 @@ EOF
     /^  [^ #]/ { job = $0 }
     job == "  emulators:" && /^          - api: / { api = $3; gsub(/'\''/, "", api) }
     job == "  emulators:" && /^            part: / { print api, $2 }' "$wfa" | sort)
-  want=$(for a in 31 36; do for p in capture journeys ui registry; do echo "$a $p"; done; done | sort)
+  want=$(for a in 34 36; do for p in capture journeys ui registry; do echo "$a $p"; done; done | sort)
   budgets=$(awk '
     /^  [^ #]/ { job = $0 }
     job == "  emulators:" && /^          - api: / { rows++ }
@@ -560,35 +560,35 @@ EOF
   done <<'EOF'
 Emulator API ${{ matrix.api }}, ${{ matrix.part }} (system-images;android-${{ matrix.api }};default;x86_64)|
 Ubuntu's age, version asserted, and the age -d hand-off's selftest|${{ matrix.part == 'journeys' }}
-Emulator 16 KB pages (system-images;android-36;google_apis_ps16k;x86_64)|${{ matrix.api == '31' && matrix.part == 'capture' && !cancelled() && steps.emulator-install.outcome == 'success' }}
+Emulator 16 KB pages (system-images;android-36;google_apis_ps16k;x86_64)|${{ matrix.api == '34' && matrix.part == 'capture' && !cancelled() && steps.emulator-install.outcome == 'success' }}
 Upload the positive control's captures (API ${{ matrix.api }})|${{ matrix.part == 'capture' && !cancelled() && steps.emulator-install.outcome == 'success' }}
 EOF
   if [ "$ok" = yes ]; then
     passed=$((passed + 1))
-    echo "PASS the workflow: each part on API 31 and 36, one a job, each with its budget, and the steps that follow the part"
+    echo "PASS the workflow: each part on API 34 and 36, one a job, each with its budget, and the steps that follow the part"
   else
     failed=$((failed + 1))
     echo "FAIL the workflow: its emulators matrix rows are $(printf '%s\n' "$rows" | tr '\n' ','), rows and budgets $budgets, and its steps $(printf '%s\n' "$conds" | tr '\n' ' ')"
   fi
   # Every part: step 7 at its end; journeys, ui and registry run none of steps 1, 2, 5 and 6, the capture
   # part's, and keep no capture.
-  expect capture 0 "emulator: api=31: part capture alone (--part capture)" \
-    "probe: api=31 settings secure disable_secure_windows=" \
-    "kept as control-api31-words.png: exit 0, 12 bytes" "pass: api=31 control (a) raw frames, words page:" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "pass: api=31 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
-    "emulator: api=31: every check passed"
+  expect capture 0 "emulator: api=34: part capture alone (--part capture)" \
+    "probe: api=34 settings secure disable_secure_windows=" \
+    "kept as control-api34-words.png: exit 0, 12 bytes" "pass: api=34 control (a) raw frames, words page:" \
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "pass: api=34 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+    "emulator: api=34: every check passed"
   for p in journeys ui registry; do
-    expect "$p" 0 "emulator: api=31: part $p alone (--part $p)" \
-      "pass: api=31 dumpsys package com.keepcrypt.entropy: no INTERNET" \
-      "pass: api=31 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
-      "pass: api=31 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
-      "pass: api=31 nothing persisted (com.keepcrypt.entropy), positive control:" \
-      "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
-      "emulator: api=31: every check passed"
-    if grep -q -F -e "probe: api=31 settings secure" -e "(capture-control's" -e "control (a)" -e "first frame (" "$st/$p/out" ||
+    expect "$p" 0 "emulator: api=34: part $p alone (--part $p)" \
+      "pass: api=34 dumpsys package com.keepcrypt.entropy: no INTERNET" \
+      "pass: api=34 dumpsys package com.keepcrypt.entropy.testregistry: no INTERNET" \
+      "pass: api=34 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
+      "pass: api=34 nothing persisted (com.keepcrypt.entropy), positive control:" \
+      "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+      "emulator: api=34: every check passed"
+    if grep -q -F -e "probe: api=34 settings secure" -e "(capture-control's" -e "control (a)" -e "first frame (" "$st/$p/out" ||
       [ -e "$st/$p/work/captures" ]; then
       failed=$((failed + 1))
       echo "FAIL $p: it ran a step of steps 1, 2, 5 and 6 or kept a capture"
@@ -600,32 +600,32 @@ EOF
   # A failing class in a part fails it at its end, after its later runs and step 7.
   expect capture-capture-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.PhoneMotionTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.CaptureTest); instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.CaptureTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.CaptureTest); instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.CaptureTest) (each reported above)"
   expect journeys-flow-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest" \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.FlowTest) (each reported above)"
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.FlowTest) (each reported above)"
   expect ui-journey-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy gone:com.keepcrypt.entropy.StopJourneyTest" \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.JourneyTest) (each reported above)"
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.JourneyTest) (each reported above)"
   expect registry-snapshot-drill-fails 1 \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.SnapshotDrillTest) (each reported above)"
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.SnapshotDrillTest) (each reported above)"
   expect registry-anr-closed 0 \
-    "probe: api=31 before com.keepcrypt.entropy.SnapshotDrillTest the focus is another app's not-responding dialog: mCurrentFocus=Window{a1 u0 Application Not Responding: com.android.launcher3}" \
-    "probe: api=31 the dialog closed by am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS; the focus now: mCurrentFocus=Window{b2 u0" \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:"
+    "probe: api=34 before com.keepcrypt.entropy.SnapshotDrillTest the focus is another app's not-responding dialog: mCurrentFocus=Window{a1 u0 Application Not Responding: com.android.launcher3}" \
+    "probe: api=34 the dialog closed by am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS; the focus now: mCurrentFocus=Window{b2 u0" \
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry), positive control:"
   expect registry-anr-stuck 1 \
-    "probe: api=31 before com.keepcrypt.entropy.SnapshotDrillTest the focus is another app's not-responding dialog:" \
-    "FAIL: emulator: api=31: another app's not-responding dialog holds the focus before com.keepcrypt.entropy.SnapshotDrillTest: mCurrentFocus=Window{a1 u0 Application Not Responding: com.android.launcher3}"
+    "probe: api=34 before com.keepcrypt.entropy.SnapshotDrillTest the focus is another app's not-responding dialog:" \
+    "FAIL: emulator: api=34: another app's not-responding dialog holds the focus before com.keepcrypt.entropy.SnapshotDrillTest: mCurrentFocus=Window{a1 u0 Application Not Responding: com.android.launcher3}"
   # Step 2: the control's two screencaps kept for the upload, and nothing else in captures/.
   kept=$(cd "$st/pass/work/captures" 2> /dev/null && ls | tr '\n' ' ')
-  if [ "$kept" = "control-api31-first-launch.png control-api31-words.png " ] &&
-    [ "$(cat "$st/pass/work/captures/control-api31-words.png")" = 'stand-in png' ]; then
+  if [ "$kept" = "control-api34-first-launch.png control-api34-words.png " ] &&
+    [ "$(cat "$st/pass/work/captures/control-api34-words.png")" = 'stand-in png' ]; then
     passed=$((passed + 1))
     echo "PASS pass: the control's two screencaps kept in captures/"
   else
@@ -636,20 +636,20 @@ EOF
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.PhoneMotionTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.PhoneMotionTest) (each reported above)"
   expect double-tap-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.FlowTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.DeviceChangeTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.DoubleTapTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.DoubleTapTest) (each reported above)"
   expect flow-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.CheckTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.FlowTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.FlowTest) (each reported above)"
   expect check-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.MixedJourneyTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.JourneyTest" \
@@ -658,100 +658,100 @@ EOF
     "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.CheckTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.CheckTest) (each reported above)"
   expect mixed-journey-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy age:com.keepcrypt.entropy.BackupTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.JourneyTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.MixedJourneyTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.MixedJourneyTest) (each reported above)"
   expect journey-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy gone:com.keepcrypt.entropy.StopJourneyTest" \
     "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.JourneyTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.JourneyTest) (each reported above)"
   expect backup-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.SnapshotDrillTest" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (age:com.keepcrypt.entropy.BackupTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (age:com.keepcrypt.entropy.BackupTest) (each reported above)"
   expect snapshot-drill-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.SnapshotDrillTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.SnapshotDrillTest) (each reported above)"
   expect lifecycle-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.DeviceChangeTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.LifecycleTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.LifecycleTest) (each reported above)"
   expect device-change-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#afterTheRunsOwnEnd" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.DeviceChangeTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.DeviceChangeTest) (each reported above)"
   expect away-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#afterTheBackgroundKill" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.AwayTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.AwayTest) (each reported above)"
   expect scan-refused-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.IdleClockTest" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.ScanRefusedTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.ScanRefusedTest) (each reported above)"
   expect idle-clock-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#afterTheBackgroundKill" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.IdleClockTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.IdleClockTest) (each reported above)"
   expect kill-test-fails 1 \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.KillTest#afterTheForegroundKill" \
     "instrument stub: com.keepcrypt.entropy killed:com.keepcrypt.entropy.CrashTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.KillTest#afterTheBackgroundKill) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.KillTest#afterTheBackgroundKill) (each reported above)"
   expect crash-test-fails 1 \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (killed:com.keepcrypt.entropy.CrashTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (killed:com.keepcrypt.entropy.CrashTest) (each reported above)"
   expect control-test-fails 1 \
     "instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.ControlTest) (the leg goes on" \
     "instrument stub: com.keepcrypt.entropy.testregistry com.keepcrypt.entropy.CaptureTest" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.ControlTest) (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.ControlTest) (each reported above)"
   expect capture-test-fails 1 \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.CaptureTest); instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.CaptureTest) (each reported above)"
-  expect control-in-recents 1 "probe: api=31 recents after pm clear com.keepcrypt.entropy.capturecontrol: 1 lines name it" \
-    "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: capture-control is still in recents after pm clear (each reported above)"
-  expect recording-ends-early 1 "before it was stopped" "FAIL: emulator: api=31: control"
-  expect words-page-not-shown 1 "pass: api=31 control (a) raw frames:" \
-    "FAIL: emulator: api=31: control (a): the raw frames do not show the capture control's words page"
-  expect screencap-empty 1 "pass: api=31 first frame (registry, its first screen up)" \
-    "FAIL: emulator: api=31: the shell's screencap of capture-control's first screen failed or is empty; the shell's screencap of capture-control's words page failed or is empty (each reported above)"
-  expect app-window-lit 1 "FAIL: emulator: api=31: shipping: a raw frame shows the app's window"
-  expect app-window-lit-no-frame 1 "pass: api=31 first frame (shipping): every frame black" \
-    "FAIL: emulator: api=31: shipping: a raw frame with the app's first screen up shows its window"
-  expect internet 1 "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry): no file in its data directories" \
-    "FAIL: emulator: api=31: dumpsys package com.keepcrypt.entropy: the app requests or holds INTERNET; dumpsys package com.keepcrypt.entropy.testregistry: the app requests or holds INTERNET (each reported above)"
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: instrumented tests failed on com.keepcrypt.entropy (com.keepcrypt.entropy.CaptureTest); instrumented tests failed on com.keepcrypt.entropy.testregistry (com.keepcrypt.entropy.CaptureTest) (each reported above)"
+  expect control-in-recents 1 "probe: api=34 recents after pm clear com.keepcrypt.entropy.capturecontrol: 1 lines name it" \
+    "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: capture-control is still in recents after pm clear (each reported above)"
+  expect recording-ends-early 1 "before it was stopped" "FAIL: emulator: api=34: control"
+  expect words-page-not-shown 1 "pass: api=34 control (a) raw frames:" \
+    "FAIL: emulator: api=34: control (a): the raw frames do not show the capture control's words page"
+  expect screencap-empty 1 "pass: api=34 first frame (registry, its first screen up)" \
+    "FAIL: emulator: api=34: the shell's screencap of capture-control's first screen failed or is empty; the shell's screencap of capture-control's words page failed or is empty (each reported above)"
+  expect app-window-lit 1 "FAIL: emulator: api=34: shipping: a raw frame shows the app's window"
+  expect app-window-lit-no-frame 1 "pass: api=34 first frame (shipping): every frame black" \
+    "FAIL: emulator: api=34: shipping: a raw frame with the app's first screen up shows its window"
+  expect internet 1 "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry): no file in its data directories" \
+    "FAIL: emulator: api=34: dumpsys package com.keepcrypt.entropy: the app requests or holds INTERNET; dumpsys package com.keepcrypt.entropy.testregistry: the app requests or holds INTERNET (each reported above)"
   # The renderer's shader caches are files the app wrote like any other (M5-70 (d)): no name is allowed.
   expect shader-cache 1 \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy), positive control: a file planted as root in its data directory is the listing's one new hit" \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control: a file planted as root in its data directory is the listing's one new hit" \
-    "FAIL: emulator: api=31: nothing persisted (com.keepcrypt.entropy): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy/code_cache/com.android.skia.shaders_cache /data/user/0/com.keepcrypt.entropy/code_cache/com.android.opengl.shaders_cache; nothing persisted (com.keepcrypt.entropy.testregistry): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy.testregistry/code_cache/com.android.skia.shaders_cache /data/user/0/com.keepcrypt.entropy.testregistry/code_cache/com.android.opengl.shaders_cache (each reported above)"
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy), positive control: a file planted as root in its data directory is the listing's one new hit" \
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry), positive control: a file planted as root in its data directory is the listing's one new hit" \
+    "FAIL: emulator: api=34: nothing persisted (com.keepcrypt.entropy): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy/code_cache/com.android.skia.shaders_cache /data/user/0/com.keepcrypt.entropy/code_cache/com.android.opengl.shaders_cache; nothing persisted (com.keepcrypt.entropy.testregistry): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy.testregistry/code_cache/com.android.skia.shaders_cache /data/user/0/com.keepcrypt.entropy.testregistry/code_cache/com.android.opengl.shaders_cache (each reported above)"
   expect app-wrote-a-file 1 \
-    "pass: api=31 nothing persisted (com.keepcrypt.entropy.testregistry), positive control: a file planted as root in its data directory is the listing's one new hit" \
-    "FAIL: emulator: api=31: nothing persisted (com.keepcrypt.entropy): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy/files/kc-stand-in; nothing persisted (com.keepcrypt.entropy.testregistry): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy.testregistry/files/kc-stand-in (each reported above)"
-  expect planted-not-listed 1 "pass: api=31 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
-    "FAIL: emulator: api=31: nothing persisted (com.keepcrypt.entropy), positive control: the listing found '' where the file planted as root, /data/user/0/com.keepcrypt.entropy/kc-planted-file, is its one new hit"
+    "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry), positive control: a file planted as root in its data directory is the listing's one new hit" \
+    "FAIL: emulator: api=34: nothing persisted (com.keepcrypt.entropy): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy/files/kc-stand-in; nothing persisted (com.keepcrypt.entropy.testregistry): its data directories hold a file it wrote: /data/user/0/com.keepcrypt.entropy.testregistry/files/kc-stand-in (each reported above)"
+  expect planted-not-listed 1 "pass: api=34 nothing persisted (com.keepcrypt.entropy): no file in its data directories" \
+    "FAIL: emulator: api=34: nothing persisted (com.keepcrypt.entropy), positive control: the listing found '' where the file planted as root, /data/user/0/com.keepcrypt.entropy/kc-planted-file, is its one new hit"
   expect listing-cut-short 1 \
-    "FAIL: emulator: api=31: nothing persisted (com.keepcrypt.entropy): its data directories hold a file it wrote: (the listing did not run to its end)"
-  expect no-root 1 "probe: api=31 adb root: adbd cannot run as root in production builds; id -u: 2000" \
-    "FAIL: emulator: api=31: no root shell (ro.debuggable=0), so the nothing-persisted listing of the apps' data directories cannot run (each reported above)"
+    "FAIL: emulator: api=34: nothing persisted (com.keepcrypt.entropy): its data directories hold a file it wrote: (the listing did not run to its end)"
+  expect no-root 1 "probe: api=34 adb root: adbd cannot run as root in production builds; id -u: 2000" \
+    "FAIL: emulator: api=34: no root shell (ro.debuggable=0), so the nothing-persisted listing of the apps' data directories cannot run (each reported above)"
   expect 16k-pass 0 "probe: api=16k ro.product.cpu.abilist=x86_64,arm64-v8a; getconf PAGE_SIZE=16384" \
     "probe: api=16k app installed (x86_64): primaryCpuAbi=x86_64" \
     "instrument stub: com.keepcrypt.entropy com.keepcrypt.entropy.NativeTest abi=x86_64" \
@@ -771,7 +771,7 @@ EOF
     "pass: api=37 control (a) raw frames:" "pass: api=37 control (a) raw frames, words page:" \
     "kept as control-api37-words.png: exit 0, 12 bytes" "pass: api=37 first frame (registry, its first screen up)" \
     "pass: api=37 dumpsys package com.keepcrypt.entropy: no INTERNET" \
-    "emulator: api=37: not made here (ro.debuggable=0, a user build: adb root refused): the nothing-persisted listing of the apps' data directories, which CI's API 31 and 36 legs make" \
+    "emulator: api=37: not made here (ro.debuggable=0, a user build: adb root refused): the nothing-persisted listing of the apps' data directories, which CI's API 34 and 36 legs make" \
     "emulator: api=37: every check passed"
   order booted-pass "the steps' order, both CaptureTest runs without control (c), the killed CrashTest last" \
     "$app $app.ControlTest" "$app $left" "$registry $left" "$app $app.PhoneMotionTest" "$app $app.DoubleTapTest" \
@@ -802,13 +802,13 @@ EOF
       sed 's/^/  | /' "$st/out"
     fi
   }
-  refused "too few arguments" 'usage: ' 31
+  refused "too few arguments" 'usage: ' 34
   refused "--booted on 16k" 'android-emulator: --booted needs an API level of digits alone' \
     --booted 16k emulator-5554 "$st/adb" "$st/pass/apks" "$st/out-booted"
   refused "--booted with a class and no test" 'android-emulator: not a CLASS-TEST' \
     --booted 37 emulator-5554 "$st/adb" "$st/pass/apks" "$st/out-booted" com.keepcrypt.entropy.CaptureTest
   refused "an unknown part" 'android-emulator: --part must be capture, journeys, ui or registry' \
-    --part edges 31 "$st/pass/sdk" "$st/adb" "$st/pass/apks" "$st/out-part"
+    --part edges 34 "$st/pass/sdk" "$st/adb" "$st/pass/apks" "$st/out-part"
   refused "--part on 16k" 'android-emulator: --part names a part of the default images' \
     --part capture 16k "$st/pass/sdk" "$st/adb" "$st/pass/apks" "$st/out-part"
   echo "android-emulator selftest: $passed passed, $failed failed"
@@ -865,9 +865,9 @@ if [ -n "$booted" ]; then
   done
 else
   case $api in
-    31 | 36) level=$api tag=default ;;
+    34 | 36) level=$api tag=default ;;
     16k) level=36 tag=google_apis_ps16k ;;
-    *) echo "android-emulator: API must be 31, 36 or 16k" >&2; exit 2 ;;
+    *) echo "android-emulator: API must be 34, 36 or 16k" >&2; exit 2 ;;
   esac
   if [ "$api" = 16k ] && [ -n "$part" ]; then
     echo "android-emulator: --part names a part of the default images' legs, and 16k's has none" >&2
@@ -1458,7 +1458,7 @@ written() {
 }
 debuggable=$(value getprop ro.debuggable)
 if [ "$debuggable" != 1 ] && [ -n "$booted" ]; then
-  say "not made here (ro.debuggable=$debuggable, a user build: adb root refused): the nothing-persisted listing of the apps' data directories, which CI's API 31 and 36 legs make"
+  say "not made here (ro.debuggable=$debuggable, a user build: adb root refused): the nothing-persisted listing of the apps' data directories, which CI's API 34 and 36 legs make"
 else
   rooted=$(dev root 2>&1 | tr -d '\r' | tr '\n' ' ' | sed 's/ *$//')
   dev wait-for-device > /dev/null 2>&1

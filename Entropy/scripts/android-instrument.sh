@@ -221,7 +221,7 @@ EOF
     name=$1
     want=$2
     shift 2
-    KC_STUB=$st/c sh "$self" "$st/adb" emulator-5554 31 com.keepcrypt.entropy.test com.keepcrypt.entropy \
+    KC_STUB=$st/c sh "$self" "$st/adb" emulator-5554 34 com.keepcrypt.entropy.test com.keepcrypt.entropy \
       "$test" > "$st/out" 2>&1
     got=$?
     ok=yes
@@ -254,14 +254,14 @@ EOF
   }
 
   fresh
-  expect "a passing class" 0 "probe: api=31 first-launch: 0 lit pixels" "pass: api=31 first-launch: drawn, then black" \
-    "kc: region=0,48,720,1184" "instrument: api=31 PASS com.keepcrypt.entropy.CaptureTest (2 tests;"
+  expect "a passing class" 0 "probe: api=34 first-launch: 0 lit pixels" "pass: api=34 first-launch: drawn, then black" \
+    "kc: region=0,48,720,1184" "instrument: api=34 PASS com.keepcrypt.entropy.CaptureTest (2 tests;"
   fresh
   raw 0 ok | awk '{ printf "%s\r\n", $0 }' > "$st/c/raw"
-  expect "a passing class with CRLF line ends" 0 "kc: region=0,48,720,1184" "instrument: api=31 PASS"
+  expect "a passing class with CRLF line ends" 0 "kc: region=0,48,720,1184" "instrument: api=34 PASS"
   fresh
   echo 2 > "$st/c/alive"
-  expect "a passing class whose process is gone after 2 s" 0 "instrument: api=31 PASS"
+  expect "a passing class whose process is gone after 2 s" 0 "instrument: api=34 PASS"
   for code in -1 -2 -3 -4; do
     fresh
     raw "$code" ok > "$st/c/raw"
@@ -318,11 +318,11 @@ EOF
   }
   fresh
   test=$cls-test3
-  expect "a class without one of its tests" 0 "instrument: api=31 PASS $cls (2 tests, without test3; process gone"
+  expect "a class without one of its tests" 0 "instrument: api=34 PASS $cls (2 tests, without test3; process gone"
   filtered "a class without one of its tests" "$cls#test3"
   fresh
   test=$cls-test3-test4
-  expect "a class without two of its tests" 0 "instrument: api=31 PASS $cls (2 tests, without test3 test4; process gone"
+  expect "a class without two of its tests" 0 "instrument: api=34 PASS $cls (2 tests, without test3 test4; process gone"
   filtered "a class without two of its tests" "$cls#test3,$cls#test4"
   fresh
   test=$cls-test2
@@ -333,13 +333,13 @@ EOF
   fresh
   killed_raw crashed > "$st/c/raw"
   trigger_crash
-  expect "a killed test whose process ends during it" 0 "probe: api=31 crash test: a session started" \
-    "instrument: api=31 PASS com.keepcrypt.entropy.CrashTest (killed during the test, as it must be;" \
+  expect "a killed test whose process ends during it" 0 "probe: api=34 crash test: a session started" \
+    "instrument: api=34 PASS com.keepcrypt.entropy.CrashTest (killed during the test, as it must be;" \
     "the crash buffer holds only the trigger's crash (Q75)"
   fresh
   killed_raw reported > "$st/c/raw"
   trigger_crash
-  expect "a killed test the runner reports failed as its process ends" 0 "instrument: api=31 PASS com.keepcrypt.entropy.CrashTest (killed"
+  expect "a killed test the runner reports failed as its process ends" 0 "instrument: api=34 PASS com.keepcrypt.entropy.CrashTest (killed"
   fresh
   killed_raw passed > "$st/c/raw"
   expect "a killed test that passes" 1 "1 started, 1 passed: $killed"
@@ -395,8 +395,8 @@ EOF
   fresh
   gone_raw crashed > "$st/c/raw"
   expect "a gone test whose process ends during it, after its pass line, with no crash" 0 \
-    "pass: api=31 stop: the stop screen names its reason; Close app next" \
-    "instrument: api=31 PASS com.keepcrypt.entropy.StopJourneyTest (gone during the test, as it must be: the app ended its own process;"
+    "pass: api=34 stop: the stop screen names its reason; Close app next" \
+    "instrument: api=34 PASS com.keepcrypt.entropy.StopJourneyTest (gone during the test, as it must be: the app ended its own process;"
   fresh
   gone_raw passed > "$st/c/raw"
   expect "a gone test that passes" 1 "1 started, 1 passed: the process did not end during the test"
@@ -444,7 +444,7 @@ EOF
   fresh
   secret_raw 0 > "$st/c/raw"
   expect "an age: test whose hand-off passes" 0 "age-check: pass (stand-in)" \
-    "instrument: api=31 PASS com.keepcrypt.entropy.BackupTest (2 tests, the age -d hand-off passed; process gone"
+    "instrument: api=34 PASS com.keepcrypt.entropy.BackupTest (2 tests, the age -d hand-off passed; process gone"
   fresh
   secret_raw 0 > "$st/c/raw"
   : > "$st/c/age-fails"
@@ -461,7 +461,7 @@ EOF
   fi
   self=$self_real
   test=com.keepcrypt.entropy.CaptureTest
-  sh "$self" "$st/adb" emulator-5554 31 > "$st/out" 2>&1
+  sh "$self" "$st/adb" emulator-5554 34 > "$st/out" 2>&1
   if [ "$?" -eq 2 ] && grep -q -e '^usage: ' "$st/out"; then
     passed=$((passed + 1))
     echo "PASS too few arguments"

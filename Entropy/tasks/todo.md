@@ -1488,7 +1488,8 @@ override. Almost every M5 commit touches paths you own in CODEOWNERS, so the who
 56. **Your phone, this Mac, and what CI cannot run** (MA:74)
     Recommended:
     - Tell me which Android phone or phones you can use (model, Android 12 or later; 15 or later also tests the
-      recording cover). One phone counts for the gate together with the CI emulators. A second brand is P5 now, or M7.
+      recording cover). (Superseded by Q84, answered 2026-11-14: Android 14 or later, minSdk 34.) One phone counts
+      for the gate together with the CI emulators. A second brand is P5 now, or M7.
     - You install CI-built APKs by hand: no adb, no developer options. Sparrow, Bitcoin Core and the C920 as in M4. One
       short early session (P0b, about 10 minutes) once the camera scanner exists, then P1-P4 at the end.
     - Nothing is installed on this Mac; Kotlin builds and tests run in CI.
@@ -11202,7 +11203,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   from 2026-10-31, M5-76 (a) and (e), from U1b2's run 41197141108's 1153 s and 1097 s; from U1e, M5-76 (g), eight leg
   jobs: the journeys jobs 20 minutes again without JourneyTest, the two ui jobs measured at 30; from run 41203734694,
   M5-76 (h): registry 18 and 19, journeys 20 and 19, ui 30 until a run measures it whole; API 36's ui 27 from run
-  41207540199's 1284 s, API 31's ui 26 from run 41211393696's 1241 s);
+  41207540199's 1284 s, API 31's ui 26 from run 41211393696's 1241 s; from U3n, M5-84 (c), API 34's four jobs take
+  API 31's place, each at the 90-minute ceiling until a run measures it whole);
   system images, the emulator package and the Gradle distribution are cached with actions/cache keyed on their
   revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
   failure is never re-run. Past any budget, the lead stops and re-plans.
@@ -11881,12 +11883,12 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   the run's certificate), the `--apk` checks, the canary build, the uploads (both APKs with SHA-256, the P4 files; the
   test-registry APK named `NOT-FOR-RELEASE`), then the hand-off: the signed APKs to the leg jobs through actions/cache
   under a key that names the run and its attempt, their SHA256SUMS as the build job's output. Then six leg jobs side by
-  side, each after the build job, on those bytes: `default;x86_64` API 31 and API 36, each API's leg in three parts, one
-  a job (`android-emulator.sh --part`; M5-72 (h), commits U1a and U1a2): capture (steps 1-3 and the positive controls,
-  CaptureTest on both APKs, PhoneMotionTest, steps 5-6), the shipping journeys (FlowTest, CheckTest, BackupTest with
-  its age hand-off) and registry, the test registry and the edges (SnapshotDrillTest, LifecycleTest, CrashTest last),
-  each part ending with step 7's nothing-persisted listing;
-  and, from commit 14, one 16 KB-page image (`google_apis_ps16k;x86_64` API 36, or the probe's choice) in API 31's
+  side, each after the build job, on those bytes: `default;x86_64` API 34 (API 31 until U3n, Q84) and API 36, each
+  API's leg in three parts, one a job (`android-emulator.sh --part`; M5-72 (h), commits U1a and U1a2): capture
+  (steps 1-3 and the positive controls, CaptureTest on both APKs, PhoneMotionTest, steps 5-6), the shipping journeys
+  (FlowTest, CheckTest, BackupTest with its age hand-off) and registry, the test registry and the edges
+  (SnapshotDrillTest, LifecycleTest, CrashTest last), each part ending with step 7's nothing-persisted listing;
+  and, from commit 14, one 16 KB-page image (`google_apis_ps16k;x86_64` API 36, or the probe's choice) in API 34's
   capture job. Each restores the run's entry (a miss fails) and checks every file against the build job's SHA256SUMS
   before it installs anything, and each capture job uploads its positive-control captures under its own name (M5-70
   (b), commit L9; U1a). KVM udev rule; `sdkmanager
@@ -12136,7 +12138,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   too.
 - [ ] **Positive controls (each missing control fails the job):** (a) the capture-control APK draws `dice-99-words12`'s
   first words page and a Public screen with the same composables and no FLAG_SECURE; the same screencap,
-  `takeScreenshot()` and raw-frame calls must find its known pixels, on API 31 and 36. (b) The drawn-screen proof above,
+  `takeScreenshot()` and raw-frame calls must find its known pixels, on API 34 and 36. (b) The drawn-screen proof above,
   before every app capture. (c) API 36 only, where the setting exists: `disable_secure_windows` is asserted unset or 0
   first; set to 1, the app's own captures show the words page; back to 0, black again. The control captures (gate seeds
   only; Reveal D never captured) are uploaded as the owner's screen review.
@@ -14094,7 +14096,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   registration end to end, the duplicate-seed drill end to end.
 
 ### Verification
-- [ ] **Gate: screenshot and recording tests come back blank.** Group 6's harness green on API 31 and 36 for both APKs
+- [ ] **Gate: screenshot and recording tests come back blank.** Group 6's harness green on API 34 and 36 for both APKs
   (every screen id with its drawn-screen proof; screencap, `UiAutomation`, continuous raw-frame recording, `SECURE` on
   every window; control (a) on both APIs and control (c) on 36; the first frame), and the owner's P1 on a phone.
   Proof: the run ID at the final head; P1's report.
@@ -14274,9 +14276,9 @@ IDs are public vectors. The one exception, as in H4: Sparrow and Bitcoin Core re
 never-funded throwaway seed.
 
 **P0. Setup**
-- [ ] An Android 12+ phone (Q56), charged. The M4 computer with Sparrow 2.5.5, Bitcoin Core 31.1 and the C920, and an
-  offline computer with Python 3.9+ and verify.py from the final head's commit (the lead gives its SHA-256). Paper and
-  pen.
+- [ ] An Android 14+ phone (Q56; Q84), charged. The M4 computer with Sparrow 2.5.5, Bitcoin Core 31.1 and the C920, and
+  an offline computer with Python 3.9+ and verify.py from the final head's commit (the lead gives its SHA-256). Paper
+  and pen.
 - [ ] From the Android run the lead names: download both APKs and the P4 files; each `shasum -a 256` equals the run's
   log; copy `with-dice-50.kcr` to the phone's Downloads; install the shipping APK (allow "Install unknown apps" for your
   file manager only while installing).
@@ -17772,12 +17774,29 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       4/4, NativeTest; the 412 dp walk: every control 48 dp or more, every text inside the window; ui JourneyTest 4/4
       (after Picker.facts read inside Ui.fresh: a picker redraw's StaleObjectException), StopJourneyTest; JVM 229
       tests, 0 failures (KitTest 2 new). The gate clean, 416 files.
-    - [ ] U3n (Q84): minSdk 34 (libs.versions android-min-sdk), every Build.VERSION check below 34 removed; the shipping
+    - [x] U3n (Q84): minSdk 34 (libs.versions android-min-sdk), every Build.VERSION check below 34 removed; the shipping
       APK drops testTagsAsResourceId (it stays in the test-registry flavour only, or the tests read tags in-process
       through the Compose root's semantics: whichever needs no new dependency); the CI legs API 31 -> API 34
       (M5-84 (c)), the scripts' selftests and budgets with them; mobile-apps.md, build-plan.md and Q56's "Android 12+"
       read "Android 14+", and MA:74's API 31-33 residual is removed (no such level runs the app). CaptureTest proves
       the shipping APK exposes no resource id.
+      Proof (M5 commit U3n, Stage U-6, M5-84 (c), partial: local; CI's API 34 jobs at the next push): minSdk 34 in
+      every module and both expected manifests (aapt2 badging of the built APK: minSdkVersion:'34'); SecureActivity's
+      API 33 and 34 branches and the tests' API 31-33 ones gone. MainActivity sets testTagsAsResourceId to
+      TEST_REGISTRY, so only the test-registry APK keeps ids (android-local.sh's shell camera check moves to it); the
+      tests read tags in-process through Compose's own hook (androidTest Tags.kt: ViewRootForTest.onViewCreatedCallback
+      wraps each Compose view's node provider, no new dependency). Locally (android-local.sh --part capture, registry,
+      journeys, ui; all exit 0): capture ControlTest 3, CaptureTest 8 in both APKs (disableSecureWindows not made on
+      the user build), PhoneMotionTest, DoubleTapTest 4, NativeTest, the camera client's four checks on the test-registry
+      app (the decode not met, as before); noResourceIdReachesAccessibility: "none of the 60 nodes of the shipping
+      APK's words page has one (the platform's: android:id/content) ... with the tests' own reading on, 16 ids, the
+      secret tag's among them", the test-registry APK "17 of its 61 nodes"; Compose still offers the tag as extra data
+      on 15 of 60 nodes, 9 of them SECRET_TAG (probe); registry SnapshotDrillTest 4, LifecycleTest 8, DeviceChangeTest,
+      AwayTest 3, ScanRefusedTest, IdleClockTest, KillTest's four, CrashTest; journeys FlowTest 7, CheckTest 2,
+      MixedJourneyTest, BackupTest (age -d hand-off); ui JourneyTest 4, StopJourneyTest. Gradle (strict, --rerun-tasks)
+      built the five APKs, every JVM test task 266 results, 0 failures, no new warning. Selftests: android-emulator 64,
+      android-instrument 50, android-local 47 passed, 0 failed; --workflows clean (the API 34 rows at the 90-minute
+      ceiling); the gate clean, 417 files, its --selftest 1639 passed; canaries.sh 94 checks.
     - [ ] U2m (Q77): portrait on phones (android:screenOrientation="portrait"), configuration changes handled in place
       (configChanges for orientation, screenSize, screenLayout, smallestScreenSize, density, fontScale, uiMode,
       keyboard, keyboardHidden, navigation): DeviceChangeTest asserts the same MainActivity instance after each change,

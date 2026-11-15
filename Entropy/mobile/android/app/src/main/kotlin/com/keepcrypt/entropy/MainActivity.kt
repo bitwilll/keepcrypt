@@ -42,7 +42,10 @@ import kotlinx.coroutines.launch
  * words page while its insert is punched. The flag is the decor view's keepScreenOn, which its window's
  * FLAG_KEEP_SCREEN_ON follows, set and cleared as that state changes, never by a timer (KtWindow refuses a call that
  * clears window flags, one that replaces them but SecureActivity's own and a new layout, so keepScreenOn is the way to
- * clear it here). Compose test tags are exposed as resource ids, so UI Automator finds Public screens by id (group 6).
+ * clear it here). Compose test tags are resource ids in the test-registry APK alone (TEST_REGISTRY; Q84), where the
+ * shell's own UI dumps find nodes by them (scripts/android-local.sh's camera check): the shipping APK's nodes carry no
+ * id that names what they hold, and the instrumented tests read the tags in-process instead (their Tags). Compose
+ * itself still offers a tagged node's tag as extra data to an accessibility service that asks (CaptureTest's probe).
  * There is one instance (the manifest's launchMode singleTask, Stage U's commit U2a): a second start reaches this
  * activity, whose launcher intent needs nothing done, so no second ceremony model runs beside this one; only an intent
  * with FLAG_ACTIVITY_CLEAR_TASK replaces it, finishing this one, whose model's end wipes the slot (lead decision M5-74).
@@ -96,7 +99,7 @@ class MainActivity : SecureActivity() {
         val documents = Documents(this, model::backupPlaced, model::backupPicked, model::snapshotPicked)
         lifecycleScope.launch { model.held.collect { window.decorView.keepScreenOn = it } }
         setContent {
-            Box(Modifier.semantics { testTagsAsResourceId = true }) {
+            Box(Modifier.semantics { testTagsAsResourceId = TEST_REGISTRY }) {
                 Screens(
                     model,
                     airplaneSettings,

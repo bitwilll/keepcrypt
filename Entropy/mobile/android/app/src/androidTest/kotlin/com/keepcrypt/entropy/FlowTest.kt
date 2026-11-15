@@ -72,7 +72,7 @@ import org.junit.runner.RunWith
 
 /**
  * The flows on the phone (tasks/todo.md, M5 groups 15, 17 and 18), run by scripts/android-instrument.sh
- * on the shipping app in the API 31 and 36 legs: the screens from the start to the dice, the words to
+ * on the shipping app in the API 34 and 36 legs: the screens from the start to the dice, the words to
  * the end of the ceremony, the exports after the backup (the watch-only export with a BIP39 passphrase,
  * the registration and D) and Home's About. UI Automator taps the controls by their resource ids (Compose test tags,
  * group 6) as a user would, and reads what they show from the accessibility tree; the many rolls a

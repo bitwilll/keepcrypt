@@ -27,7 +27,7 @@ import org.junit.runner.RunWith
  * data_app_crash entry, and logcat's crash buffer holds exactly one crash of our packages, this one:
  * Android's own pre-handler, which apps cannot replace, logs it before the app's handler runs (Q75, an
  * accepted residual), so the judge requires the exception's fixed text and nothing else of ours.
- * scripts/android-emulator.sh runs it last of the API 31 and 36 legs' instrumented tests (the 16
+ * scripts/android-emulator.sh runs it last of the API 34 and 36 legs' instrumented tests (the 16
  * KB-page leg runs NativeTest alone).
  */
 @RunWith(AndroidJUnit4::class)

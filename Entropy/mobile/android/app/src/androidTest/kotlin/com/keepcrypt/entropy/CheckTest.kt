@@ -49,7 +49,7 @@ import org.junit.runner.RunWith
 
 /**
  * The collision check without a snapshot on the phone (tasks/todo.md, M5 group 16), run by
- * scripts/android-instrument.sh on the shipping app in the API 31 and 36 legs, through UI Automator as
+ * scripts/android-instrument.sh on the shipping app in the API 34 and 36 legs, through UI Automator as
  * FlowTest is (Ui): a dice-only seed of vectors/kcr.json's public gate seed dice-50-words12, the
  * dice's Done at the minimum, the check prompt all on screen with no Seal ID (lead decision M5-55),
  * Skip confirmed on its own screen and Back there, Check now's seal card with the Seal ID drawn, its next

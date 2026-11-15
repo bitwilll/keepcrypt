@@ -19,7 +19,7 @@ Both apps are thin shells over `keepcrypt-core`. The screens are written with Co
 | Concern | Android | iPhone |
 | --- | --- | --- |
 | UI | Compose Multiplatform, shared | Chosen in M6 (Q73) |
-| Minimum OS | Android 12 (API 31) | iOS 17 |
+| Minimum OS | Android 14 (API 34) | iOS 17 |
 | Core | `libkeepcrypt.so` (`keepcrypt-jni` over `keepcrypt-ffi`) built with plain `cargo` and the NDK's clang (arm64-v8a, armeabi-v7a, x86\_64); hand-written JNI over `jni-sys`, no generated bindings | Chosen in M6 (Q73) |
 | Modules | `:app`, `:secure-ui` (secure activity base, capture monitors), `:core-ffi`, `:screens` (shared) | Chosen in M6 (Q73) |
 | Capture protection | `FLAG_SECURE` on every window, including dialogs | Capture-state redaction, screenshot discards the session, secure-layer rendering |
@@ -49,7 +49,7 @@ abstract class SecureActivity : ComponentActivity() {
         // Before any content: blank screenshots, block recording and casting.
         window.setFlags(WindowManager.LayoutParams.FLAG_SECURE, WindowManager.LayoutParams.FLAG_SECURE)
         window.setHideOverlayWindows(true)                 // API 31, HIDE_OVERLAY_WINDOWS permission
-        if (Build.VERSION.SDK_INT >= 33) setRecentsScreenshotEnabled(false)
+        setRecentsScreenshotEnabled(false)                 // API 33
         super.onCreate(savedInstanceState)
     }
 
@@ -71,8 +71,8 @@ abstract class SecureActivity : ComponentActivity() {
 
 - Compose dialogs and popups create their own windows: pass `securePolicy = SecureFlagPolicy.SecureOn` in every `DialogProperties` and `PopupProperties`.
 - When the recording callback reports visible (Android 15+), replace words with a redacted placeholder as a second layer.
-- On Android 14+, mark the word views `accessibilityDataSensitive` so only genuine accessibility tools can read them.
-- Never the system keyboard: dice use a 1 to 6 pad, words a letter pad for their first four letters (core completes them), and the go-ahead code and the BIP39 passphrase their own pads. Android's own docs warn keyboard taps can leak on older versions, one reason minSdk is 31.
+- Mark the word views `accessibilityDataSensitive` (API 34, the minimum) so only genuine accessibility tools can read them.
+- Never the system keyboard: dice use a 1 to 6 pad, words a letter pad for their first four letters (core completes them), and the go-ahead code and the BIP39 passphrase their own pads. Android's own docs warn keyboard taps can leak on older versions, one reason minSdk is 34.
 - **Test:** on each Protected screen, CI's shell screenshot (`screencap`) must return a blank window and its shell screen recording must show it blank, on every app build on CI's emulators; one real phone at each app milestone's gate; a Pixel and a Samsung before every release.
 
 ## Screen capture protection: iPhone

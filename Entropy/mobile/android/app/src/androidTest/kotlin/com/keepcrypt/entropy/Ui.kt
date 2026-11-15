@@ -41,7 +41,8 @@ import org.junit.Assert.fail
 /**
  * The flow tests' way through the screens (tasks/todo.md, M5 groups 15 and 16, and Stage U's U1b), shared
  * by FlowTest, CheckTest, JourneyTest and SnapshotDrillTest: UI Automator taps controls by their resource
- * ids (Compose test tags, group 6) as a user would and reads what they show from the accessibility tree.
+ * ids (Compose test tags, group 6, which the tests' own in-process reading gives the shipping APK's nodes as ids:
+ * Tags, Q84) as a user would and reads what they show from the accessibility tree.
  * A journey's every input goes through the UI (M5-72 (a)): its rolls pressed and confirmed on the dice pad
  * (tapRolls), its code tapped on the Crockford pad (tapCode) and its letters touched on the Protected
  * letter pad (typeLetters); the edge tests may still make the many rolls a minimum takes through the
@@ -281,7 +282,7 @@ internal object Ui {
      * through the cache missed the read-back's Next after a match and the reviewed insert's "Back to the
      * read-back" for 10 s while UI Automator's tree held each, visible). No idle wait, no selector, so no log.
      */
-    private fun appNodes(): List<AccessibilityNodeInfo> {
+    fun appNodes(): List<AccessibilityNodeInfo> {
         val pkg = Capture.instrumentation.targetContext.packageName
         return Capture.instrumentation.uiAutomation.windows.mapNotNull { it.root }.filter { it.packageName?.toString() == pkg }.flatMap(::under)
     }

@@ -3,6 +3,7 @@ package com.keepcrypt.entropy
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.os.Build
+import android.os.Bundle
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
@@ -737,14 +738,13 @@ class CaptureTest {
     /**
      * The secret text a screen draws is marked accessibility-data sensitive (docs/mobile-apps.md, "Rules
      * for Claude Code"; group 6's probe, where it applies): every node tagged SECRET_TAG (Kit.kt's secret(),
-     * which every node that shows a secret takes) must be data sensitive as UiAutomation reads it on
-     * Android 14+, the screens that show the words or their letters must hold such nodes, every node
-     * there whose text is one of the screen's secrets must be one of them and each secret must be drawn
-     * (assertSecretTextsTagged), and a Public screen holds none. Before Android 14 a probe line says the
-     * mark does not exist there. The nodes are the app's windows' every node, read in-process
-     * (Capture.nodes), so no selector holds a secret, from the first read whose roots are the screen's
-     * alone (Capture.nodesOf): a read that still shows the screen before is read again, never judged,
-     * and the read judged is judged once. reads are the screen's at each position of its column, scrolled
+     * which every node that shows a secret takes) must be data sensitive as UiAutomation reads it (the
+     * app needs Android 14, minSdk 34, Q84), the screens that show the words or their letters must hold
+     * such nodes, every node there whose text is one of the screen's secrets must be one of them and each
+     * secret must be drawn (assertSecretTextsTagged), and a Public screen holds none. The nodes are the
+     * app's windows' every node, read in-process (Capture.nodes), so no selector holds a secret, from the
+     * first read whose roots are the screen's alone (Capture.nodesOf): a read that still shows the screen
+     * before is read again, never judged, and the read judged is judged once. reads are the screen's at each position of its column, scrolled
      * through (Capture.nodesThrough), so every secret text is drawn in view and judged (Q85, M5-84 (a)): each
      * node is judged once (joined), and one off screen is one in view at none of them.
      */
@@ -763,10 +763,6 @@ class CaptureTest {
         if (secrets.isEmpty()) return
         val inView = reads.flatten().filter { it.visible }.map { it.key }.toSet()
         val away = secrets.count { it.key !in inView }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            probe("$name: ${secrets.size} secret nodes ($away off screen); no data-sensitive mark before Android 14 (API ${Build.VERSION.SDK_INT})")
-            return
-        }
         val unmarked = secrets.count { !it.dataSensitive }
         assertEquals("secret nodes not marked data sensitive on " + name, 0, unmarked)
         pass("$name: all ${secrets.size} of its secret nodes ($away off screen) are data sensitive (API ${Build.VERSION.SDK_INT})")
@@ -996,7 +992,7 @@ class CaptureTest {
      * in-process with no selector, compared with the page the state holds and never printed), so the
      * words' own drawing is in each capture, and the known colour where the page draws it, under the
      * TEST REGISTRY strip (the shipping APK's words page draws none); back as it was, black again. On API
-     * 31 the same steps run as a probe of whether the setting is read there, and only the black-again
+     * 34 the same steps run as a probe of whether the setting is read there, and only the black-again
      * check is asserted.
      */
     @Test
@@ -1015,7 +1011,7 @@ class CaptureTest {
                 SystemClock.sleep(2 * SETTLE_MS)
                 proveDrawn(activity, Screen.Words)
                 val words = wordsOnShow(activity)
-                // Where the platform reads the setting (enforced), the captures must be images; on API 31
+                // Where the platform reads the setting (enforced), the captures must be images; below API 36
                 // a refusal is recorded as showing nothing.
                 val screencapImage = if (enforced) screencap() else Capture.screencapOrRefused()
                 val screenshotImage = if (enforced) screenshot() else Capture.screenshotOrRefused()
@@ -1164,15 +1160,11 @@ class CaptureTest {
 
     /**
      * Probe only: whether UiAutomation sees and clicks a node marked accessibility-data sensitive
-     * (Android 14+), which decides whether a UI Automator smoke test on a Protected pad can run on
-     * API 36 (group 6, Driving). The node is a plain button the test adds to the drawn screen.
+     * (on every level the app runs on, Android 14+), which decides whether a UI Automator smoke test on a
+     * Protected pad can run on API 36 (group 6, Driving). The node is a plain button the test adds to the drawn screen.
      */
     @Test
     fun dataSensitiveNodesProbe() {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            probe("data-sensitive nodes: none before Android 14 (API ${Build.VERSION.SDK_INT})")
-            return
-        }
         val activity = launch()
         proveDrawn(activity, Screen.FirstLaunch)
         val clicked = CountDownLatch(1)
@@ -1193,6 +1185,75 @@ class CaptureTest {
         }
         probe("data-sensitive nodes on API ${Build.VERSION.SDK_INT}: UiAutomation sees one: ${seen != null}; its click reaches it: $reached")
         finish(activity)
+    }
+
+    /**
+     * No resource id of the shipping APK reaches accessibility (Q84, lead decision M5-84 (c), commit U3n): it turns
+     * none of its Compose test tags into a resource id, so no node names what it holds by its id. With the tests'
+     * own reading of the tags off (Tags.exposed false) before the activity is made, a gate seed's words page is shown
+     * (gateSeedsWords), whose nodes carry SECRET_TAG and the screen's id among their tags in-process (Tags.of), and
+     * every node of the app's windows is read from the app (Ui.appNodes: each refreshed, past the accessibility
+     * cache): in the shipping APK none has a resource id but the platform's own views' (android:id/content), and
+     * the positive control, the same read with the tests' reading back on, finds the page's tags as ids, SECRET_TAG
+     * and the screen's among them, so the read sees an id where a node has one. The test-registry APK, never released, keeps its tags as ids (TEST_REGISTRY, for the
+     * shell's camera check in scripts/android-local.sh): there the same read with the tests' reading off finds the
+     * app's own ids, SECRET_TAG and the screen's among them. A probe line counts the nodes that offer Compose's
+     * test-tag extra data (Tags.EXTRA_TAG), which Compose gives any service that asks for it, the nodes that answered
+     * with a tag and those whose tag is SECRET_TAG: the residual Q84's answer leaves, which is no resource id. Tags
+     * are fixed names; only counts and ids are printed.
+     */
+    @Test
+    fun noResourceIdReachesAccessibility() {
+        val registry = pkg == REGISTRY_PACKAGE
+        Tags.exposed = false
+        try {
+            Capture.whileOffline {
+                val activity = gateSeedsWords()
+                proveDrawn(activity, Screen.Words)
+                val tags = onMain { Tags.of(activity) }
+                assertTrue("the words page holds no node tagged SECRET_TAG in-process", SECRET_TAG in tags)
+                assertTrue("the words page's root is not tagged with its id in-process", screenId(Screen.Words) in tags)
+                // UI Automator's first use here (nothing before it in this test) has UiAutomation report the
+                // interactive windows, whose roots Ui.appNodes walks.
+                device.waitForIdle()
+                val nodes = Ui.appNodes()
+                assertTrue("no node of the app's windows to read", nodes.isNotEmpty())
+                // The platform's own views keep their framework ids (the content frame, android:id/content); every
+                // other id would be the app's, a test tag among them.
+                val ids = nodes.mapNotNull { it.viewIdResourceName }
+                val own = ids.filterNot { it.startsWith(FRAMEWORK_ID) }
+                val offered = nodes.filter { Tags.EXTRA_TAG in it.availableExtraData }
+                val answered = offered.mapNotNull { node ->
+                    node.takeIf { it.refreshWithExtraData(Tags.EXTRA_TAG, Bundle()) }?.extras?.getCharSequence(Tags.EXTRA_TAG)?.toString()
+                }
+                probe(
+                    "test tags as extra data (${Tags.EXTRA_TAG}), words page: ${offered.size} of ${nodes.size} nodes offer it, " +
+                        "${answered.size} answered with a tag, ${answered.count { it == SECRET_TAG }} of them SECRET_TAG",
+                )
+                if (registry) {
+                    assertTrue("the test-registry APK's own ids lack SECRET_TAG", SECRET_TAG in ids)
+                    assertTrue("the test-registry APK's own ids lack the screen's", screenId(Screen.Words) in ids)
+                    pass(
+                        "the test-registry APK keeps its tags as resource ids (TEST_REGISTRY): ${ids.size} of its ${nodes.size} nodes, " +
+                            "the secret tag's among them",
+                    )
+                } else {
+                    assertEquals("nodes of the shipping APK's windows with an id of its own: " + own.distinct().joinToString(), 0, own.size)
+                    Tags.exposed = true
+                    val exposed = Ui.appNodes().mapNotNull { it.viewIdResourceName }
+                    assertTrue("the positive control: the tests' own reading gives no node SECRET_TAG as its id", SECRET_TAG in exposed)
+                    assertTrue("the positive control: the tests' own reading gives the root no id", screenId(Screen.Words) in exposed)
+                    pass(
+                        "no resource id of its own: none of the ${nodes.size} nodes of the shipping APK's words page has one (the platform's: " +
+                            ids.distinct().joinToString() + "), though ${tags.size} of its semantics nodes are tagged; with the tests' own " +
+                            "reading on, ${exposed.size} ids, the secret tag's among them",
+                    )
+                }
+                finish(activity)
+            }
+        } finally {
+            Tags.exposed = true
+        }
     }
 
     private companion object {
@@ -1220,6 +1281,9 @@ class CaptureTest {
 
         /** The test-registry APK's package (the withTestRegistry flavour's applicationId). */
         const val REGISTRY_PACKAGE = "com.keepcrypt.entropy.testregistry"
+
+        /** The platform's own view ids (android:id/content, the content frame), which no test tag is. */
+        const val FRAMEWORK_ID = "android:id/"
 
         /** The permission the scan screen asks for. */
         const val CAMERA = "android.permission.CAMERA"
