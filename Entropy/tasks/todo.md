@@ -17750,8 +17750,16 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
     docs' texts pinned; KitColors).
   - U-6, after the owner's answers: U2m (Q77), U3i (Q78, Q85), U3j (Q79, Q80), U3k (Q81, Q82, Q83), U3n (Q84).
   - U-6's plan (the lead's, 2026-11-15, M5-84; the owner answered Q77-Q85 on 2026-11-14):
-    - [ ] U2k3 (U-5's close): AwayTest's back gesture by SystemUI's record (M5-84 (b)); U2k, U2l, U3h-b, U3h and U2
+    - [x] U2k3 (U-5's close): AwayTest's back gesture by SystemUI's record (M5-84 (b)); U2k, U2l, U3h-b, U3h and U2
       ticked once their jobs are green.
+      Proof (M5 commit U2k3, Stage U-6, M5-84 (b), partial: local; CI's registry jobs at the next push): after the
+      switch and its settle, AwayTest reads EdgeBackGestureHandler's facts from SystemUI's dump; mIsEnabled=true and
+      mIsAttached=true make the swipe the test (its failure path as before), otherwise the Back key, probed and named
+      in the pass line with SystemUI's facts. Locally (android-local.sh --part registry): both test APKs built by the
+      strict Gradle run, no warning; all 11 runs green, AwayTest 3 tests; on kc37 the handler read mIsEnabled=false,
+      mIsAttached=false (edge widths 60) with navigation_mode 2, so the key was tested there: "the system Back by the
+      key: nothing on the dice and the seal card, the check QR back to the seal card (SystemUI: mIsEnabled=false;
+      mIsAttached=false; ...)". The swipe branch is not exercised locally. banned-api-check.sh clean, 415 files.
     - [ ] U3i-a (Q78, Q85, M5-84 (a)): KitScreen moves its actions into the scrolling column, after the content,
       when they are taller than ACTIONS_SHARE of its height, and back when they fit; a "More below" line
       (tag more_below, KitType.small, a polite live region, never a secret) pinned under the column while it can

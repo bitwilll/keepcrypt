@@ -32,7 +32,8 @@ import org.junit.runner.RunWith
  * keyguard dismissed) on a words page, a Protected screen, which is discarded at once, and on the dice, a
  * Public screen, which is covered and kept (under the 60 s rule); and the back gesture (gesture navigation switched
  * on through the system's gestural overlay for the test and three-button navigation put back after; a swipe in
- * from the left edge, or KEYCODE_BACK where the switch does not take, named so) doing what the model's back does.
+ * from the left edge where SystemUI's back gesture handler then reads enabled and attached, or KEYCODE_BACK where it
+ * does not or the switch does not take, named so with SystemUI's facts) doing what the model's back does.
  * The activity destroyed while away is LifecycleTest's finish and KillTest's process deaths (lead decision M5-81
  * (d): the shell's always_finish_activities is not applied by the activity manager). Setup goes
  * through the model's entry points, as LifecycleTest's does (an edge test; the journeys are the UI's alone), with
@@ -110,13 +111,19 @@ class AwayTest {
     fun theBackGestureDoesWhatBackDoes() {
         val before = shellText("settings get secure navigation_mode")
         if (before != GESTURE) shellText("cmd overlay enable-exclusive --category $GESTURAL")
-        val gesture = waitFor(GESTURE)
-        if (!gesture) probe("gesture navigation did not come on (navigation_mode " + shellText("settings get secure navigation_mode") + "): the Back key is tested")
+        val switched = waitFor(GESTURE)
+        if (!switched) probe("gesture navigation did not come on (navigation_mode " + shellText("settings get secure navigation_mode") + "): the Back key is tested")
         // SystemUI takes up the gestural navigation bar after the setting reads it (run 41275381593: a swipe made at
         // once brought no Back on either level).
-        if (gesture && before != GESTURE) SystemClock.sleep(SETTLE_GESTURE_MS)
+        if (switched && before != GESTURE) SystemClock.sleep(SETTLE_GESTURE_MS)
         try {
-            backGesture(gesture)
+            // SystemUI's own record decides (lead decision M5-84 (b)): run 43613600587's images, navigation_mode 2
+            // notwithstanding, attach no gestural bar (the handler neither enabled nor attached, edge widths 0), so
+            // no swipe can bring Back there; the swipe is the test only where the handler is enabled and attached.
+            val facts = if (switched) edgeBackFacts() else "gesture navigation did not come on"
+            val gesture = switched && edgeBackOn(facts)
+            if (switched && !gesture) probe("SystemUI's back gesture handler is not enabled and attached: the Back key is tested; $facts")
+            backGesture(gesture, facts)
         } finally {
             if (before != GESTURE) {
                 shellText("cmd overlay enable-exclusive --category $THREE_BUTTON")
@@ -125,8 +132,11 @@ class AwayTest {
         }
     }
 
-    /** The back test proper: Back by the gesture where gesture navigation is on, by the key otherwise. */
-    private fun backGesture(gesture: Boolean) {
+    /**
+     * The back test proper: Back by the gesture where SystemUI's back gesture handler is enabled and attached, by the
+     * key otherwise; facts, SystemUI's (or the switch's failure), are named in the pass line.
+     */
+    private fun backGesture(gesture: Boolean, facts: String) {
         Capture.whileOffline {
             val activity = toDice()
             roll(activity, ROLLS)
@@ -167,8 +177,8 @@ class AwayTest {
             back(gesture)
             settle()
             assertEquals("Back on the seal card left it", Screen.SealCard, onMain { activity.model.state.value.screen })
-            pass("the system Back by " + (if (gesture) "the gesture (a swipe from the left edge)" else "the key (three-button navigation)") +
-                ": nothing on the dice and the seal card, the check QR back to the seal card")
+            pass("the system Back by " + (if (gesture) "the gesture (a swipe from the left edge)" else "the key") +
+                ": nothing on the dice and the seal card, the check QR back to the seal card (SystemUI: " + facts + ")")
             finish(activity)
         }
     }
@@ -256,6 +266,10 @@ class AwayTest {
             .joinToString("; ")
     }
 
+    /** Whether SystemUI's facts read its back gesture handler enabled and attached: a gestural bar a swipe can reach. */
+    private fun edgeBackOn(facts: String): Boolean =
+        EDGE_ON.all { field -> Regex("(^|[^A-Za-z])" + field + "=true\\b").containsMatchIn(facts) }
+
     /** A moment for a Back that must do nothing to land. */
     private fun settle() {
         device.waitForIdle()
@@ -285,6 +299,9 @@ class AwayTest {
             "mIsNavBarShownTransiently", "mEdgeWidth", "mLeftInset", "mRightInset", "mExcludeRegion", "mUnrestrictedExcludeRegion",
             "mInRejectedExclusion", "mIsInPip", "mPredictiveBack", "mUseMLModel", "Gesture [", "mGestureLog",
         )
+
+        /** The handler's fields that must both read true for the swipe to be the test. */
+        val EDGE_ON = listOf("mIsEnabled", "mIsAttached")
 
         /** navigation_mode's gesture navigation, and the system's overlays that switch it. */
         const val GESTURE = "2"
