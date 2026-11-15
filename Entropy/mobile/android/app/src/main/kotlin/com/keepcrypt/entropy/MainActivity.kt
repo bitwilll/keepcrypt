@@ -25,7 +25,8 @@ import kotlinx.coroutines.launch
 /**
  * The app's one activity (tasks/todo.md, M5 groups 4, 13, 14 and 15), under SecureActivity's
  * protection: the shared screens over the ceremony model, which CeremonyHolder keeps across
- * configuration changes. Each start shows First launch first, with no core call; its Continue runs
+ * a recreation. A phone's configuration changes (a rotation, the font scale, night mode) recreate nothing: the
+ * manifest keeps the activity portrait and has it handle them in place, Compose redrawing (Q77). Each start shows First launch first, with no core call; its Continue runs
  * the real self-test through the bridge (behind the self-test's screen), then Go offline (lead
  * decision M5-50). The app's comings and goings and the recording reports go to the model, and so
  * does the system Back, always (the model goes back only where nothing is lost, and otherwise does

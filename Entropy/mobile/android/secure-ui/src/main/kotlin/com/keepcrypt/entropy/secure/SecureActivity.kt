@@ -25,7 +25,7 @@ import java.util.function.Consumer
  *   onCreate never reads one, so nothing of a session can come back from it.
  * - The app's comings and goings, for the ceremony model: onAppReturned on every start, onAppResumed
  *   on every resume (which ends the picker rule's exemption), onAppLeft on every stop but a
- *   configuration change's (a rotation is not leaving the app), and on Android 15+
+ *   configuration change's (a recreation is not leaving the app), and on Android 15+
  *   onRecordingChanged whenever the platform reports a recording of the screen starting or ending
  *   (DETECT_SCREEN_RECORDING in the manifest), so Protected screens can show a placeholder.
  *
@@ -78,7 +78,7 @@ abstract class SecureActivity : ComponentActivity() {
         outState.clear()
     }
 
-    /** The activity started: the app is back in front (or there for the first time, or after a rotation). */
+    /** The activity started: the app is back in front (or there for the first time, or after a recreation). */
     protected open fun onAppReturned() {}
 
     /** The activity resumed: in front and taking input (after a start, a picker or a prompt). */

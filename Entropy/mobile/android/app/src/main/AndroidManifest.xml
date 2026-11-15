@@ -14,6 +14,11 @@
      As singleTask clears what lies above it in its task, a start while a document picker, the camera
      prompt or the airplane-mode settings is up closes that activity: a picker answers nothing picked, the
      prompt nothing granted, and the settings return to Go offline.
+     The activity is portrait on a phone (screenOrientation; Q77: in landscape the bottom actions left the
+     text no room), where Android 16 ignores it on a large screen (sw600dp), whose height suffices; and it
+     handles the configuration changes a phone makes in place (configChanges: a rotation, a window or
+     display size, the font scale, night mode, a keyboard or navigation change), so Compose redraws the same
+     activity and nothing is recreated: a pending picker's or CAMERA prompt's answer still reaches it.
      The one removal is the androidx.startup provider, which would run library initializers at
      start; profileinstaller, the one that writes files, is excluded from every configuration
      (build.gradle.kts). -->
@@ -36,7 +41,9 @@
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask"
+            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|fontScale|uiMode|keyboard|keyboardHidden|navigation">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />

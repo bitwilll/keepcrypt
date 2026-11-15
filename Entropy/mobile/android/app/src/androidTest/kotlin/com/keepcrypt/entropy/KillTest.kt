@@ -33,8 +33,9 @@ import org.junit.runner.RunWith
  * (Entropy Android 41266466403) found every start after a kill given no Bundle, with 0 of the app's tasks left
  * in recents on API 31 and 1 on API 36: am instrument force-stops the app as each run starts, so a start the
  * system restores from saved state cannot be reached here. That state is the Bundle onSaveInstanceState left at
- * the last stop, the one each recreation is given: DeviceChangeTest asserts it empty on four screens holding a
- * session (lead decision M5-80).
+ * the last stop, the one a recreation is given (since Q77 only one the manifest's configChanges do not cover):
+ * DeviceChangeTest recreates the activity on four screens holding a session and asserts it empty (lead decision
+ * M5-80).
  */
 @RunWith(AndroidJUnit4::class)
 class KillTest {

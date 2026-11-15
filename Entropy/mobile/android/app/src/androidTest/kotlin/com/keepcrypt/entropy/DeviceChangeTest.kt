@@ -1,6 +1,8 @@
 package com.keepcrypt.entropy
 
+import android.content.res.Configuration
 import android.os.SystemClock
+import android.view.Surface
 import android.view.WindowManager
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -31,29 +33,35 @@ import com.keepcrypt.entropy.screens.Screen
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
+import kotlin.math.abs
 
 /**
- * A real configuration change on the phone (tasks/todo.md, Stage U's U2h), on the shipping app in
- * android-emulator.sh's registry part, after LifecycleTest: a rotation (to landscape and back), a font
- * scale (1.3 and back) and a night-mode switch (to the other mode and back) on four screens of
+ * A real configuration change on the phone (tasks/todo.md, Stage U's U2h, and U2m for Q77), on the shipping
+ * app in android-emulator.sh's registry part, after LifecycleTest: a rotation request (to landscape and back),
+ * a font scale (1.3 and back) and a night-mode switch (to the other mode and back) on four screens of
  * vectors/kcr.json's public gate seed dice-50-words12, reached through the UI: the dice with three rolls
  * tapped and a fourth face picked, the code entry with four symbols of the go-ahead code typed, the words'
- * privacy gate, and the words page of insert 2. MainActivity declares no configChanges (its manifest), so
- * each change recreates the activity: each must bring a new MainActivity, the old one destroyed, over the
- * same ceremony model (CeremonyHolder, the ViewModel), with the screen, its page, its gate, what is held
- * and every pad's entry as they were (the model's state, read in-process, compared and never printed:
- * the state of a words page holds its insert), so the change took no step and made no call (U2d's JVM
- * test, ConfigurationAndOnlineTest, counts the worker's calls); and its window keeps FLAG_SECURE, and the Bundle
- * it was given holds nothing (the one a process death would keep: KillTest, U2j-b, M5-80). Before
- * each change a touch in the screen's own margin is an input (Ui.touchMargin), since a Protected screen's
- * cover after 30 s without one would change the state. After the changes the ceremony goes on from what
- * they kept: the picked face confirmed and the 50 rolls finished, the rest of the code typed and the check
- * passed, the gate passed and the page's word the vector's. Every setting changed is put back in a finally.
+ * privacy gate, and the words page of insert 2. MainActivity is portrait and handles these changes in place
+ * (its manifest's screenOrientation and configChanges), so each must leave the SAME MainActivity resumed,
+ * never destroyed and with no other instance in any stage, its configuration showing the change (still
+ * portrait on its display's natural rotation after the rotation request; the font scale; the night mode),
+ * over the same ceremony model, with the screen, its page, its gate, what is held and every pad's entry as
+ * they were (the model's state, read in-process, compared and never printed: the state of a words page holds
+ * its insert), so the change took no step and made no call (U2d's JVM test, ConfigurationAndOnlineTest,
+ * counts the worker's calls); and its window keeps FLAG_SECURE. Then one recreation on each screen
+ * (Activity.recreate, what a change the manifest does not handle still does, a locale change say): a new
+ * MainActivity, the old one destroyed, over the same model (CeremonyHolder, the ViewModel), everything kept
+ * and FLAG_SECURE on its window, and the Bundle it was given holds nothing (the one a process death would
+ * keep: KillTest, U2j-b, M5-80). Before each change a touch in the screen's own margin is an input
+ * (Ui.touchMargin), since a Protected screen's cover after 30 s without one would change the state. After
+ * the changes the ceremony goes on from what they kept: the picked face confirmed and the 50 rolls finished,
+ * the rest of the code typed and the check passed, the gate passed and the page's word the vector's. Every
+ * setting changed is put back in a finally.
  */
 @RunWith(AndroidJUnit4::class)
 class DeviceChangeTest {
     @Test
-    fun rotationFontScaleAndNightModeRecreateTheActivityAndKeepTheDiceTheCodeEntryTheGateAndAWordsPage() {
+    fun rotationFontScaleAndNightModeKeepTheActivityAndTheDiceTheCodeEntryTheGateAndAWordsPage() {
         val autoRotate = shellText("settings get system accelerometer_rotation")
         val fontScale = shellText("settings get system font_scale")
         val night = shellText("cmd uimode night").contains("yes")
@@ -103,10 +111,11 @@ class DeviceChangeTest {
                 activity = changes(activity, "the words page of insert 2", night, fontScale)
                 assertInsert(activity, DICE_50_WORDS, 1, 1, 1)
                 pass(
-                    "a rotation, a font scale and a night-mode switch, each and its way back (24 changes), on the dice with " +
-                        "a face picked, the code entry with 4 symbols, the words' gate and the words page of insert 2: each a " +
-                        "new MainActivity over the same model, the state, what is held and every pad kept, FLAG_SECURE on " +
-                        "each new window; then the 50 rolls, the code's check and the page's word from what was kept; " +
+                    "a rotation request, a font scale and a night-mode switch, each and its way back (24 changes), on the " +
+                        "dice with a face picked, the code entry with 4 symbols, the words' gate and the words page of insert " +
+                        "2: each handled in place by the same MainActivity, still portrait, the state, what is held and every " +
+                        "pad kept, FLAG_SECURE on its window; a recreation on each, a new MainActivity over the same model " +
+                        "given no saved state; then the 50 rolls, the code's check and the page's word from what was kept; " +
                         "the test " + since(start),
                 )
                 finish(activity)
@@ -120,38 +129,91 @@ class DeviceChangeTest {
     }
 
     /**
-     * The three changes on what, each to its other setting and back (six recreations), each kept (change).
-     * Returns the activity the last one made.
+     * The three changes on what, each to its other setting and back (six changes), each handled in place by
+     * the activity with everything kept (change), then one recreation (recreated). Returns the activity the
+     * recreation made.
      */
-    private fun changes(start: MainActivity, what: String, night: Boolean, fontScale: String): MainActivity {
+    private fun changes(activity: MainActivity, what: String, night: Boolean, fontScale: String): MainActivity {
         val begun = SystemClock.elapsedRealtime()
-        var activity = start
-        activity = change(activity, "$what, rotated to landscape") { device.setOrientationLeft() }
-        activity = change(activity, "$what, rotated back") { device.setOrientationNatural() }
-        activity = change(activity, "$what, font scale 1.3") { shellText("settings put system font_scale 1.3") }
+        val portrait = { c: Configuration -> c.orientation == Configuration.ORIENTATION_PORTRAIT }
+        change(activity, "$what, a rotation to landscape asked", portrait) { device.setOrientationLeft() }
+        val asked = shellText("settings get system user_rotation")
+        change(activity, "$what, rotated back", portrait) { device.setOrientationNatural() }
+        change(activity, "$what, font scale 1.3", scaled(1.3f)) { shellText("settings put system font_scale 1.3") }
         val back = if (fontScale == "null") "1.0" else fontScale
-        activity = change(activity, "$what, font scale back") { shellText("settings put system font_scale $back") }
+        change(activity, "$what, font scale back", scaled(back.toFloat())) { shellText("settings put system font_scale $back") }
         val other = if (night) "no" else "yes"
-        activity = change(activity, "$what, night mode $other") { shellText("cmd uimode night $other") }
-        activity = change(activity, "$what, night mode back") { shellText("cmd uimode night " + if (night) "yes" else "no") }
-        probe("$what: six changes, each a new activity with everything kept, in " + since(begun) + "; the last given " + onMain { activity.createdWith })
-        return activity
+        change(activity, "$what, night mode $other", night(!night)) { shellText("cmd uimode night $other") }
+        change(activity, "$what, night mode back", night(night)) { shellText("cmd uimode night " + if (night) "yes" else "no") }
+        val recreated = recreated(activity, "$what, recreated")
+        probe(
+            "$what: six changes, each handled in place by the same activity with everything kept (user_rotation $asked " +
+                "while landscape was asked, the activity portrait), then a recreation given " + onMain { recreated.createdWith } +
+                ", in " + since(begun),
+        )
+        return recreated
+    }
+
+    /** A configuration whose font scale is scale. */
+    private fun scaled(scale: Float): (Configuration) -> Boolean = { abs(it.fontScale - scale) < 0.01f }
+
+    /** A configuration in night mode when on, in day mode otherwise. */
+    private fun night(on: Boolean): (Configuration) -> Boolean =
+        { (it.uiMode and Configuration.UI_MODE_NIGHT_MASK) == if (on) Configuration.UI_MODE_NIGHT_YES else Configuration.UI_MODE_NIGHT_NO }
+
+    /**
+     * One configuration change, made by apply after a touch in the screen's margin (Ui.touchMargin, an input),
+     * handled in place: the activity's own configuration shows it (applied), the activity still portrait on its
+     * display's natural rotation, resumed and never destroyed, no other MainActivity alive (in a stage but destroyed),
+     * showing the same screen (or its gate) over the same model, with the model's state, what is held and the
+     * pads' entries as they were (compared in-process, never printed), and FLAG_SECURE on its window.
+     */
+    private fun change(activity: MainActivity, what: String, applied: (Configuration) -> Boolean, apply: () -> Unit) {
+        touchMargin(activity)
+        val model = activity.model
+        val before = onMain { model.state.value }
+        val held = onMain { model.held.value }
+        val pads = onMain { pads(activity) }
+        apply()
+        await("$what: the change reached the activity in place", 30) { onMain { applied(activity.resources.configuration) } }
+        Capture.instrumentation.waitForIdleSync()
+        assertTrue("$what: the activity was destroyed", onMain { !activity.isDestroyed })
+        val stage = onMain { ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(activity) }
+        assertTrue("$what: the activity is not resumed but $stage", stage == Stage.RESUMED)
+        val others = onMain {
+            Stage.values().filter { it != Stage.DESTROYED }.sumOf { s ->
+                ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(s).count { it is MainActivity && it !== activity }
+            }
+        }
+        assertTrue("$what: $others other MainActivity instances alive: the change recreated the activity", others == 0)
+        val upright = onMain {
+            activity.resources.configuration.orientation == Configuration.ORIENTATION_PORTRAIT &&
+                activity.display.rotation == Surface.ROTATION_0
+        }
+        assertTrue("$what: the activity is not portrait on its display's natural rotation", upright)
+        assertTrue("$what: the activity has another model", onMain { activity.model } === model)
+        on(activity, before.screen)
+        assertTrue("$what: the model's state changed (neither is printed)", onMain { model.state.value } == before)
+        assertTrue("$what: what is held changed", onMain { model.held.value } == held)
+        assertTrue("$what: a pad's entry changed (neither is printed)", onMain { pads(activity) } == pads)
+        val secure = onMain { activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE != 0 }
+        assertTrue("$what: the window is not FLAG_SECURE", secure)
     }
 
     /**
-     * One configuration change, made by apply after a touch in the screen's margin (Ui.touchMargin, an input):
-     * a new MainActivity, resumed,
-     * the old one destroyed, over the same model, showing the same screen (or its gate), with the model's
-     * state, what is held and the pads' entries as they were (compared in-process, never printed), and
-     * FLAG_SECURE on its window. Returns the new activity.
+     * One recreation (Activity.recreate, as a change the manifest does not handle makes one) after a touch in the
+     * screen's margin (Ui.touchMargin, an input): a new MainActivity, resumed, the old one destroyed, over the same
+     * model, showing the same screen (or its gate), with the model's state, what is held and the pads' entries as
+     * they were (compared in-process, never printed), FLAG_SECURE on its window, and no saved state in the Bundle
+     * it was given. Returns the new activity.
      */
-    private fun change(old: MainActivity, what: String, apply: () -> Unit): MainActivity {
+    private fun recreated(old: MainActivity, what: String): MainActivity {
         touchMargin(old)
         val model = old.model
         val before = onMain { model.state.value }
         val held = onMain { model.held.value }
         val pads = onMain { pads(old) }
-        apply()
+        onMain { old.recreate() }
         var recreated: MainActivity? = null
         await("$what: a new MainActivity resumed", 30) {
             recreated = onMain {

@@ -75,9 +75,10 @@
 #   4b. LifecycleTest on the shipping app (M5 group 14): the app left during a backup's scrypt and
 #      during its start-up self-test, and Wi-Fi turned on during a start, each discarding the session
 #      with no ANR; then DeviceChangeTest (Stage U's U2h): a rotation, a font scale and a night-mode switch
-#      on four screens, each recreating the activity and keeping the session; then AwayTest (U2k): the screen
-#      off on a words page and on the dice and the back gesture; then ScanRefusedTest (U2l: the camera denied
-#      twice) and IdleClockTest (U2l: the idle rules on the real clock, API 36 alone); then KillTest (U2j):
+#      on four screens, each handled in place by the same activity (U2m), then a recreation, each keeping
+#      the session; then AwayTest (U2k): the screen off on a words page and on the dice and the back
+#      gesture; then ScanRefusedTest (U2l: the camera denied twice) and IdleClockTest (U2l: the idle
+#      rules on the real clock, API 36 alone); then KillTest (U2j):
 #      the shipping app killed between its runs (kill_app: the backgrounded app by am kill, the app in the
 #      foreground by kill -9 as root, and a run's own end), each start after a kill printing what it was given.
 #   4c. CrashTest on the shipping app (group 14), as killed:com.keepcrypt.entropy.CrashTest: an
@@ -1302,7 +1303,7 @@ if in_part registry; then
   # 4b. Discards during "Working...": the app left during a backup's scrypt and its start-up
   # self-test, Wi-Fi turned on during a start.
   instrument com.keepcrypt.entropy com.keepcrypt.entropy.LifecycleTest
-  # A real configuration change on four screens (U2h): each recreates the activity, the session kept.
+  # A real configuration change on four screens (U2h, U2m): each handled in place, then a recreation, the session kept.
   instrument com.keepcrypt.entropy com.keepcrypt.entropy.DeviceChangeTest
   # Leaving by the screen off, the activity destroyed while away, and the back gesture (U2k).
   instrument com.keepcrypt.entropy com.keepcrypt.entropy.AwayTest

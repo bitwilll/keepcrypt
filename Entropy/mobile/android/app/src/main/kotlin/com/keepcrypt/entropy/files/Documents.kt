@@ -21,11 +21,12 @@ import java.io.InputStream
  * Check a backup and once for Load registry snapshot, are registered when MainActivity's onCreate makes
  * this, before the activity starts, as the activity-result API requires and as its CAMERA prompt is;
  * their answers go straight to the ceremony model (placed, picked and snapshot: its backupPlaced,
- * backupPicked and snapshotPicked). An answer that comes after a recreation is lost: SecureActivity
- * saves no instance state (its onSaveInstanceState clears the bundle), so the activity-result registry
- * that the recreated activity builds does not know the picker's request, and the model's next resume
- * frees the picker's buttons (Stage U's U2c2; whether phones handle configuration changes in place is the
- * owner's Q77). For Save, the provider may keep the empty document it created, and the save screen
+ * backupPicked and snapshotPicked). A phone's configuration changes recreate nothing (MainActivity
+ * handles them in place, Q77), so a rotation, a font scale or night mode while a picker is up keeps its
+ * answer. An answer that comes after a recreation (a change the manifest does not handle, a locale
+ * change say) is lost: SecureActivity saves no instance state (its onSaveInstanceState clears the
+ * bundle), so the activity-result registry that the recreated activity builds does not know the picker's
+ * request, and the model's next resume frees the picker's buttons (Stage U's U2c2). For Save, the provider may keep the empty document it created, and the save screen
  * offers Save again. Neither keeps a place or a file, or asks to keep access to one past the answer (no
  * persisted URI permission).
  *

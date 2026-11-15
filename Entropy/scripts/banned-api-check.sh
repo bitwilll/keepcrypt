@@ -391,7 +391,8 @@
 # case is aapt2's three dumps of the shipping APK (scripts/testdata/apk/, from the Android run
 # 39062895784; the xmltree dump has since gained the application's class, KeepCryptApp, M5 commit
 # 15, and all three CAMERA, the xmltree dump with the camera feature not required, M5 commit 18, and
-# minSdk 34 in badging and xmltree, Q84's, M5 commit U3n), a
+# minSdk 34 in badging and xmltree, Q84's, M5 commit U3n, and the xmltree dump MainActivity's
+# screenOrientation and configChanges, Q77's, M5 commit U2m), a
 # stand-in merger report that removes the androidx.startup provider, the run's
 # signer and a stub APK laid out as the real one; it must pass against the committed
 # mobile/android/expected/manifest-shipping.txt (the control). Each case changes one thing and must

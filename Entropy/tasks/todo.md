@@ -17797,11 +17797,27 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       built the five APKs, every JVM test task 266 results, 0 failures, no new warning. Selftests: android-emulator 64,
       android-instrument 50, android-local 47 passed, 0 failed; --workflows clean (the API 34 rows at the 90-minute
       ceiling); the gate clean, 417 files, its --selftest 1639 passed; canaries.sh 94 checks.
-    - [ ] U2m (Q77): portrait on phones (android:screenOrientation="portrait"), configuration changes handled in place
+    - [x] U2m (Q77): portrait on phones (android:screenOrientation="portrait"), configuration changes handled in place
       (configChanges for orientation, screenSize, screenLayout, smallestScreenSize, density, fontScale, uiMode,
       keyboard, keyboardHidden, navigation): DeviceChangeTest asserts the same MainActivity instance after each change,
       the screen, page, gate, pad entry and session kept, FLAG_SECURE still set; a pending picker or camera answer
       survives (no recreation).
+      Proof (M5 commit U2m, Stage U-6, partial: local; CI's registry jobs at the next push): the manifest's
+      MainActivity has screenOrientation 1 and configChanges 0x40001ff0, pinned in both expected summaries and the
+      --selftest-apk stub xmltree; both release APKs, signed with a local throwaway key, pass --apk; --selftest-apk 89
+      passed. DeviceChangeTest (registry): on the dice, the code entry, the words' gate and the words page of insert 2,
+      six changes each (a rotation request, font scale 1.3, night mode, each and back) handled in place by the same
+      MainActivity, resumed, never destroyed, no other instance alive, still portrait at rotation 0 ("user_rotation 1
+      while landscape was asked, the activity portrait"), its configuration showing the font scale and night mode, the
+      state, what is held and every pad kept, FLAG_SECURE on; then one recreate() on each (M5-80's Bundle check kept):
+      "given an empty saved-state Bundle". The picker or camera answer is not exercised with a picker up: it rests on
+      the activity not being recreated. Locally (android-local.sh --part registry, exit 0): SnapshotDrillTest 4,
+      LifecycleTest 8, DeviceChangeTest 1 (93.5 s), AwayTest 3, ScanRefusedTest, IdleClockTest, KillTest's four (each
+      start "given no Bundle"), CrashTest; --part capture, exit 0: ControlTest 3, CaptureTest 8 in both APKs
+      (disableSecureWindows not made on the user build; the empty-Bundle recreation and the 412 dp walk green),
+      PhoneMotionTest, DoubleTapTest 4, NativeTest. Gradle (strict, --rerun-tasks) built the five APKs, every JVM test
+      task 266 results, 0 failures, no new warning. Selftests: android-emulator 64, android-instrument 50, android-local
+      47 passed; the gate clean, 417 files, its --selftest 1639 passed; canaries.sh 94 checks.
     - [ ] U3j (Q79, Q80): a Protected pad's key carries its letter as text marked data-sensitive with its click action
       kept (TalkBack can finish a ceremony); under the 30-second cover and the idle warning the screen beneath has its
       semantics cleared; accessibility focus and its reading (TYPE_VIEW_ACCESSIBILITY_FOCUSED and the like) count as
