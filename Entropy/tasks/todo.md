@@ -16035,6 +16035,26 @@ dialog stuck, U1a8 is redesigned from those lines. The M5 gate report names it u
   attached, edge widths and insets, excluded regions, its log of recent gestures), then tries a swipe through
   UiAutomation's injected touches and fails naming whether that one brought Back. The next change rests on those facts
   (lessons.md, 2026-11-01), not on a third guess at pace or settle time.
+- M5-84 (2026-11-15), Stage U-5's close and U-6, after run 43613600587 at ad661e1 (every emulator job failed; the
+  build job green): (a) M5-83's taller pads squeeze the text column. A KitScreen's actions never scroll and the text
+  column takes what is left (weight 1); the BIP39 entry's actions now hold six rows of 48 dp keys and three rows of
+  buttons, about 490 dp of CI's 640 dp window, so its "Keys, page 1 of 3" line has no room ("not on screen: keys_page"
+  in FlowTest on both levels; "the ASCII pad's page line" in JourneyTest on both; the read-back's walk on both capture
+  jobs; backup_confirm's secret texts on API 36). 48 dp is not relaxed (M5-83 (c)); the fix is Q78's and Q85's,
+  built first in U-6 as U3i-a: a screen's actions join the scrolling column, after the text, whenever they are taller
+  than ACTIONS_SHARE of the screen's height (measured each layout, so a font or window change moves them back), and a
+  "More below" line under the column, read by TalkBack, while it can scroll further. Every helper that finds,
+  reads or touches a node scrolls it into view first. (b) AwayTest's probe line (API 31 and 36): with navigation_mode
+  2 SystemUI's EdgeBackGestureHandler reads mIsEnabled=false, mIsAttached=false and edge widths 0: CI's images have
+  no gestural navigation bar attached, so no swipe can bring Back there. The test reads that record after the switch:
+  attached and enabled, the swipe is the test; otherwise the Back key, the pass line naming SystemUI's facts. kc37
+  (a Play image with a gestural bar) makes the swipe locally. (c) Q84's minSdk 34 retires API 31: the "API 31" leg
+  jobs become API 34 (system-images;android-34;default;x86_64), the lowest level the app installs on, and the 16 KB
+  leg stays on API 36's ps16k image after API 34's capture part. Every "API 31" in the budgets, the scripts' selftests
+  and the plan's open items reads API 34 from U3n on; ticked proofs keep their API 31 runs as history. (d) Q78 with
+  minSdk 34 is the full range on every supported level: the capture walk's layout check runs at font scale 2.0 on
+  both levels (and at 1.0 on CI's window and the 412 dp phone, as U3h-b). (e) U-6 runs as one stage of the M5
+  workflow in the order U3i-a, U3n, U2m, U3j, U3k, U3i-b, then three reviews, fixes, the suite, CI at its head.
 - M5-78 (2026-10-31), Stage U-5: (a) U2i's DoubleTapTest (four short journeys, about 6 minutes) runs in the capture
   part, after PhoneMotionTest, not the ui part the plan named: the capture jobs (503-535 s) are the run's shortest and
   the ui jobs (1241-1284 s) its longest, so the run's wall time stays where it is; the capture jobs are measured at 30
@@ -17729,6 +17749,38 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
     one idle run on the real clock, API 36), U3h (the layout check in the walk at CI's window and a 412 dp phone; the
     docs' texts pinned; KitColors).
   - U-6, after the owner's answers: U2m (Q77), U3i (Q78, Q85), U3j (Q79, Q80), U3k (Q81, Q82, Q83), U3n (Q84).
+  - U-6's plan (the lead's, 2026-11-15, M5-84; the owner answered Q77-Q85 on 2026-11-14):
+    - [ ] U2k3 (U-5's close): AwayTest's back gesture by SystemUI's record (M5-84 (b)); U2k, U2l, U3h-b, U3h and U2
+      ticked once their jobs are green.
+    - [ ] U3i-a (Q78, Q85, M5-84 (a)): KitScreen moves its actions into the scrolling column, after the content,
+      when they are taller than ACTIONS_SHARE of its height, and back when they fit; a "More below" line
+      (tag more_below, KitType.small, a polite live region, never a secret) pinned under the column while it can
+      scroll forward. Ui's find, read, tap, touch and the pads' key lookups scroll the node into view first (the
+      screen's scroll container, no selector holding a secret); the capture walk scrolls each screen through so
+      every secret text is drawn and checked. JVM: the share's arithmetic. Device: every journey green at 1.0.
+    - [ ] U3n (Q84): minSdk 34 (libs.versions android-min-sdk), every Build.VERSION check below 34 removed; the shipping
+      APK drops testTagsAsResourceId (it stays in the test-registry flavour only, or the tests read tags in-process
+      through the Compose root's semantics: whichever needs no new dependency); the CI legs API 31 -> API 34
+      (M5-84 (c)), the scripts' selftests and budgets with them; mobile-apps.md, build-plan.md and Q56's "Android 12+"
+      read "Android 14+", and MA:74's API 31-33 residual is removed (no such level runs the app). CaptureTest proves
+      the shipping APK exposes no resource id.
+    - [ ] U2m (Q77): portrait on phones (android:screenOrientation="portrait"), configuration changes handled in place
+      (configChanges for orientation, screenSize, screenLayout, smallestScreenSize, density, fontScale, uiMode,
+      keyboard, keyboardHidden, navigation): DeviceChangeTest asserts the same MainActivity instance after each change,
+      the screen, page, gate, pad entry and session kept, FLAG_SECURE still set; a pending picker or camera answer
+      survives (no recreation).
+    - [ ] U3j (Q79, Q80): a Protected pad's key carries its letter as text marked data-sensitive with its click action
+      kept (TalkBack can finish a ceremony); under the 30-second cover and the idle warning the screen beneath has its
+      semantics cleared; accessibility focus and its reading (TYPE_VIEW_ACCESSIBILITY_FOCUSED and the like) count as
+      input for the idle clock. JVM tests for the clock; CaptureTest checks the keys' marks and the cleared tree.
+    - [ ] U3k (Q81, Q82, Q83): a discard while still offline lands Home with its notice (idle, 60 s away, leaving a
+      Protected screen), Go offline only when the phone went online (PF:127); the gate stays part of the Protected
+      screen (MA:34 says so); the headphones warning on every privacy gate, swb:286 widened to match. JVM tables and
+      the journeys' landing expectations (kept in one place) follow.
+    - [ ] U3i-b (Q78): the capture walk's layout check at font scale 2.0 on both levels (M5-84 (d)): every control
+      reachable by scrolling, no text cut, every control 48 dp or more.
+    - Verification: each commit's Kotlin built and its classes run on kc37 (android-local.sh --part), the gate, every
+      changed script's selftest, three reviews at U-6's head, their fixes, the suite, CI read once per push.
 - Budget: the Android job's 44 minutes (M5-57) cannot hold U1-U2's emulator tests on two API legs. Stage U measures them and the
   lead re-plans by M5-30's rule or splits the legs into jobs (the Android workflow has no required check names). (L9 split
   them, M5-70 (b): each leg job's budget is its measured time plus 25%, re-measured when Stage U adds journeys. U1a
