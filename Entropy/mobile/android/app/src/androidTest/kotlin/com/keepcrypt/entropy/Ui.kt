@@ -8,7 +8,6 @@ import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
 import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.By
-import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
@@ -23,6 +22,7 @@ import com.keepcrypt.entropy.screens.ASCII_KEYS
 import com.keepcrypt.entropy.screens.ASCII_PAGES
 import com.keepcrypt.entropy.screens.ASCII_PAGE_KEYS
 import com.keepcrypt.entropy.screens.CeremonyModel
+import com.keepcrypt.entropy.screens.DICE_KEYS
 import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
 import com.keepcrypt.entropy.screens.LETTER_KEYS
 import com.keepcrypt.entropy.screens.PadEntry
@@ -47,7 +47,10 @@ import org.junit.Assert.fail
  * letter pad (typeLetters); the edge tests may still make the many rolls a minimum takes through the
  * model's dice pick and confirmRoll, the entry points the pad and Confirm call (roll; group 6,
  * "Driving"). No helper reads a node it found before a wait: each read finds its node afresh (fresh),
- * since a redraw in between replaces it.
+ * since a redraw in between replaces it. Every helper that finds, reads, taps or touches a node scrolls
+ * it into view first (scrolledTo; Q85, lead decision M5-84 (a)): a screen's text column scrolls, its
+ * actions with it once they are tall (Kit.kt's KitScreen), and Compose leaves a node scrolled out of view
+ * out of the accessibility tree, so no search sees it there.
  */
 internal object Ui {
     /** The start-up self-test's and a start's time limit (a translated library is slower; NativeTest's). */
@@ -62,11 +65,8 @@ internal object Ui {
     /** How long a press that must do nothing gets to land. */
     private const val SETTLE_MS = 500L
 
-    /** At most this many of shown's scrolls, each about half a text column: more than any screen here holds. */
-    private const val SCROLLS = 8
-
-    /** shown's swipe speed in pixels a second: slow, so the column stops about where the swipe lifts. */
-    private const val SCROLL_SPEED = 1_000
+    /** At most this many pages of a screen's column each way (scrolledTo): more than any screen here holds. */
+    const val PAGES = 16
 
     val device: UiDevice get() = UiDevice.getInstance(Capture.instrumentation)
 
@@ -154,9 +154,11 @@ internal object Ui {
         assertEquals(what + " left the screen", screen, onMain { activity.shownScreen })
     }
 
-    /** The control or text with resource id tag, waited for up to 10 s. */
-    fun find(tag: String): UiObject2 =
-        device.wait(Until.findObject(By.res(tag)), FIND_MS) ?: throw AssertionError("not on screen: " + tag)
+    /** The control or text with resource id tag, scrolled into view (reveal) and waited for up to 10 s. */
+    fun find(tag: String): UiObject2 {
+        reveal(tag)
+        return device.wait(Until.findObject(By.res(tag)), FIND_MS) ?: throw AssertionError("not on screen: " + tag)
+    }
 
     /**
      * block's value, block run again while a node it found has been replaced by a redraw before it reads
@@ -212,6 +214,7 @@ internal object Ui {
      */
     fun pressFace(face: Char) {
         find(screenId(Screen.Dice))
+        poll("the dice pad's keys in view") { scrolledTo { allInView(DICE_KEYS.length) { DICE_KEY.matcher(it.viewIdResourceName ?: "").matches() } } }
         val pressed = fresh("the dice pad's keys") {
             val key = device.findObjects(By.res(DICE_KEY)).singleOrNull { it.resourceName == "key_" + face }
                 ?: throw AssertionError("the dice pad has no single key for the face pressed (it is not printed)")
@@ -228,6 +231,7 @@ internal object Ui {
      * before), then compares that face with face in-process: a roll goes into no selector or message.
      */
     fun awaitPick(face: Char) {
+        reveal("dice_pick")
         val same = fresh("dice_pick") {
             val shown = device.wait(Until.findObject(By.res("dice_pick").text(A_FACE)), FIND_MS)
                 ?: throw AssertionError("the dice screen's pick shows no face after the press")
@@ -253,37 +257,159 @@ internal object Ui {
         for (index in 0 until count) {
             val before = onMain { activity.model.state.value.dice?.rolls } ?: throw AssertionError("not on the dice screen")
             val roll = (before + 1).toString()
-            val key = poll("the dice pad's key for roll $roll") { appNode("key_" + pattern[index % pattern.length])?.takeIf { it.isEnabled } }
+            val key = poll("the dice pad's key for roll $roll") { inView("key_" + pattern[index % pattern.length])?.takeIf { it.isEnabled } }
             assertTrue("the dice pad's key did not take the press (roll $roll)", key.performAction(AccessibilityNodeInfo.ACTION_CLICK))
-            val confirm = poll("Confirm enabled after a face's press (roll $roll)") { appNode("confirm")?.takeIf { it.isEnabled } }
+            val confirm = poll("Confirm enabled after a face's press (roll $roll)") { inView("confirm")?.takeIf { it.isEnabled } }
             assertTrue("Confirm did not take the press (roll $roll)", confirm.performAction(AccessibilityNodeInfo.ACTION_CLICK))
             poll("the dice count showing $roll rolls after Confirm") {
-                appNode("dice_count")?.takeIf { it.text?.toString()?.startsWith("$roll / ") == true }
+                inView("dice_count")?.takeIf { it.text?.toString()?.startsWith("$roll / ") == true }
             }
         }
     }
 
     /**
-     * The app's node with resource id tag, as it is now, or null: found in the app's window roots that
-     * UiAutomation reports (a walk of its accessibility nodes, in-process, no idle wait and no log), then
-     * refreshed from the app, so its state (enabled, text) is the app's and not the accessibility cache's.
-     * Null while no such node is in the tree or the one found has gone.
+     * The app's node with resource id tag, as it is now, or null: the first in appNodes' walk, which reads each
+     * node from the app (in-process, no idle wait and no log), so its state (enabled, text, visibility) is the
+     * app's and not the accessibility cache's. Null while no such node is in the tree.
      */
-    private fun appNode(tag: String): AccessibilityNodeInfo? {
+    private fun appNode(tag: String): AccessibilityNodeInfo? = appNodes().firstOrNull { it.viewIdResourceName == tag }
+
+    /**
+     * Every node of the app's windows as the app has them now, in tree order: an in-process walk down from each
+     * window root UiAutomation reports, each node read again from the app (refresh) before its children are, so
+     * the accessibility cache, which can keep a tree the app has changed, is passed by (on kc37, local, a walk
+     * through the cache missed the read-back's Next after a match and the reviewed insert's "Back to the
+     * read-back" for 10 s while UI Automator's tree held each, visible). No idle wait, no selector, so no log.
+     */
+    private fun appNodes(): List<AccessibilityNodeInfo> {
         val pkg = Capture.instrumentation.targetContext.packageName
-        fun walk(node: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-            if (node.viewIdResourceName == tag) return node
-            for (index in 0 until node.childCount) node.getChild(index)?.let { child -> walk(child)?.let { return it } }
-            return null
+        return Capture.instrumentation.uiAutomation.windows.mapNotNull { it.root }.filter { it.packageName?.toString() == pkg }.flatMap(::under)
+    }
+
+    /**
+     * The showing screen's column, its one scrollable node (KitScreen's text column, with its actions once
+     * they are tall), refreshed from the app; null when the app's windows hold none.
+     */
+    fun column(): AccessibilityNodeInfo? = appNodes().firstOrNull { it.isScrollable && it.isVisibleToUser }
+
+    /**
+     * Scrolls the showing screen's column a page (its height) forward or back, by its accessibility scroll
+     * action, as TalkBack scrolls it, and waits for it to settle (settle: Compose animates the scroll); false
+     * when there is no column or it stands at that end already.
+     */
+    fun scrollPage(forward: Boolean): Boolean {
+        val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        if (column()?.performAction(action) != true) return false
+        settle()
+        return true
+    }
+
+    /**
+     * Waits until the column stands still after a scroll it was asked for: UI Automator's idle wait (the
+     * accessibility events quiet for 500 ms), then the bounds of the column's nodes, read from the app
+     * (appNodes' walk, not the accessibility cache), the same at two reads SETTLE_READ_MS apart, for up to 10 s. A
+     * touch while Compose still animates the scroll stops the scroll instead of pressing what it lands on.
+     */
+    private fun settle() {
+        device.waitForIdle()
+        val end = SystemClock.elapsedRealtime() + FIND_MS
+        var last: List<Rect>? = null
+        while (SystemClock.elapsedRealtime() < end) {
+            val now = column()?.let { column -> under(column).map { node -> Rect().also(node::getBoundsInScreen) } }
+            if (now == last) return
+            last = now
+            SystemClock.sleep(SETTLE_READ_MS)
         }
-        for (window in Capture.instrumentation.uiAutomation.windows) {
-            val root = window.root ?: continue
-            if (root.packageName?.toString() != pkg) continue
-            val node = walk(root) ?: continue
-            return if (node.refresh()) node else null
+        throw AssertionError("the column did not stand still within 10 s of a scroll")
+    }
+
+    /** settle's interval between two reads of the column's nodes. */
+    private const val SETTLE_READ_MS = 100L
+
+    /**
+     * found's value, the showing screen's column scrolled to bring it into view (Q85, M5-84 (a)): found reads the
+     * app's nodes as they are (in-process, so nothing it looks for goes into a selector or a log), first where the
+     * column stands; while it gives null, the column is scrolled a page at a time to its end, then back to its
+     * top, found read after each page. Pages follow each other with no gap, so a node anywhere in the column
+     * shows, whole or in part, on one of them. Null when none does (or the screen has no column).
+     */
+    fun <T : Any> scrolledTo(found: () -> T?): T? {
+        found()?.let { return it }
+        for (forward in listOf(true, false)) {
+            var pages = 0
+            while (pages++ < PAGES && scrollPage(forward)) found()?.let { return it }
         }
         return null
     }
+
+    /**
+     * node shown whole when its bounds reach the column's top or bottom edge, where the column may cut it: its
+     * accessibility action ACTION_SHOW_ON_SCREEN, for which Compose scrolls the column the least that shows the
+     * node whole (as for TalkBack's focus), then the column settles. A node outside the column (a screen's
+     * actions under it, the strip, the "More below" line) or holding it (the screen's root) is left as it is.
+     * Whether the column moved: node's bounds read again after.
+     */
+    fun showWhole(node: AccessibilityNodeInfo): Boolean {
+        val column = column() ?: return false
+        val edges = Rect().also(column::getBoundsInScreen)
+        val before = Rect().also(node::getBoundsInScreen)
+        if (!Rect.intersects(edges, before) || before.contains(edges)) return false
+        if (before.top > edges.top && before.bottom < edges.bottom) return false
+        if (!node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)) return false
+        settle()
+        return node.refresh() && Rect().also(node::getBoundsInScreen) != before
+    }
+
+    /**
+     * The first node (in tree order) the showing screen's column cuts at its bottom edge: one inside it whose
+     * bounds reach that edge (Capture.nodesThrough shows it whole before the column moves a page on); null
+     * when there is none, or no column.
+     */
+    fun cutAtTheBottom(): AccessibilityNodeInfo? {
+        val column = column() ?: return null
+        val edges = Rect().also(column::getBoundsInScreen)
+        return under(column).drop(1).firstOrNull { node ->
+            val at = Rect().also(node::getBoundsInScreen)
+            !at.isEmpty && at.top < edges.bottom && at.bottom >= edges.bottom
+        }
+    }
+
+    /**
+     * The app's node tag, visible, scrolled into view first (scrolledTo) and shown whole (showWhole), as the app
+     * has it now; null when no page of the column shows it.
+     */
+    private fun inView(tag: String): AccessibilityNodeInfo? {
+        fun visible() = appNode(tag)?.takeIf { it.isVisibleToUser }
+        val node = scrolledTo(::visible) ?: return null
+        return if (showWhole(node)) visible() else node
+    }
+
+    /**
+     * The node tag scrolled into view (inView), waited for up to 10 s; past that the test fails, naming tag (an
+     * id, no secret), a probe line first saying what UI Automator's tree holds around tag and what the system
+     * shows (Capture.treeFacts and windowFacts: ids, classes, visibility and windows, never a node's text).
+     */
+    fun reveal(tag: String): AccessibilityNodeInfo {
+        try {
+            return poll("$tag on the screen, scrolled into view") { inView(tag) }
+        } catch (missing: AssertionError) {
+            probe("UI Automator's tree for $tag: " + Capture.treeFacts(Capture.instrumentation.targetContext.packageName, tag) + "; " + Capture.windowFacts())
+            throw missing
+        }
+    }
+
+    /**
+     * Whether the app shows a node tag anywhere in the showing screen's column, scrolled through to its end and
+     * back (scrolledTo): an absence holds only when no page holds it, since a node out of view is in no tree.
+     */
+    fun anywhere(tag: String): Boolean = scrolledTo { appNode(tag) } != null
+
+    /**
+     * The count nodes key picks (a pad's keys, found by what names none of them) when the app shows exactly
+     * that many and each is visible, else null: a pad is in view only once all its keys are.
+     */
+    private fun allInView(count: Int, key: (AccessibilityNodeInfo) -> Boolean): List<AccessibilityNodeInfo>? =
+        appNodes().filter(key).takeIf { keys -> keys.size == count && keys.all { it.isVisibleToUser } }
 
     /** read's value once it is not null, read every 20 ms for up to 10 s; past that the test fails, naming what. */
     private fun <T : Any> poll(what: String, read: () -> T?): T {
@@ -356,7 +482,7 @@ internal object Ui {
      * ended.
      */
     fun doubleTap(tag: String) {
-        val bounds = poll("$tag enabled on the screen") { appNode(tag)?.takeIf { it.isEnabled }?.let(::shownBounds) }
+        val bounds = poll("$tag enabled on the screen") { inView(tag)?.takeIf { it.isEnabled }?.let(::shownBounds) }
         val first = SystemClock.uptimeMillis()
         touch(bounds)
         SystemClock.sleep(maxOf(0L, first + DOUBLE_TAP_MS - SystemClock.uptimeMillis()))
@@ -395,27 +521,29 @@ internal object Ui {
      * found the check failing there, Entropy Android 41203734694). Read through UiAutomation's own nodes
      * (appNode's walk, in tree order, as UI Automator's search returns them), with no idle wait and no
      * selector logged (Stage U's U1c; U1b2 found a search costs 500 ms of quiet), and read again until the
-     * count is there, for up to 10 s.
+     * count is there, for up to 10 s. The pad is scrolled into view first (scrolledTo: every key visible, its
+     * last and first shown whole, showWhole), since a key out of view is in no tree.
      */
     private fun padKeys(screen: Screen, count: Int, names: Regex): List<AccessibilityNodeInfo> =
         poll("the pad's $count keys on " + screenId(screen)) {
-            val root = appNode(screenId(screen)) ?: return@poll null
-            val nodes = ArrayList<AccessibilityNodeInfo>()
-            fun walk(node: AccessibilityNodeInfo) {
-                nodes.add(node)
-                for (index in 0 until node.childCount) node.getChild(index)?.let(::walk)
-            }
-            walk(root)
-            val keys = nodes.filter {
-                it.className?.toString() == BUTTON && it.text.isNullOrEmpty() && it.contentDescription.isNullOrEmpty() &&
-                    it.viewIdResourceName.isNullOrEmpty()
-            }
-            if (keys.size != count) return@poll null
-            val labels = nodes.filter { it.viewIdResourceName != SECRET_TAG }
-            assertFalse("a node on " + screenId(screen) + " names a key", labels.any { it.text?.toString()?.matches(names) == true })
-            assertFalse("a key on " + screenId(screen) + " has a Public key's id", nodes.any { it.viewIdResourceName?.startsWith("key_") == true })
-            keys
+            val shown = scrolledTo { keysNow(screen, count, names)?.takeIf { keys -> keys.all { it.isVisibleToUser } } } ?: return@poll null
+            val moved = showWhole(shown.last()) or showWhole(shown.first())
+            if (moved) keysNow(screen, count, names) else shown
         }
+
+    /** padKeys' read of the pad's keys on screen as the app has them now, or null while there are not count of them. */
+    private fun keysNow(screen: Screen, count: Int, names: Regex): List<AccessibilityNodeInfo>? {
+        val nodes = under(appNode(screenId(screen)) ?: return null)
+        val keys = nodes.filter {
+            it.className?.toString() == BUTTON && it.text.isNullOrEmpty() && it.contentDescription.isNullOrEmpty() &&
+                it.viewIdResourceName.isNullOrEmpty()
+        }
+        if (keys.size != count) return null
+        val labels = nodes.filter { it.viewIdResourceName != SECRET_TAG }
+        assertFalse("a node on " + screenId(screen) + " names a key", labels.any { it.text?.toString()?.matches(names) == true })
+        assertFalse("a key on " + screenId(screen) + " has a Public key's id", nodes.any { it.viewIdResourceName?.startsWith("key_") == true })
+        return keys
+    }
 
     /** The letter pad's 26 keys on screen (the read-back entry, the backup's confirm or Check a backup's entry), as padKeys reads them. */
     fun letterKeys(screen: Screen): List<AccessibilityNodeInfo> = padKeys(screen, LETTER_KEYS.length, A_LETTER)
@@ -449,7 +577,7 @@ internal object Ui {
      * often, goes into no log (typeAscii's page turns, which follow a passphrase's characters).
      */
     private fun press(tag: String) {
-        val node = poll("$tag enabled") { appNode(tag)?.takeIf { it.isEnabled } }
+        val node = poll("$tag enabled") { inView(tag)?.takeIf { it.isEnabled } }
         assertTrue("$tag did not take the press", node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
     }
 
@@ -487,7 +615,7 @@ internal object Ui {
                 await("the ASCII pad's page turned", 10) { onMain { activity.model.state.value.page } != shown }
             }
             val line = "Keys, page " + (page + 1) + " of " + ASCII_PAGES
-            poll("the ASCII pad's page line") { appNode("keys_page")?.takeIf { it.text?.toString() == line } }
+            poll("the ASCII pad's page line") { inView("keys_page")?.takeIf { it.text?.toString() == line } }
             touchKey(activity, { asciiKeys(page) }, index % ASCII_PAGE_KEYS, { it.bip39Letters }, before + at + 1)
         }
         assertTrue("the ASCII pad's touches did not type the passphrase touched", holds(activity, { it.bip39Letters }, before, text))
@@ -547,33 +675,35 @@ internal object Ui {
     /** The permission the scan screen asks for. */
     private const val CAMERA_PERMISSION = "android.permission.CAMERA"
 
-    /** Waits up to 10 s for the node tag to show text. */
+    /** Waits up to 10 s for the node tag, scrolled into view (reveal), to show text. */
     fun awaitText(tag: String, text: String) {
+        reveal(tag)
         val shown = device.wait(Until.hasObject(By.res(tag).text(text)), FIND_MS)
         assertTrue(tag + " does not show " + text + " (it shows " + text(tag) + ")", shown == true)
     }
 
     /**
-     * Whether a node of screen (its root found by its id, find's 10 s) has text as its text, its text
-     * column scrolled down where the text lies out of view below, since UI Automator sees only what is
-     * scrolled into view (Compose leaves a node scrolled out of view out of the accessibility tree);
-     * false when no node shows it, the column scanned from where it stood to its end. KitScreen's text
-     * column is the screen's one scrollable node, and only once its text is taller than the room it has:
-     * with none, the whole screen is in view at once. Each scroll is a slow swipe over about half the
-     * column (UiObject2.scroll at SCROLL_SPEED), so no fling carries a line past unseen; the scroll's
-     * boolean is not read, since UI Automator works it out from scroll events, so the column is scrolled
-     * SCROLLS times at most. Each look finds the root afresh, and looks again when a redraw replaced a
-     * node it read (fresh).
+     * Whether a node of screen (its root found by its id, find's 10 s) has text as its text, anywhere in its
+     * column: scrolled through to its end and back (scrolledTo), since a node out of view is in no tree;
+     * false when no page shows it. The nodes are read in-process and compared there, so text goes into no
+     * selector or log.
      */
     fun shown(screen: Screen, text: String): Boolean {
         val id = screenId(screen)
-        repeat(SCROLLS) {
-            if (fresh(id) { find(id).hasObject(By.text(text)) }) return true
-            val scrolled = fresh(id) { find(id).findObject(By.scrollable(true))?.scroll(Direction.DOWN, 0.5f, SCROLL_SPEED) != null }
-            if (!scrolled) return false
-            device.waitForIdle()
+        find(id)
+        return scrolledTo { appNode(id)?.let { root -> under(root).firstOrNull { it.text?.toString() == text } } } != null
+    }
+
+    /** root and every node under it, in tree order, each read again from the app first (refresh); one gone is left out with its subtree. */
+    private fun under(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val nodes = ArrayList<AccessibilityNodeInfo>()
+        fun walk(node: AccessibilityNodeInfo) {
+            if (!node.refresh()) return
+            nodes.add(node)
+            for (index in 0 until node.childCount) node.getChild(index)?.let(::walk)
         }
-        return fresh(id) { find(id).hasObject(By.text(text)) }
+        walk(root)
+        return nodes
     }
 
     /** UI Automator's class name for a node with the button role (Compose's Role.Button). */

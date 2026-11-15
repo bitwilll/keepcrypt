@@ -13,6 +13,7 @@ import com.keepcrypt.entropy.Capture.finish
 import com.keepcrypt.entropy.Capture.onMain
 import com.keepcrypt.entropy.Capture.pass
 import com.keepcrypt.entropy.Ui.START_SECONDS
+import com.keepcrypt.entropy.Ui.anywhere
 import com.keepcrypt.entropy.Ui.assertPublicPadLabelled
 import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitPick
@@ -216,7 +217,7 @@ class CheckTest {
             // The code the checker builds from the drawn QR, typed on the pad.
             tap("type_code")
             on(activity, Screen.CodeEntry)
-            assertFalse("the refusal outlived the code entry", device.hasObject(By.res("code_refused")))
+            assertFalse("the refusal outlived the code entry", anywhere("code_refused"))
             tapCode(code)
             tap("code_done")
             on(activity, Screen.CheckResult)

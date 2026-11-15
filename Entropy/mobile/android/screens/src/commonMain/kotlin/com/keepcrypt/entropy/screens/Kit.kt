@@ -4,6 +4,7 @@ import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Spacer
@@ -15,9 +16,13 @@ import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -36,9 +41,9 @@ import androidx.compose.ui.unit.sp
 // panel; large type; every control a framed button whose text is its TalkBack label, with the button
 // role and, when disabled, the disabled state, full width except a pad's keys (Pads.kt) and buttons
 // that share a row (the dice screen's Undo and Confirm); every screen one column with its screen id as
-// its test tag (UI Automator's resource id, group 6), its text scrolling above its actions, under the
-// TEST REGISTRY strip in that build (Q60). No Material, no theme library (lead decision M5-22): plain
-// foundation.
+// its test tag (UI Automator's resource id, group 6), its text scrolling above its actions (or with them,
+// when they are tall: KitScreen), under the TEST REGISTRY strip in that build (Q60). No Material, no theme
+// library (lead decision M5-22): plain foundation.
 
 /** The kit's colours. */
 object KitColors {
@@ -83,11 +88,40 @@ object KitType {
 }
 
 /**
+ * A screen's actions scroll with its text, after it, once they are taller than this share of the screen's
+ * height (Q78, Q85; lead decision M5-84 (a)): under them the text column keeps at least the rest, so a
+ * tall pad (the BIP39 passphrase's six rows of 48 dp keys and three rows of buttons, about 490 dp of CI's
+ * 640 dp window) no longer squeezes the text above it out of view.
+ */
+const val ACTIONS_SHARE = 0.5f
+
+/**
+ * Whether actions actionsHeight high join a screen's scrolling column on a screen screenHeight high (both
+ * in one unit): when they are taller than ACTIONS_SHARE of it. Before the first layout both are 0, and the
+ * actions stay under the column.
+ */
+fun actionsScroll(actionsHeight: Int, screenHeight: Int): Boolean = actionsHeight > screenHeight * ACTIONS_SHARE
+
+/** The line under a screen's column while the column can scroll further (Q85): fixed text, never a secret. */
+const val MORE_BELOW = "More below"
+
+/** The "More below" line's test tag. */
+const val MORE_BELOW_TAG = "more_below"
+
+/**
  * A screen: one column filling the window, its id as test tag; the TEST REGISTRY strip on top in that
  * build; then content, which scrolls (its position in plain memory, never in saved state), inside the
- * kit's margins; and under it the screen's actions, which never scroll away, so every control is on
- * screen whatever the text's length. The system bars' insets are the caller's, or taken here when the
- * screen is drawn alone (the capture control's first screen).
+ * kit's margins; and the screen's actions, under the column, where they never scroll away, so every
+ * control is on screen whatever the text's length; or, while they are taller than ACTIONS_SHARE of the
+ * screen (actionsScroll), in the column after the content, scrolling with it (Q78, Q85; M5-84 (a)). Their
+ * height and the screen's are measured at each layout that changes them, so a font or window change moves
+ * them back once they fit; and since they are as wide in either place, moving them never changes their
+ * height, and the choice holds (no back and forth). A move draws them anew where they go (they hold no
+ * state of their own: the model does), so their nodes are new ones there and no accessibility service is
+ * left with a node that changed its parent. While the column can scroll further, a "More below" line
+ * (MORE_BELOW, a polite live region, which TalkBack reads when it appears) stands under it. The system
+ * bars' insets are the caller's, or taken here when the screen is drawn alone (the capture control's
+ * first screen).
  */
 @Composable
 fun KitScreen(
@@ -98,13 +132,26 @@ fun KitScreen(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val scroll = remember { ScrollState(0) }
-    Column(Modifier.fillMaxSize().background(background).safeDrawingPadding().testTag(tag)) {
+    var screenHeight by remember { mutableIntStateOf(0) }
+    var actionsHeight by remember { mutableIntStateOf(0) }
+    val scrolling = actions != null && actionsScroll(actionsHeight, screenHeight)
+    val placed = @Composable {
+        if (actions != null) Column(Modifier.padding(vertical = 8.dp).onSizeChanged { actionsHeight = it.height }, content = actions)
+    }
+    Column(Modifier.fillMaxSize().background(background).safeDrawingPadding().onSizeChanged { screenHeight = it.height }.testTag(tag)) {
         if (testRegistry) {
             TestRegistryStrip()
         }
-        Column(Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = 24.dp, vertical = 16.dp), content = content)
-        if (actions != null) {
-            Column(Modifier.padding(horizontal = 24.dp, vertical = 8.dp), content = actions)
+        Column(Modifier.weight(1f).verticalScroll(scroll).padding(horizontal = 24.dp, vertical = 16.dp)) {
+            content()
+            if (scrolling) placed()
+        }
+        if (scroll.canScrollForward) {
+            // In the text's colour, not KitType.small's grey, which is under 4.5:1 on the stop screen's red.
+            Box(Modifier.padding(horizontal = 24.dp)) { KitText(MORE_BELOW, KitType.small.copy(color = KitColors.text), tag = MORE_BELOW_TAG, live = true) }
+        }
+        if (actions != null && !scrolling) {
+            Box(Modifier.padding(horizontal = 24.dp)) { placed() }
         }
     }
 }

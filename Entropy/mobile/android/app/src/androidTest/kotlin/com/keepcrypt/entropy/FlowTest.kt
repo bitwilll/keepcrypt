@@ -2,7 +2,6 @@ package com.keepcrypt.entropy
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.runner.lifecycle.Stage
-import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import com.keepcrypt.entropy.Capture.finish
 import com.keepcrypt.entropy.Capture.launch
@@ -13,6 +12,7 @@ import com.keepcrypt.entropy.Capture.shellText
 import com.keepcrypt.entropy.Ui.DOT
 import com.keepcrypt.entropy.Ui.START_SECONDS
 import com.keepcrypt.entropy.Ui.assertInsert
+import com.keepcrypt.entropy.Ui.anywhere
 import com.keepcrypt.entropy.Ui.asciiKeys
 import com.keepcrypt.entropy.Ui.assertPublicPadLabelled
 import com.keepcrypt.entropy.Ui.await
@@ -122,7 +122,7 @@ class FlowTest {
             tap("continue")
             on(activity, Screen.Dice)
             assertEquals("0 / 50 rolls, 0.0 bits", text("dice_count"))
-            assertFalse("the dice-only line in a new seed", device.hasObject(By.res("dice_only")))
+            assertFalse("the dice-only line in a new seed", anywhere("dice_only"))
             assertFalse("Confirm with no face picked", enabled("confirm"))
             assertFalse("Undo with no roll", enabled("undo"))
             pressFace('3')
@@ -138,7 +138,7 @@ class FlowTest {
             assertEquals("0 / 50 rolls, 0.0 bits", text("dice_count"))
             roll(activity, 49, DICE_50_ROLLS)
             awaitText("dice_count", "49 / 50 rolls, 126.6 bits")
-            assertFalse("the minimum is not reached at 49 rolls", device.hasObject(By.res("dice_minimum")))
+            assertFalse("the minimum is not reached at 49 rolls", anywhere("dice_minimum"))
             pressFace('2')
             awaitPick('2')
             tap("confirm")
@@ -180,7 +180,7 @@ class FlowTest {
             assertEquals(DICE_ONLY, text("dice_only"))
             roll(activity, 98, DICE_99_ROLLS)
             awaitText("dice_count", "98 / 99 rolls, 253.3 bits")
-            assertFalse("the minimum is not reached at 98 rolls", device.hasObject(By.res("dice_minimum")))
+            assertFalse("the minimum is not reached at 98 rolls", anywhere("dice_minimum"))
             pressFace('4')
             awaitPick('4')
             tap("confirm")
@@ -398,7 +398,7 @@ class FlowTest {
             tap("review_insert")
             await("the insert reviewed", 10) { onMain { activity.model.state.value.let { it.screen == Screen.Words && it.reviewing } } }
             find("back_to_readback")
-            assertFalse("the reviewed insert offers Next", device.hasObject(By.res("next")))
+            assertFalse("the reviewed insert offers Next", anywhere("next"))
             assertTrue("the reviewed insert is not the misread one", onMain { sameWord(checkNotNull(activity.model.state.value.insert), words[misread]) })
             tap("back_to_readback")
             on(activity, Screen.ReadbackEntry)
@@ -436,7 +436,7 @@ class FlowTest {
             on(activity, Screen.Checklist)
             assertTrue("the registration QR was not wiped as the checklist came", blank(registration))
             assertTrue("the checklist does not show its first item", shown(Screen.Checklist, CHECKLIST[0]))
-            assertFalse("a 12-word seed's checklist names two devices", device.hasObject(By.res("two_devices")))
+            assertFalse("a 12-word seed's checklist names two devices", anywhere("two_devices"))
             tap("finish")
             on(activity, Screen.Home)
             assertTrue("the slot is not at home: Finish did not end the session", Core.selfTest() is Reply.Done)

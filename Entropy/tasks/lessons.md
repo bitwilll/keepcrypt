@@ -88,3 +88,13 @@ scripts that read the changed one (grep for its name and its markers) and run th
   a timing one without a line that showed the timing.
 - Rule: before a fix rests on a duration, a run or a test prints that duration. When a failure's cause cannot be seen in
   its lines, the next push adds the lines that show it (a probe of the deciding state), rather than a second guess.
+
+## 2026-11-16: a message to a running workflow agent started a second copy of it
+- Mistake: the lead sent SendMessage to a workflow's running implementer; it resumed a second instance of that agent,
+  which worked the same tree and emulator in parallel, edited scripts/android-emulator.sh in place to run two methods
+  while the first instance's ui run was executing it (sh reads a script as it runs: a bogus syntax error and a doubled
+  result), and the workflow's own call hung.
+- Root cause: the lead treated a running workflow agent as addressable; a send resumes a new instance instead.
+- Rule: never message a running workflow agent; steer by stopping the workflow and relaunching with a note, or wait for
+  its report. Never edit or restore a runner script while any run may be executing it: copy it elsewhere instead.
+

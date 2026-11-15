@@ -363,6 +363,11 @@ internal object Capture {
         val className: String?,
         /** Whether the node takes a click (a Protected pad's key keeps its role alone, no click action). */
         val clickable: Boolean,
+        /**
+         * The node itself, which equals the same node read again (AccessibilityNodeInfo's equals: its source
+         * and window), so reads of a screen at its column's positions (nodesThrough) are joined node by node.
+         */
+        val key: AccessibilityNodeInfo,
     )
 
     /**
@@ -391,6 +396,7 @@ internal object Capture {
                     node.contentDescription?.toString(),
                     node.className?.toString(),
                     node.isClickable,
+                    node,
                 ),
             )
             for (index in 0 until node.childCount) {
@@ -486,6 +492,31 @@ internal object Capture {
             SystemClock.sleep(100)
         }
     }
+
+    /**
+     * Every node of pkg's windows (nodesOf) at each position the showing screen's column takes as it is
+     * scrolled through (Q85, lead decision M5-84 (a)): back to its top first, then down to its end, so every
+     * node the column holds is drawn in view, and read, at one position at least (Compose leaves a node out of
+     * view out of the tree). Before each page on, a node the column's bottom edge cuts is shown whole
+     * (Ui.showWhole, the least scroll that shows it) and the screen read again, so a page starts where no node
+     * is cut and every node is read whole at one position, unless it is taller than the column. A screen whose
+     * column does not scroll gives one read. The reads, top first; nothing is printed.
+     */
+    fun nodesThrough(pkg: String, screen: Screen): List<List<NodeFacts>> {
+        var pages = 0
+        while (pages++ < Ui.PAGES && Ui.scrollPage(forward = false)) continue
+        val reads = ArrayList<List<NodeFacts>>()
+        while (true) {
+            reads.add(nodesOf(pkg, screen))
+            assertTrue(screenId(screen) + "'s column was not scrolled through in " + READS + " reads", reads.size < READS)
+            val cut = Ui.cutAtTheBottom()
+            if (cut != null && Ui.showWhole(cut)) continue
+            if (!Ui.scrollPage(forward = true)) return reads
+        }
+    }
+
+    /** More reads than nodesThrough takes of any screen here. */
+    private const val READS = 64
 
     /**
      * The secret texts a words page draws for insert, as WordsScreens.kt draws them: the word, its

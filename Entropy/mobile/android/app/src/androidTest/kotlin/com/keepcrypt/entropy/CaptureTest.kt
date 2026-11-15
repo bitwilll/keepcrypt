@@ -581,8 +581,9 @@ class CaptureTest {
     /**
      * The layout on a 412 dp phone (Stage U's U3h-b): the window manager set to 1080x2424 px at density 420 (put back
      * with wm size reset and wm density reset in a finally), the same walk through every screen in a new activity,
-     * each screen drawn and laid out (assertLaidOut: every control 48 dp or more, every text inside the window
-     * across); no capture is judged here, everyScreenIsDrawnAndThenBlackInEveryCapture does that at CI's window.
+     * its detours too (walkScreens), each screen drawn and laid out as its column is scrolled through
+     * (assertLaidOut over Capture.nodesThrough: every control 48 dp or more, every text inside the window across);
+     * no capture is judged here, everyScreenIsDrawnAndThenBlackInEveryCapture does that at CI's window.
      */
     @Test
     fun everyScreenIsLaidOutOnA412DpPhone() {
@@ -591,14 +592,10 @@ class CaptureTest {
             shell("wm density $PHONE_DENSITY")
             probe("the window manager: " + Capture.shellText("wm size").replace('\n', ' ') + "; " + Capture.shellText("wm density").replace('\n', ' '))
             Capture.whileOffline {
-                for (screen in Screen.entries) {
-                    val activity = show(screen)
+                walkScreens { screen, activity, name ->
                     proveDrawn(activity, screen)
-                    assertLaidOut(activity, screen, screenId(screen) + " (412 dp)")
+                    assertLaidOut(activity, Capture.nodesThrough(pkg, screen), "$name (412 dp)")
                 }
-                finish(checkNotNull(walk))
-                for (word in passphrase) word.fill(0)
-                savedBackup?.fill(0)
             }
             pass("every screen laid out on a 412 dp phone ($PHONE_SIZE at density $PHONE_DENSITY): controls of 48 dp or more, texts inside the window")
         } finally {
@@ -610,31 +607,45 @@ class CaptureTest {
     private fun walkEveryScreen() {
         val lines = HashSet<String>()
         var mark = ""
+        walkScreens(
+            before = { screen ->
+                // From the words on, the walk holds secret texts. As they come, a line of the walk's own goes
+                // to the log, through the shell's log, to the main buffer, where UI Automator's lines go too: a
+                // log that still holds it after the walk has dropped nothing written since, so the search after
+                // the walk reads every line written while the walk held a secret.
+                if (screen == Screen.Words) {
+                    mark = "kc_capture_walk_" + SystemClock.elapsedRealtimeNanos()
+                    shell("log -t KcCaptureTest " + mark)
+                }
+            },
+        ) { screen, activity, name ->
+            checkScreen(screen, activity, name, lines)
+            if (name == screenId(Screen.Stop)) assertStopNamesTheReason()
+        }
+        assertNoSecretInTheLog(mark, lines)
+    }
+
+    /**
+     * The walk (show) through every screen in Screen's order in one activity, each screen handed to check
+     * with the name its lines give it, before(screen) run before each is brought up; with the walk's
+     * detours, each checked as a screen is: the read-back entry in its matched state (matchedEntry) before
+     * the read-back's end, the save screen with a failed write (failedSave) before "Backup verified", and a
+     * checked backup's words (checkedWords) before Load registry snapshot's result. Both walks take them,
+     * since the screen after a detour is reached from where it leaves the model (run 43613600587: the 412 dp
+     * walk, which had none, met the mismatch where the read-back's end needs a match, and never reached it).
+     * Then the walk's activity finished, and its passphrase and backup zeroed.
+     */
+    private fun walkScreens(before: (Screen) -> Unit = {}, check: (Screen, MainActivity, String) -> Unit) {
         for (screen in Screen.entries) {
-            // From the words on, the walk holds secret texts. As they come, a line of the walk's own goes
-            // to the log, through the shell's log, to the main buffer, where UI Automator's lines go too: a
-            // log that still holds it after the walk has dropped nothing written since, so the search after
-            // the walk reads every line written while the walk held a secret.
-            if (screen == Screen.Words) {
-                mark = "kc_capture_walk_" + SystemClock.elapsedRealtimeNanos()
-                shell("log -t KcCaptureTest " + mark)
-            }
-            if (screen == Screen.ReadbackDone) {
-                checkScreen(Screen.ReadbackEntry, matchedEntry(), screenId(Screen.ReadbackEntry) + " (matched)", lines)
-            }
-            if (screen == Screen.BackupVerified) {
-                checkScreen(Screen.BackupSave, failedSave(), screenId(Screen.BackupSave) + " (a failed write)", lines)
-            }
-            if (screen == Screen.Snapshot) {
-                checkScreen(Screen.Words, checkedWords(), screenId(Screen.Words) + " (a checked backup's)", lines)
-            }
-            checkScreen(screen, show(screen), screenId(screen), lines)
-            if (screen == Screen.Stop) assertStopNamesTheReason()
+            before(screen)
+            if (screen == Screen.ReadbackDone) check(Screen.ReadbackEntry, matchedEntry(), screenId(Screen.ReadbackEntry) + " (matched)")
+            if (screen == Screen.BackupVerified) check(Screen.BackupSave, failedSave(), screenId(Screen.BackupSave) + " (a failed write)")
+            if (screen == Screen.Snapshot) check(Screen.Words, checkedWords(), screenId(Screen.Words) + " (a checked backup's)")
+            check(screen, show(screen), screenId(screen))
         }
         finish(checkNotNull(walk))
         for (word in passphrase) word.fill(0)
         savedBackup?.fill(0)
-        assertNoSecretInTheLog(mark, lines)
     }
 
     /** One screen of the walk, named name in its lines, its secret lines added to lines (see walkEveryScreen). */
@@ -667,8 +678,9 @@ class CaptureTest {
         assertTrue("no window's owner line names the app: windows are found by title alone", found.any { it.byOwner })
         probe("windows of the app: " + found.joinToString("; ") { "${it.title} (by owner ${it.byOwner}, SECURE ${it.secure})" })
         for (w in found) assertTrue("a window without SECURE: " + w.title, w.secure)
-        assertSecretsMarked(screen, activity.model, name, lines)
-        assertLaidOut(activity, screen, name)
+        val reads = Capture.nodesThrough(pkg, screen)
+        assertSecretsMarked(screen, activity.model, name, lines, reads)
+        assertLaidOut(activity, reads, name)
         pass(
             "$name: drawn, then screencap and takeScreenshot black over the app's window; " +
                 "SECURE on all ${found.size} of its windows; no content capture",
@@ -678,35 +690,46 @@ class CaptureTest {
     /**
      * The screen's layout (Stage U's U3h-b): every control the screen shows (a node that takes a click, or a
      * button by its role: a Protected pad's keys keep the role alone) has a touch target at least 48 dp each way,
-     * and every text it shows lies across inside the app's window, none cut at its left or right edge (a screen's
-     * column scrolls, so a node scrolled out of view is not read as shown). Read in-process from the screen's own
-     * nodes (Capture.nodesOf); only screen ids, counts and sizes are printed.
+     * and every text it shows lies across inside the app's window, none cut at its left or right edge. Judged on
+     * the nodes in view at each of reads, the screen's column scrolled through (Capture.nodesThrough), so a node
+     * out of view at one position is judged where it is in view; a control's size is the largest it was read at,
+     * since a position can cut it at the column's edge and nodesThrough reads each whole at one. Read in-process
+     * from the screen's own nodes; only screen ids, counts and sizes are printed.
      */
-    private fun assertLaidOut(activity: MainActivity, screen: Screen, name: String) {
-        val nodes = Capture.nodesOf(pkg, screen).filter { it.visible && !it.bounds.isEmpty }
+    private fun assertLaidOut(activity: MainActivity, reads: List<List<Capture.NodeFacts>>, name: String) {
+        val nodes = reads.flatten().filter { it.visible && !it.bounds.isEmpty }
         val density = onMain { activity.resources.displayMetrics.density }
         val window = region(activity)
         val target = (MIN_TARGET_DP * density).toInt()
-        val controls = nodes.filter { it.clickable || it.className == Ui.BUTTON }
-        val small = controls.filter { it.bounds.width() < target || it.bounds.height() < target }
+        val controls = nodes.filter { it.clickable || it.className == Ui.BUTTON }.groupBy { it.key }.values
+        val small = controls.filter { seen -> seen.maxOf { it.bounds.width() } < target || seen.maxOf { it.bounds.height() } < target }
         assertTrue(
             "$name: " + small.size + " of its " + controls.size + " controls are under 48 dp: " +
-                small.joinToString { (it.resourceName ?: "a key") + " " + it.bounds.width() + "x" + it.bounds.height() + " px" },
+                small.joinToString { seen ->
+                    (seen.first().resourceName ?: "a key") + " " + seen.maxOf { it.bounds.width() } + "x" + seen.maxOf { it.bounds.height() } + " px"
+                },
             small.isEmpty(),
         )
         val texts = nodes.filter { !it.text.isNullOrEmpty() }
-        val cut = texts.filter { it.bounds.left < window.left || it.bounds.right > window.right }
-        assertTrue("$name: " + cut.size + " of its " + texts.size + " texts are cut at the window's edge: " + cut.joinToString { it.resourceName ?: "a text" }, cut.isEmpty())
-        probe("$name: " + controls.size + " controls of 48 dp or more (" + target + " px at density " + density + "), " + texts.size + " texts inside the window")
+        val cut = texts.filter { it.bounds.left < window.left || it.bounds.right > window.right }.distinctBy { it.key }
+        val shown = texts.distinctBy { it.key }.size
+        assertTrue("$name: " + cut.size + " of its " + shown + " texts are cut at the window's edge: " + cut.joinToString { it.resourceName ?: "a text" }, cut.isEmpty())
+        probe(
+            "$name: " + controls.size + " controls of 48 dp or more (" + target + " px at density " + density + "), " + shown +
+                " texts inside the window, over " + reads.size + " position(s) of its column",
+        )
     }
+
+    /** Each node of reads once, as its first read has it: for the checks of what a node is or says, not where it lies. */
+    private fun joined(reads: List<List<Capture.NodeFacts>>): List<Capture.NodeFacts> = reads.flatten().distinctBy { it.key }
 
     /**
      * The stop screen names the walk's halt (docs/mobile-apps.md:36; M5 commit U3a4): the screen's own
-     * nodes (Capture.nodesOf), read in-process, hold one node tagged HALT_REASON_TAG (Screens.kt's Stop),
+     * nodes (Capture.nodesThrough, each once), read in-process, hold one node tagged HALT_REASON_TAG (Screens.kt's Stop),
      * and it draws STOP_LINE, the fixed line for STOP_REASON. The line is fixed text, no secret.
      */
     private fun assertStopNamesTheReason() {
-        val reasons = Capture.nodesOf(pkg, Screen.Stop).filter { it.resourceName == HALT_REASON_TAG }.map { it.text }
+        val reasons = joined(Capture.nodesThrough(pkg, Screen.Stop)).filter { it.resourceName == HALT_REASON_TAG }.map { it.text }
         assertEquals("the stop screen's reason line", listOf(STOP_LINE), reasons)
         pass("stop: its one reason line names the walk's halt, a health test's")
     }
@@ -721,10 +744,12 @@ class CaptureTest {
      * mark does not exist there. The nodes are the app's windows' every node, read in-process
      * (Capture.nodes), so no selector holds a secret, from the first read whose roots are the screen's
      * alone (Capture.nodesOf): a read that still shows the screen before is read again, never judged,
-     * and the read judged is judged once.
+     * and the read judged is judged once. reads are the screen's at each position of its column, scrolled
+     * through (Capture.nodesThrough), so every secret text is drawn in view and judged (Q85, M5-84 (a)): each
+     * node is judged once (joined), and one off screen is one in view at none of them.
      */
-    private fun assertSecretsMarked(screen: Screen, model: CeremonyModel, name: String, lines: MutableSet<String>) {
-        val nodes = Capture.nodesOf(pkg, screen)
+    private fun assertSecretsMarked(screen: Screen, model: CeremonyModel, name: String, lines: MutableSet<String>, reads: List<List<Capture.NodeFacts>>) {
+        val nodes = joined(reads)
         assertNamed(screen, nodes, name)
         val secrets = nodes.filter { it.resourceName == SECRET_TAG }
         if (!isProtected(screen)) {
@@ -736,7 +761,8 @@ class CaptureTest {
             assertSecretTextsTagged(screen, model, nodes, name, lines)
         }
         if (secrets.isEmpty()) return
-        val away = secrets.count { !it.visible }
+        val inView = reads.flatten().filter { it.visible }.map { it.key }.toSet()
+        val away = secrets.count { it.key !in inView }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
             probe("$name: ${secrets.size} secret nodes ($away off screen); no data-sensitive mark before Android 14 (API ${Build.VERSION.SDK_INT})")
             return

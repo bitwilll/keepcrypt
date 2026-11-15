@@ -55,12 +55,15 @@ internal object Picker {
     /**
      * The picker's visible texts and controls, for a probe line: its texts (its own labels and the files
      * it lists, none secret: the backup's name and the snapshots' are public) and its resource ids,
-     * shortened.
+     * shortened. The nodes are found and read together, and again if a redraw replaced one first (Ui.fresh):
+     * kc37 (local, M5 commit U3i-a) read a node DocumentsUI had redrawn meanwhile (StaleObjectException).
      */
     fun facts(mode: String): String {
-        val nodes = device.findObjects(By.pkg(PACKAGE))
-        val ids = nodes.mapNotNull { it.resourceName }.distinct().joinToString(",")
-        val texts = nodes.mapNotNull { it.text }.filter { it.isNotBlank() }.distinct().joinToString(" | ")
+        val (ids, texts) = Ui.fresh("the picker's nodes") {
+            val nodes = device.findObjects(By.pkg(PACKAGE))
+            nodes.mapNotNull { it.resourceName }.distinct().joinToString(",") to
+                nodes.mapNotNull { it.text }.filter { it.isNotBlank() }.distinct().joinToString(" | ")
+        }
         val facts = "picker ($mode): texts $texts; ids $ids"
         return if (facts.length > FACTS) facts.substring(0, FACTS) else facts
     }

@@ -17760,12 +17760,18 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       mIsAttached=false (edge widths 60) with navigation_mode 2, so the key was tested there: "the system Back by the
       key: nothing on the dice and the seal card, the check QR back to the seal card (SystemUI: mIsEnabled=false;
       mIsAttached=false; ...)". The swipe branch is not exercised locally. banned-api-check.sh clean, 415 files.
-    - [ ] U3i-a (Q78, Q85, M5-84 (a)): KitScreen moves its actions into the scrolling column, after the content,
+    - [x] U3i-a (Q78, Q85, M5-84 (a)): KitScreen moves its actions into the scrolling column, after the content,
       when they are taller than ACTIONS_SHARE of its height, and back when they fit; a "More below" line
       (tag more_below, KitType.small, a polite live region, never a secret) pinned under the column while it can
       scroll forward. Ui's find, read, tap, touch and the pads' key lookups scroll the node into view first (the
       screen's scroll container, no selector holding a secret); the capture walk scrolls each screen through so
       every secret text is drawn and checked. JVM: the share's arithmetic. Device: every journey green at 1.0.
+      Proof (M5 commit U3i-a, Stage U-6, partial: local; CI at the next push): on kc37 (android-local.sh) journeys
+      FlowTest 7/7, CheckTest 2/2, MixedJourneyTest 1/1, BackupTest 1/1 (age -d hand-off); capture ControlTest 3/3,
+      CaptureTest 7/7 in both APKs (disableSecureWindows not made on the user build), PhoneMotionTest, DoubleTapTest
+      4/4, NativeTest; the 412 dp walk: every control 48 dp or more, every text inside the window; ui JourneyTest 4/4
+      (after Picker.facts read inside Ui.fresh: a picker redraw's StaleObjectException), StopJourneyTest; JVM 229
+      tests, 0 failures (KitTest 2 new). The gate clean, 416 files.
     - [ ] U3n (Q84): minSdk 34 (libs.versions android-min-sdk), every Build.VERSION check below 34 removed; the shipping
       APK drops testTagsAsResourceId (it stays in the test-registry flavour only, or the tests read tags in-process
       through the Compose root's semantics: whichever needs no new dependency); the CI legs API 31 -> API 34
