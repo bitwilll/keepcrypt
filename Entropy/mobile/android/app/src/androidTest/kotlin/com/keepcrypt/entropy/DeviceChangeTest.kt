@@ -29,6 +29,8 @@ import com.keepcrypt.entropy.Ui.tapRolls
 import com.keepcrypt.entropy.Ui.text
 import com.keepcrypt.entropy.Ui.toHome
 import com.keepcrypt.entropy.Ui.touchMargin
+import com.keepcrypt.entropy.ffi.Refusal
+import com.keepcrypt.entropy.screens.SNAPSHOT_NO_REGISTRY_KEY
 import com.keepcrypt.entropy.screens.Screen
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -55,8 +57,9 @@ import kotlin.math.abs
  * keep: KillTest, U2j-b, M5-80). Before each change a touch in the screen's own margin is an input
  * (Ui.touchMargin), since a Protected screen's cover after 30 s without one would change the state. After
  * the changes the ceremony goes on from what they kept: the picked face confirmed and the 50 rolls finished,
- * the rest of the code typed and the check passed, the gate passed and the page's word the vector's. Every
- * setting changed is put back in a finally.
+ * the rest of the code typed and the check passed, the gate passed and the page's word the vector's. A second
+ * test makes two of the changes while the system's file picker is up, and its answer reaches the same activity.
+ * Every setting changed is put back in a finally.
  */
 @RunWith(AndroidJUnit4::class)
 class DeviceChangeTest {
@@ -123,6 +126,71 @@ class DeviceChangeTest {
         } finally {
             device.setOrientationNatural()
             if (autoRotate == "1") device.unfreezeRotation()
+            shellText("settings put system font_scale " + if (fontScale == "null") "1.0" else fontScale)
+            shellText("cmd uimode night " + if (night) "yes" else "no")
+        }
+    }
+
+    /**
+     * A picker's answer survives configuration changes made while the picker is up (U2m, Q77): on Home, offline, Load
+     * registry snapshot opens the system's file picker (DocumentsUI) over the app, which stops MainActivity; the font
+     * scale (1.3) and the night mode change while the picker is up, and reach the app's process there (its
+     * application's configuration shows both before anything is picked, MainActivity still stopped or paused); then
+     * vectors/kcr.json's with-dice-50, put in Downloads by the shell, is picked. The same MainActivity, never destroyed
+     * and with no other instance alive, takes the answer and shows the changes: the snapshot's result names the shipping
+     * app's refusal (it trusts no registry key yet, CheckTest's case), so the file reached the model. A change the
+     * manifest did not handle would recreate the stopped activity at its return, with no saved state to bring a
+     * pending result back (SecureActivity keeps none). Both settings are put back in a finally.
+     */
+    @Test
+    fun aPickerAnswerSurvivesAFontScaleAndANightModeChangeMadeWhileThePickerIsUp() {
+        val fontScale = shellText("settings get system font_scale")
+        val night = shellText("cmd uimode night").contains("yes")
+        try {
+            Capture.whileOffline {
+                Picker.putInDownloads(Checker.WITH_DICE_50_FILE, Checker.bytes(Checker.WITH_DICE_50_KCR))
+                try {
+                    val start = SystemClock.elapsedRealtime()
+                    val activity = toHome()
+                    awaitText("home_snapshot", "No registry snapshot loaded")
+                    tap("load_snapshot")
+                    val picker = Picker.opened()
+                    val app = activity.application
+                    shellText("settings put system font_scale 1.3")
+                    shellText("cmd uimode night " + if (night) "no" else "yes")
+                    await("the font scale and the night mode reached the app's process while the picker is up", 30) {
+                        onMain { app.resources.configuration.let { scaled(1.3f)(it) && night(!night)(it) } }
+                    }
+                    val stage = onMain { ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(activity) }
+                    assertTrue("the picker is up, but MainActivity is $stage", stage == Stage.STOPPED || stage == Stage.PAUSED)
+                    Picker.pick(Checker.WITH_DICE_50_FILE)
+                    on(activity, Screen.Snapshot, START_SECONDS)
+                    awaitText("snapshot_refusal", SNAPSHOT_NO_REGISTRY_KEY)
+                    assertTrue("the picker's answer was not the model's", onMain { activity.model.state.value.snapshotRefusal } == Refusal.NoRegistryKey)
+                    assertTrue("the activity was destroyed", onMain { !activity.isDestroyed })
+                    val others = onMain {
+                        Stage.values().filter { it != Stage.DESTROYED }.sumOf { s ->
+                            ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(s).count { it is MainActivity && it !== activity }
+                        }
+                    }
+                    assertTrue("$others other MainActivity instances alive: a change recreated the activity", others == 0)
+                    await("the changes reached the activity in place", 30) {
+                        onMain { activity.resources.configuration.let { scaled(1.3f)(it) && night(!night)(it) } }
+                    }
+                    device.pressBack()
+                    on(activity, Screen.Home)
+                    pass(
+                        "Load registry snapshot's picker ($picker) up while the font scale went to 1.3 and the night mode " +
+                            "switched, both reaching the app's process with MainActivity $stage; with-dice-50.kcr picked: the " +
+                            "same MainActivity, never destroyed, took the answer (\"" + SNAPSHOT_NO_REGISTRY_KEY + "\") and " +
+                            "shows both changes; the test " + since(start),
+                    )
+                    finish(activity)
+                } finally {
+                    Picker.removeFromDownloads(Checker.WITH_DICE_50_FILE)
+                }
+            }
+        } finally {
             shellText("settings put system font_scale " + if (fontScale == "null") "1.0" else fontScale)
             shellText("cmd uimode night " + if (night) "yes" else "no")
         }
