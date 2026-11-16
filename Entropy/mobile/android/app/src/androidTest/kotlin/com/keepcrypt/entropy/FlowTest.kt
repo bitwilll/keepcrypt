@@ -221,7 +221,9 @@ class FlowTest {
     fun startStaysDisabledOnlineAndTheButtonOpensTheAirplaneModeSettings() {
         val airplane = Capture.globalSetting("airplane_mode_on")
         val wifi = Capture.globalSetting("wifi_on")
-        probe("before the test: airplane_mode_on=$airplane, wifi_on=$wifi")
+        // Wi-Fi turned on at Home, in airplane mode, below: Android 14 and later remember that (Capture.whileOffline).
+        val apm = Capture.wifiApmState()
+        probe("before the test: airplane_mode_on=$airplane, wifi_on=$wifi, wifi_apm_state=$apm")
         try {
             shellText("cmd connectivity airplane-mode disable")
             shellText("cmd wifi set-wifi-enabled enabled")
@@ -259,6 +261,7 @@ class FlowTest {
         } finally {
             shellText("cmd connectivity airplane-mode " + (if (airplane == "1") "enable" else "disable"))
             shellText("cmd wifi set-wifi-enabled " + (if (wifi == "0" || wifi == "3") "disabled" else "enabled"))
+            Capture.restoreWifiApmState(apm)
         }
     }
 

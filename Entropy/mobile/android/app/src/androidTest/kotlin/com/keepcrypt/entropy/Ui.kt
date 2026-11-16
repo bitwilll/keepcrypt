@@ -407,13 +407,17 @@ internal object Ui {
     /**
      * The node tag scrolled into view (inView), waited for up to 10 s; past that the test fails, naming tag (an
      * id, no secret), a probe line first saying what UI Automator's tree holds around tag and what the system
-     * shows (Capture.treeFacts and windowFacts: ids, classes, visibility and windows, never a node's text).
+     * shows (Capture.treeFacts and windowFacts: ids, classes, visibility and windows, never a node's text), and
+     * what the app's model holds (Capture.appFacts: its screen, gate, overlay and notice, never a secret).
      */
     fun reveal(tag: String): AccessibilityNodeInfo {
         try {
             return poll("$tag on the screen, scrolled into view") { inView(tag) }
         } catch (missing: AssertionError) {
-            probe("UI Automator's tree for $tag: " + Capture.treeFacts(Capture.instrumentation.targetContext.packageName, tag) + "; " + Capture.windowFacts())
+            probe(
+                "UI Automator's tree for $tag: " + Capture.treeFacts(Capture.instrumentation.targetContext.packageName, tag) + "; " +
+                    Capture.windowFacts() + "; " + Capture.appFacts(),
+            )
             throw missing
         }
     }

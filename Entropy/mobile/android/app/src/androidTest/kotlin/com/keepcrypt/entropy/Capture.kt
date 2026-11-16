@@ -14,6 +14,8 @@ import android.view.ViewTreeObserver
 import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.BySelector
 import androidx.test.uiautomator.UiDevice
@@ -654,13 +656,23 @@ internal object Capture {
      * block's value, run with the phone offline as Q57 wants it (airplane mode on, then Wi-Fi off,
      * switched through the shell's cmd as the system's own toggles switch them, and read back from
      * the settings before block runs); then both settings are put back as they were, whatever block
-     * did with them (LifecycleTest, CaptureTest and FlowTest, group 15).
+     * did with them (LifecycleTest, CaptureTest and FlowTest, group 15). A block that fails prints a probe line
+     * first, with the phone's offline facts and the app's (offlineFacts, appFacts), so a failure says whether the
+     * phone was still offline and what the app showed (runs 43771972846 and 43836938055, API 34: a pad's
+     * Previous keys gone from the BIP39 entry, and the dice's Done not starting the seed, each with no record of
+     * either; a test earlier in each job had turned Wi-Fi on in airplane mode). Since Android 14 (API 34) a phone
+     * on which Wi-Fi was turned on in airplane mode remembers it (wifi_apm_state 1) and keeps Wi-Fi on the next
+     * time airplane mode comes on, so a test that does so (FlowTest's Wi-Fi on during the dice, LifecycleTest's
+     * during a start) would leave every later block a phone that turns Wi-Fi on by itself: the block sets it to 0
+     * first, as on a phone where that never happened, and puts it back as it was after (wifiApmState).
      */
     fun <T> whileOffline(block: () -> T): T {
         val airplane = shellText("settings get global airplane_mode_on")
         val wifi = shellText("settings get global wifi_on")
-        probe("before the offline block: airplane_mode_on=$airplane, wifi_on=$wifi")
+        val apm = wifiApmState()
+        probe("before the offline block: airplane_mode_on=$airplane, wifi_on=$wifi, wifi_apm_state=$apm")
         return try {
+            shellText("settings put secure $WIFI_APM_STATE 0")
             shellText("cmd connectivity airplane-mode enable")
             shellText("cmd wifi set-wifi-enabled disabled")
             val end = SystemClock.elapsedRealtime() + 30_000
@@ -668,15 +680,73 @@ internal object Capture {
                 if (SystemClock.elapsedRealtime() > end) fail("timed out: the phone going offline")
                 SystemClock.sleep(100)
             }
-            block()
+            try {
+                block()
+            } catch (failure: Throwable) {
+                probe("the offline block failed: " + offlineFacts() + "; " + appFacts())
+                throw failure
+            }
         } finally {
             shellText("cmd connectivity airplane-mode " + (if (airplane == "1") "enable" else "disable"))
             shellText("cmd wifi set-wifi-enabled " + (if (wifi == "0" || wifi == "3") "disabled" else "enabled"))
+            restoreWifiApmState(apm)
         }
+    }
+
+    /** The secure setting in which Android 14 and later remember that Wi-Fi was turned on in airplane mode. */
+    const val WIFI_APM_STATE = "wifi_apm_state"
+
+    /** wifi_apm_state as the shell reads it: "null" when the phone has none. */
+    fun wifiApmState(): String = shellText("settings get secure $WIFI_APM_STATE")
+
+    /** wifi_apm_state put back to saved, wifiApmState's reading of it: deleted when there was none. */
+    fun restoreWifiApmState(saved: String) {
+        shellText(if (saved == "null") "settings delete secure $WIFI_APM_STATE" else "settings put secure $WIFI_APM_STATE $saved")
     }
 
     /** A global setting as the shell reads it. */
     fun globalSetting(name: String): String = shellText("settings get global " + name)
+
+    /**
+     * The phone's offline facts as the system holds them now, for a failure's probe line: the two global settings the
+     * app's offline rule reads (airplane_mode_on, wifi_on); the secure setting in which Android remembers that Wi-Fi
+     * was turned on in airplane mode (wifi_apm_state, "null" on an image without it); and the last WIFI_HISTORY lines
+     * of dumpsys wifi that name a Wi-Fi toggle or airplane mode, which say who switched Wi-Fi and when. System facts
+     * only: packages, states and times.
+     */
+    fun offlineFacts(): String {
+        val history = shellText("dumpsys wifi").lines().map { it.trim().take(WIFI_LINE) }
+            .filter { line -> WIFI_WORDS.any { line.contains(it, ignoreCase = true) } }
+            .takeLast(WIFI_HISTORY)
+        return "airplane_mode_on=" + globalSetting("airplane_mode_on") + ", wifi_on=" + globalSetting("wifi_on") +
+            ", wifi_apm_state=" + wifiApmState() +
+            "; dumpsys wifi: " + history.joinToString(" | ").ifEmpty { "no toggle line" }
+    }
+
+    /** offlineFacts' words of a Wi-Fi toggle or airplane mode in dumpsys wifi, its count of such lines, and its cut of each. */
+    private val WIFI_WORDS = listOf("setWifiEnabled", "airplane", "apm")
+    private const val WIFI_HISTORY = 12
+    private const val WIFI_LINE = 200
+
+    /**
+     * What a MainActivity's model holds, for a failure's probe line: the activity's stage (the first of resumed,
+     * paused, started and stopped that holds one), its screen, page, whether the privacy gate and an overlay are up,
+     * its notice, and what it read of airplane mode and Wi-Fi. Stage and enum names, a number and flags: no secret.
+     */
+    fun appFacts(): String = onMain {
+        val monitor = ActivityLifecycleMonitorRegistry.getInstance()
+        val found = listOf(Stage.RESUMED, Stage.PAUSED, Stage.STARTED, Stage.STOPPED).firstNotNullOfOrNull { stage ->
+            monitor.getActivitiesInStage(stage).filterIsInstance<MainActivity>().firstOrNull()?.let { stage to it }
+        }
+        if (found == null) {
+            "the app: no MainActivity resumed, paused, started or stopped"
+        } else {
+            val state = found.second.model.state.value
+            "the app: " + found.first + ", screen " + state.screen + ", page " + state.page + ", gate " + state.gate +
+                ", overlay " + state.overlay + ", notice " + state.notice + ", airplane mode " + state.airplaneMode +
+                ", Wi-Fi off " + state.wifiOff
+        }
+    }
 
     /** The system's permission prompt: the permission controller's window (AOSP's on these images, Google's elsewhere). */
     val PERMISSION_PROMPT: BySelector = By.pkg(Pattern.compile("com[.](google[.])?android[.]permissioncontroller"))

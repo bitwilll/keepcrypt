@@ -16109,6 +16109,35 @@ now prints, for each lit frame, its three most frequent colours in the window wi
 colours it holds, and how many pixels outside the window (the system bars) are lit (lit_source; its selftest 53): a
 fill and drawn content then read differently. The next repeat is diagnosed from those lines.
 
+**Open item (2026-11-16): API 34 offline blocks that lose the session.** Two Android runs, both on API 34 alone:
+43771972846 (at ce8c807a) and 43836938055 (at 9bcd8e6c) failed FlowTest's watch-only journey at FlowTest.kt:610 (the
+BIP39 entry's Previous keys gone from the screen for 10 s, after a tap of Next keys found it), and 43836938055 failed
+LifecycleTest's backup scrypt case (the dice's Done, called in-process, did not reach Working). Neither job kept the
+app's screen or the phone's settings at the failure. In each job a test earlier in the order had turned Wi-Fi on in
+airplane mode on purpose (FlowTest's Wi-Fi during the dice; LifecycleTest's wifiComingOnDuringAStartDiscardsIt, which
+read wifi_on=2). Since Android 14 a phone remembers that (the secure setting wifi_apm_state) and keeps Wi-Fi on the
+next time airplane mode comes on, and nothing reset it. Wi-Fi coming back during a later block would make the app
+discard the session to Go offline, as it must, which fits both failures. That guess is not shown, and kc34 weakens it.
+kc34 (2026-11-16) is a local AVD on the API 34 default arm64 image (CI's API 34 image type, arm64 for this Mac; its
+zip's SHA-1 checked against Google's sys-img2-3.xml), booted as android-local.sh boots kc37, no route out, with CI's
+android-emulator.sh --booted 34. What it showed:
+- The shell's own sequence, replayed with no app (airplane mode on, Wi-Fi off; Wi-Fi on; put back; airplane mode on and
+  Wi-Fi off again, in either order and at once): wifi_apm_state goes to 1 when Wi-Fi comes on in airplane mode and stays
+  1 after the restore, but Wi-Fi stayed off for 60 s in every order.
+- The journeys and registry parts passed in full on kc34, both with the reset below and without it (the no-reset build:
+  the same diagnostics, the reset lines alone left out). Without it, blocks began with wifi_apm_state=1, and one began
+  with wifi_on=2 while airplane mode was off.
+So the leak is real and the reset below is kept as hygiene, but neither CI failure has been reproduced and its cause
+is still unknown. The changes are in the test harness alone; no check was relaxed and the app did not change:
+- Capture.whileOffline sets wifi_apm_state to 0 before airplane mode comes on, and puts it back as it was after.
+  FlowTest's Go-offline test, which turns Wi-Fi on at Home in airplane mode outside a block, puts it back too.
+- Each block's "before" probe line now names wifi_apm_state, so every run shows whether a test left it set.
+- A block that fails prints the phone's offline facts and the app's state first (Capture.offlineFacts and appFacts):
+  airplane_mode_on, wifi_on, wifi_apm_state, dumpsys wifi's last toggle lines, and the app's stage, screen, page,
+  gate, overlay, notice and what it read of the radios. Ui.reveal's failure probe adds appFacts as well.
+A repeat is diagnosed from those lines, never rerun to green, and the M5 gate report names this item until an API 34
+run shows the cause.
+
 **Open item (2026-10-21): intermittent recents failures on API 36.** The Android run 39556542012 (at 8c9eca8, which
 changed only the workflow's timeout and todo.md) failed on API 36 while the same tests passed at 89cf334: ControlTest's
 `theRecentsThumbnailShowsTheControlsScreen` (the leg's first recents key after boot: no overview_panel within 10 s,
