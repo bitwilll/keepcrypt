@@ -2,6 +2,7 @@ package com.keepcrypt.entropy
 
 import android.graphics.Rect
 import android.os.SystemClock
+import android.view.Choreographer
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -11,7 +12,6 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
-import androidx.test.uiautomator.UiSelector
 import androidx.test.uiautomator.Until
 import com.keepcrypt.entropy.Capture.launch
 import com.keepcrypt.entropy.Capture.onMain
@@ -34,6 +34,8 @@ import com.keepcrypt.entropy.screens.asciiPage
 import com.keepcrypt.entropy.screens.keyLabel
 import com.keepcrypt.entropy.screens.screenId
 import com.keepcrypt.entropy.screens.shownView
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 import java.util.regex.Pattern
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -205,19 +207,48 @@ internal object Ui {
     fun <T> read(tag: String, read: (UiObject2) -> T): T = fresh(tag) { read(find(tag)) }
 
     /**
-     * Taps the control tag once it is on screen (find's 10 s), through a selector UI Automator resolves at
-     * the click: a UiObject2 found just before Compose redraws the screen goes stale and its click throws
-     * (run 39646201443: StaleObjectException on New seed right after Back returned to Home). The click's
-     * boolean says only whether an accessibility event followed it in time, which Compose's clicks do not
-     * always send (run 39649809912: false on taps that moved the screen on), so it is not read; every tap
-     * here is followed by a check of the screen it leads to, which is the proof it landed, and a control
-     * gone at the click throws UiObjectNotFoundException. The click goes to the bounds UI Automator has for
-     * the node, so a tap comes after on() has seen its screen, and no control's id is a screen's id.
+     * Taps the control tag once it is on screen (find's 10 s): two frames drawn first (framesDrawn), so the
+     * screen holds whatever the model last changed, then the control read afresh from the app (inView: its
+     * node scrolled into view and shown whole, refreshed, visible), and a touch at the middle of the part of
+     * it its window shows (touch, which logs no point). Not through UI Automator's selector, whose click goes
+     * to the bounds the accessibility cache holds: a state the test changed in-process just before (typed or
+     * rolled through the model) can be drawn after that cache was read, and the click then lands where the
+     * control was or presses it as it was. Run 43879000831 (at 0c4e4fc8) showed both: on API 34, Next keys
+     * after a passphrase typed in-process pressed the BIP39 entry's Back (the app on its question, no notice,
+     * still offline); on API 36, the dice's Done after 50 rolls confirmed in-process left the app on the dice
+     * (no notice, offline). Before the touch, the press guard must admit it (guardOpen, on the resumed
+     * MainActivity), as a person's press comes once the screen is seen: a gate reached through gate(), not
+     * on(), is touched no sooner than the guard's 300 ms after it was composed (on kc34, API 34, a touch made
+     * as soon as the gate was read was refused at every privacy gate; UI Automator's slower click had been
+     * late enough). A disabled control is touched as any other (a press that must do nothing is one,
+     * Ui.stays). Every tap here is followed by a check of the screen it leads to, which is the proof it
+     * landed; a tap comes after on() or gate() has seen its screen, and no control's id is a screen's id.
      */
     fun tap(tag: String) {
         find(tag)
-        device.findObject(UiSelector().resourceId(tag)).click()
+        framesDrawn()
         device.waitForIdle()
+        guardOpen(resumedActivity(), tag)
+        touch(poll("$tag on the screen, to touch") { inView(tag)?.takeIf { it.refresh() }?.let(::shownBounds) })
+        device.waitForIdle()
+    }
+
+    /** The resumed MainActivity, which every tap presses on; none fails the test. */
+    private fun resumedActivity(): MainActivity = onMain {
+        ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<MainActivity>().singleOrNull()
+    } ?: throw AssertionError("no single resumed MainActivity to tap on")
+
+    /**
+     * Two frames of the app's main thread's Choreographer run, each callback posted on the main thread
+     * and waited for up to 10 s: Compose recomposes and lays out in the frame after a state change, so
+     * after two the app's nodes show what the model holds now.
+     */
+    fun framesDrawn() {
+        repeat(2) {
+            val ran = CountDownLatch(1)
+            onMain { Choreographer.getInstance().postFrameCallback { ran.countDown() } }
+            assertTrue("no frame within 10 s", ran.await(FIND_MS, TimeUnit.MILLISECONDS))
+        }
     }
 
     fun text(tag: String): String = read(tag) { it.text }
@@ -529,7 +560,7 @@ internal object Ui {
         val event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0)
         event.source = InputDevice.SOURCE_TOUCHSCREEN
         try {
-            assertTrue("a touch on the pad was not injected", Capture.instrumentation.uiAutomation.injectInputEvent(event, true))
+            assertTrue("a touch was not injected", Capture.instrumentation.uiAutomation.injectInputEvent(event, true))
         } finally {
             event.recycle()
         }
@@ -591,9 +622,12 @@ internal object Ui {
      * the window's, so a key the window clips is touched where it is drawn; touch, which logs no point: a
      * click's logged point would name the key on the pad's fixed grid), then waits in-process, for up to
      * 10 s, until entry, the model's pad entry, holds length keys, so the next touch is on the pad as this
-     * one left it.
+     * one left it. The press guard admits the touch first (guardOpen), as Ui.tap's: the first key after a
+     * gate is on a view the guard holds closed for 300 ms (kc34, API 34: JourneyTest's backup check entry's
+     * first letter, refused); a key after a key is on the same view, which the guard keeps open.
      */
     private fun touchKey(activity: MainActivity, keys: () -> List<AccessibilityNodeInfo>, index: Int, entry: (CeremonyModel) -> PadEntry, length: Int) {
+        guardOpen(activity, "the pad")
         val bounds = poll("the pad's key, visible") { keys()[index].takeIf { it.refresh() }?.let(::shownBounds) }
         touch(bounds)
         poll("the pad's touch typed (key " + length + ")") { onMain { entry(activity.model).length == length }.takeIf { it } }

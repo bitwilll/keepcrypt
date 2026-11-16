@@ -16137,6 +16137,38 @@ is still unknown. The changes are in the test harness alone; no check was relaxe
   gate, overlay, notice and what it read of the radios. Ui.reveal's failure probe adds appFacts as well.
 A repeat is diagnosed from those lines, never rerun to green, and the M5 gate report names this item until an API 34
 run shows the cause.
+Cause found (run 43879000831, at 0c4e4fc8, with those lines): not the network. API 34's journeys job failed FlowTest
+at the same step, and its probe read "the app: RESUMED, screen Bip39Ask, ... notice null, airplane mode true, Wi-Fi off
+true": the tap on Next keys, made just after the passphrase was typed in-process, had pressed the entry's Back. API 36's
+journeys job failed BackupTest ("the app shows check_prompt" timed out) with "screen Dice, ... notice null", the phone
+offline: the tap on the dice's Done, just after 50 rolls confirmed in-process, did nothing. LifecycleTest passed on both
+levels. Both taps followed a state changed in-process, and Ui.tap clicked through UI Automator's selector, whose click
+goes to the bounds the accessibility cache holds, which can predate the redraw: the click then lands where the control
+was, or presses it as it was. Fix (the test helper alone): Ui.tap waits for two frames of the app's Choreographer
+(framesDrawn), reads the control afresh from the app's own nodes (inView: scrolled into view, shown whole, refreshed,
+visible), and touches the middle of its shown bounds (touch, which logs no point), as the pad keys are touched. The
+wifi_apm_state reset stays as hygiene (the leak is real). A first version touched as soon as the control was read,
+and kc34 refused it at every privacy gate: gate() reaches a gate without on(), so nothing waited for the press guard
+(300 ms after a view is composed; the in-process tree sees a screen at once, and UI Automator's slower click had been
+late enough). Ui.tap and the pad's touchKey now wait for the guard to admit the touch (guardOpen on the resumed
+MainActivity), as a person presses once the screen is seen; a key after a key is on the same view, so it waits for
+nothing. Proof (local, 2026-11-16, the five APKs built and signed as CI's job does): kc34 (API 34) ran every part on
+its own boot, as CI's jobs do, and all passed: journeys (FlowTest 7, CheckTest 2, MixedJourneyTest 1, BackupTest 1 with
+its age -d hand-off), ui (JourneyTest 4, StopJourneyTest), registry (all 11 runs) and capture (ControlTest 3, CaptureTest
+11 in each APK, PhoneMotionTest 1, DoubleTapTest 4, the first frames black). kc37's whole run (every part on one boot)
+passed 20 of 22 runs; the 2 are the whole-run item below, which this change does not touch. CI's proof: below, once
+green.
+
+**Open item (2026-11-16): two failures of android-local.sh's whole run alone.** On one boot the ui part runs before the
+registry part, and two tests leave state that a later one trips on (found by the Stage U-6 workflow, seen again on kc37
+today); a part on its own boot, as android-local.sh --part and CI's jobs run it, passes. (1) JourneyTest grants CAMERA
+(Ui.grantCamera, pm grant) and never revokes it; ScanRefusedTest's reset() then runs pm revoke inside the app's process,
+and Android kills a process whose granted runtime permission is revoked: "Process crashed.", 0 of 1. (2) BackupTest leaves
+keepcrypt-backup-copy.txt in Downloads; JourneyTest's Picker.save reads DocumentsUI's name field once and read
+keepcrypt-backup-copy.txt for the app's suggested name (the facts probe moments later listed the right one; why
+DocumentsUI briefly shows the newest file's name is not proven). Neither is a defect of the app. To fix: each run
+starts as installed (CAMERA revoked from the host between instrumented runs, when no app process holds it) and each
+test leaves Downloads as it found it.
 
 **Open item (2026-10-21): intermittent recents failures on API 36.** The Android run 39556542012 (at 8c9eca8, which
 changed only the workflow's timeout and todo.md) failed on API 36 while the same tests passed at 89cf334: ControlTest's
