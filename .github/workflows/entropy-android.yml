@@ -682,6 +682,11 @@ jobs:
     # measures it whole; the 16 KB leg stays on API 36's ps16k image, after API 34's capture part.
     # U3i-b (Q78, M5-84 (d)) adds CaptureTest's third walk, the layout at font scale 2.0 (on both APKs): API 36's
     # capture job is measured at 40 (API 34's stays at the ceiling).
+    # Stage U-6's tap (open item 2026-11-16: a touch on the control read afresh from the app, not UI Automator's
+    # click on its cached bounds) cut every job that taps. Runs 43904980358 at e60e5444 and 43917696008 at 012aa5e7
+    # measured all eight whole; the slower of the two, plus 25%, rounded up: API 34 capture then 16 KB 1050 s, 22;
+    # journeys 420 s, 9; ui 370 s, 8; registry 564 s, 12; API 36 capture 1036 s, 22; journeys 432 s, 9; ui 442 s,
+    # 10; registry (IdleClockTest's ten real minutes included) 1200 s, 25.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
@@ -693,35 +698,35 @@ jobs:
           - api: '34'
             part: capture
             legs: API 34, capture, then 16 KB pages
-            timeout: 90
+            timeout: 22
           - api: '34'
             part: journeys
             legs: API 34, journeys
-            timeout: 90
+            timeout: 9
           - api: '34'
             part: ui
             legs: API 34, journeys through the UI alone
-            timeout: 90
+            timeout: 8
           - api: '34'
             part: registry
             legs: API 34, test registry and edges
-            timeout: 90
+            timeout: 12
           - api: '36'
             part: capture
             legs: API 36, capture
-            timeout: 40
+            timeout: 22
           - api: '36'
             part: journeys
             legs: API 36, journeys
-            timeout: 26
+            timeout: 9
           - api: '36'
             part: ui
             legs: API 36, journeys through the UI alone
-            timeout: 27
+            timeout: 10
           - api: '36'
             part: registry
             legs: API 36, test registry and edges
-            timeout: 40
+            timeout: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

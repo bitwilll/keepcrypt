@@ -16156,8 +16156,15 @@ nothing. Proof (local, 2026-11-16, the five APKs built and signed as CI's job do
 its own boot, as CI's jobs do, and all passed: journeys (FlowTest 7, CheckTest 2, MixedJourneyTest 1, BackupTest 1 with
 its age -d hand-off), ui (JourneyTest 4, StopJourneyTest), registry (all 11 runs) and capture (ControlTest 3, CaptureTest
 11 in each APK, PhoneMotionTest 1, DoubleTapTest 4, the first frames black). kc37's whole run (every part on one boot)
-passed 20 of 22 runs; the 2 are the whole-run item below, which this change does not touch. CI's proof: below, once
-green.
+passed 20 of 22 runs; the 2 are the whole-run item below, which this change does not touch. CI's proof: Entropy
+Android 43904980358 at e60e5444, every job green (both journeys jobs: FlowTest 7, CheckTest 2, MixedJourneyTest 1,
+BackupTest 1 with its hand-off; both registry jobs 11 runs; both capture jobs; both UI-alone jobs), Entropy CI and
+Entropy Pi image green.
+Budgets (M5-30): the new tap cut every job that taps, about threefold in the ui jobs, so the eight emulator jobs are
+budgeted from the two runs with it (43904980358 at e60e5444, 43917696008 at 012aa5e7, every emulator job green in
+both), the slower whole job plus 25%, rounded up: API 34 capture then 16 KB 22 (1050 s), journeys 9 (420 s), ui 8
+(370 s), registry 12 (564 s); API 36 capture 22 (1036 s), journeys 9 (432 s), ui 10 (442 s), registry 25 (1200 s).
+API 34's four leave the 90-minute ceiling U3n gave them; API 36's were 40, 26, 27 and 40.
 
 **Open item (2026-11-16): two failures of android-local.sh's whole run alone.** On one boot the ui part runs before the
 registry part, and two tests leave state that a later one trips on (found by the Stage U-6 workflow, seen again on kc37
@@ -16173,7 +16180,12 @@ defect of the app. Fixed (2026-11-16, the test harness and the leg script alone)
 - Picker.save matched the name field by the id android:id/title alone, which DocumentsUI's list of the folder's files
   gives each listed file's name too: with Downloads holding a file, the first listed file was read as the name (the
   first guess, a field that briefly shows another name, was wrong: a 10 s wait for the right text still read
-  BackupTest's backup's name while the field held the app's). The field is now the EditText with that id.
+  BackupTest's backup's name while the field held the app's). The field is now the node with that id inside
+  DocumentsUI's save panel (container_save; listed files' names sit under dir_list: kc34's dump). The first form of
+  this fix named the widget class, which KtInput refuses in every scope (Entropy CI 43917696155 at 012aa5e7: gates
+  and canaries red on its 3 hits in Picker.kt); the gate stays as it is.
+  Locally: banned-api-check clean (419 files), --workflows clean, canaries.sh all 94 checks, android-emulator
+  --selftest 64 passed; kc34 journeys exit 0, BackupTest's probe naming the field as core's suggested name.
 - BackupTest removes its .txt copy once refused (its backup stays: the age -d hand-off reads it).
 
 **Open item (2026-10-21): intermittent recents failures on API 36.** The Android run 39556542012 (at 8c9eca8, which
@@ -17375,7 +17387,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   AwayTest gathers SystemUI's back gesture facts and tries a UiAutomation swipe before it fails. Locally: the screens'
   JVM tests green (PadsTest 9 of 9), both APKs and both test APKs built by the strict Gradle run, no warning;
   banned-api-check.sh clean, 413 files.
-- [ ] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
+- [x] U2. Edge cases, each with a JVM test and, where the device matters, an emulator test: Back and a double tap on
   every screen; a rotation and a configuration change on every screen; going online at every stage; leaving the app at
   every stage (Public: 59 s kept and 61 s wiped; Protected and Working: at once); the process killed at every stage,
   leaving the slot empty and the app at First launch; the idle warning and wipe (a fake clock on the JVM, one emulator
@@ -17800,7 +17812,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
         createdWith names any keys it holds, never a value). The part's step 7 still finds nothing persisted.
       - Verification: the script's selftest cases for the kills and the new runs (android-emulator.sh, and
         android-local.sh's run counts), both selftests, the gate, the strict build, and CI's registry jobs.
-    - [ ] U2k: leaving by other ways than Home (AwayTest, registry part after DeviceChangeTest, M5-81): the screen
+    - [x] U2k: leaving by other ways than Home (AwayTest, registry part after DeviceChangeTest, M5-81): the screen
       turning off (KEYCODE_SLEEP; then KEYCODE_WAKEUP and wm dismiss-keyguard) on a words page, a Protected screen,
       discarded at once (Home with the Left notice while offline, Q81 and U3k; the page wiped, the slot at home), and on the dice, a Public
       screen, covered and kept (5 s off, back under the cover with its 10 rolls); the back gesture (gesture navigation
@@ -17810,21 +17822,37 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       swipe branch is exercised nowhere yet and a tick claims the Back key alone) doing what the model's back does:
       nothing on the dice (its rolls kept) and the seal card, the check QR back to the seal card (BackTest's JVM table
       holds every screen).
-    - [ ] U2l: the camera denied twice and the idle rules on the real clock (registry part after AwayTest, M5-82):
+      Proof (CI, Entropy Android 43904980358 at e60e5444, every job green; AwayTest 3 tests on each level's registry job): API 34 and API 36 each "the screen off on a
+      words page: discarded at once (by the stop), the page wiped, the session gone; back on, Home says why" and "the
+      screen off on the dice: covered and kept, back on after 5554 ms (API 36: 5623 ms) under the cover with its 10
+      rolls"; "the system Back by the key: nothing on the dice and the seal card, the check QR back to the seal card",
+      SystemUI's EdgeBackGestureHandler reading mIsEnabled=false and mIsAttached=false on both images. So this tick
+      claims the Back key alone: the swipe branch is exercised nowhere (the gate report names it).
+    - [x] U2l: the camera denied twice and the idle rules on the real clock (registry part after AwayTest, M5-82):
       ScanRefusedTest: CAMERA revoked and its user flags cleared first (and after, in a finally); the check QR's Scan
       and the system's prompt denied: SCAN_REFUSED; Back, Scan, the second prompt denied (Android keeps it): SCAN_REFUSED;
       a third Scan: no prompt, refused at once; the same check QR throughout, Type code reaching the code entry.
       IdleClockTest, on API 36 alone (it passes at once elsewhere, saying so): a words page left untouched, the cover
       at 30 s, the warning at 9 minutes and the wipe at 10 from the last input, each within 2.5 s on the model's
       clock, the wipe on Home with the Idle notice (Q81 and U3k: the phone is offline), the slot at home.
-    - [ ] U3h: the layout check, in two parts:
+      Proof (CI, Entropy Android 43904980358 at e60e5444, every job green): ScanRefusedTest on both levels: "the camera denied twice: SCAN_REFUSED each time, a third Scan
+      refused with no prompt; the same check QR, Type code: the code entry". IdleClockTest on API 36: "idle on a words
+      page on the real clock: covered at 30266 ms, warned at 540433 ms, wiped at 600381 ms (Home, Idle), the slot at
+      home; under the cover (10 nodes) and the warning (10) nothing of the page in the accessibility tree"; on API 34
+      "not made at API 34" (U2l's one run is API 36's).
+    - [x] U3h: the layout check, in two parts:
       - [x] U3h-a (JVM): KitColorsTest holds every pair the screens draw at WCAG's 4.5:1 (white, muted and warning on
         black; white on the stop red; the strip's black on the warning yellow), with the ratio checked on known
         colours; DocsTextsTest pins the two texts docs/mobile-apps.md quotes from the Android app, SAFE_IF_EITHER and
         the gate's action (GATE_ACTION, now a constant), word for word in quotes.
-      - [ ] U3h-b (device): CaptureTest's walk reads every node's bounds in-process at CI's window (720x1280, density
+      - [x] U3h-b (device): CaptureTest's walk reads every node's bounds in-process at CI's window (720x1280, density
         320) and on a 412 dp phone (wm size 1080x2424 and wm density 420, put back in a finally): no text node outside
         its screen's window or cut by its parent, each control's touch target at least 48 dp.
+        Proof (CI, Entropy Android 43904980358 at e60e5444, every job green; CaptureTest 11 tests in both APKs on each level's capture job): the walk at CI's window
+        checks every screen as it goes (assertLaidOut, CaptureTest.kt:741), and on API 34 and API 36 each "every screen
+        laid out on a 412 dp phone (1080x2424 at density 420): controls of 48 dp or more, each reached by scrolling,
+        texts inside the window, none cut by its parent or overflowing its box" and the same "at font scale 2.0 at CI's
+        window" (U3i-b).
     - Verification: as U-4's (the instrumented sources built, the gate, every script selftest that reads a changed
       script, three reviews at the stage's head, CI read once per push).
   - U-5, U2 on the device and U3's layout check: U2h (recreation), U2i (double taps), U2j (the process killed at a

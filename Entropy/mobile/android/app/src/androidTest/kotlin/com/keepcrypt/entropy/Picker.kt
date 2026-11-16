@@ -1,7 +1,6 @@
 package com.keepcrypt.entropy
 
 import android.os.ParcelFileDescriptor
-import android.widget.EditText
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
@@ -23,6 +22,9 @@ import org.junit.Assert.assertTrue
 internal object Picker {
     /** The system's file picker: AOSP's DocumentsUI or Google's. */
     val PACKAGE: Pattern = Pattern.compile("com[.](google[.])?android[.]documentsui")
+
+    /** The create-document picker's save panel, which holds its name field and Save (its package's own id). */
+    private val SAVE_PANEL: Pattern = Pattern.compile("com[.](google[.])?android[.]documentsui:id/container_save")
 
     /** Where the picker's Downloads root keeps its files, as the shell reads them. */
     const val DOWNLOADS = "/sdcard/Download/"
@@ -97,13 +99,14 @@ internal object Picker {
     fun save(name: String): String {
         val creator = opened()
         // The name field's text read once, from a node found and read together (and again if a redraw
-        // replaced it first), before facts' own searches wait for idle. The field is the EditText with the id
-        // android:id/title: DocumentsUI's list of the folder's files gives each file's name that id as well, so
-        // the id alone matched the first file listed once Downloads held one (on kc37's whole run, BackupTest's
-        // keepcrypt-backup-copy.txt, then its backup, read as the name, while the field held name: open item
-        // 2026-11-16).
+        // replaced it first), before facts' own searches wait for idle. The field is the node with the id
+        // android:id/title inside the save panel (DocumentsUI's container_save): its list of the folder's files
+        // gives each file's name that id as well, under dir_list, so the id alone matched the first file listed
+        // once Downloads held one (on kc37's whole run, BackupTest's keepcrypt-backup-copy.txt, then its backup,
+        // read as the name, while the field held name: open item 2026-11-16). The panel, not the widget class,
+        // picks it out: the banned-API gate's KtInput refuses the class names of text input in every scope.
         val title = Ui.fresh("the picker's name field") {
-            val field = device.wait(Until.findObject(By.pkg(PACKAGE).res("android:id/title").clazz(EditText::class.java)), 10_000)
+            val field = device.wait(Until.findObject(By.pkg(PACKAGE).res(SAVE_PANEL)), 10_000)?.findObject(By.res("android:id/title"))
                 ?: throw AssertionError("the picker shows no name field (its facts are the probe line before this)").also { probe(facts("create")) }
             field.text
         }
