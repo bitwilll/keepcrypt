@@ -9,6 +9,7 @@ import android.graphics.Rect
 import android.os.Bundle
 import android.os.ParcelFileDescriptor
 import android.os.SystemClock
+import android.view.View
 import android.view.ViewTreeObserver
 import android.view.WindowInsets
 import android.view.accessibility.AccessibilityNodeInfo
@@ -19,6 +20,8 @@ import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import com.keepcrypt.entropy.ffi.WordPage
+import com.keepcrypt.entropy.screens.MORE_BELOW
+import com.keepcrypt.entropy.screens.MORE_BELOW_TAG
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.faceLabel
 import com.keepcrypt.entropy.screens.screenId
@@ -508,20 +511,44 @@ internal object Capture {
      * (Ui.showWhole, the least scroll that shows it) and the screen read again, so a page starts where no node
      * is cut and every node is read whole at one position, unless it is taller than the column. A screen whose
      * column does not scroll gives one read. atEach runs right after each read, at its position (CaptureTest's
-     * in-process layout read, Layout.read). The reads, top first; nothing is printed.
+     * in-process layout read, Layout.read). At each position the "More below" line (Kit.kt's MORE_BELOW, Q85) is
+     * there exactly when the column scrolls on from it (assertMoreBelow). The reads, top first; nothing is printed.
      */
     fun nodesThrough(pkg: String, screen: Screen, atEach: () -> Unit = {}): List<List<NodeFacts>> {
         var pages = 0
         while (pages++ < Ui.PAGES && Ui.scrollPage(forward = false)) continue
         val reads = ArrayList<List<NodeFacts>>()
         while (true) {
-            reads.add(nodesOf(pkg, screen))
+            val read = nodesOf(pkg, screen)
+            reads.add(read)
             atEach()
             assertTrue(screenId(screen) + "'s column was not scrolled through in " + READS + " reads", reads.size < READS)
             val cut = Ui.cutAtTheBottom()
-            if (cut != null && Ui.showWhole(cut)) continue
-            if (!Ui.scrollPage(forward = true)) return reads
+            val more = if (cut != null && Ui.showWhole(cut)) true else Ui.scrollPage(forward = true)
+            assertMoreBelow(read, more, screen)
+            if (!more) return reads
         }
+    }
+
+    /**
+     * The "More below" line in read, a position of screen's column (Q85): while the column scrolls on from there
+     * (more: the scroll forward, or the least scroll that shows a cut node whole, moved it), one node tagged
+     * MORE_BELOW_TAG showing MORE_BELOW, a polite live region (TalkBack reads it as it appears); at the column's
+     * end, or on a screen whose column does not scroll, none.
+     */
+    private fun assertMoreBelow(read: List<NodeFacts>, more: Boolean, screen: Screen) {
+        val lines = read.filter { it.resourceName == MORE_BELOW_TAG }
+        if (!more) {
+            assertTrue(screenId(screen) + ": a \"More below\" line where its column scrolls no further", lines.isEmpty())
+            return
+        }
+        assertEquals(screenId(screen) + ": the \"More below\" lines where its column scrolls on", 1, lines.size)
+        assertEquals(screenId(screen) + ": the \"More below\" line's text", MORE_BELOW, lines.single().text)
+        assertEquals(
+            screenId(screen) + ": the \"More below\" line is not a polite live region",
+            View.ACCESSIBILITY_LIVE_REGION_POLITE,
+            lines.single().key.liveRegion,
+        )
     }
 
     /** More reads than nodesThrough takes of any screen here. */
