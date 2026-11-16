@@ -41,8 +41,9 @@ import org.junit.runner.RunWith
  * (lead decision M5-72 (b)); and a second start reaches the running activity (U2a). In each
  * the main thread never waits (the script's judge finds no not-responding window) and a discarded
  * session is gone: afterwards the slot is at home, where only an empty slot takes the self-test (a
- * session there would make that call halt), and the screen is the start screen, Go offline once the
- * start-up self-test has passed (group 15), saying why where the plan says so. And the ViewModel's
+ * session there would make that call halt), and the screen is the start screen once the start-up
+ * self-test has passed (Ui.discardedTo, Q81: Home while the phone is still offline, Go offline once it
+ * went online), saying why where the plan says so. And the ViewModel's
  * end, when the activity finishes, empties the slot (CeremonyHolder's onCleared calls wipeAll). The
  * ceremonies are vectors/kcr.json's public gate seed dice-50-words12, driven through Core on this
  * thread while the model runs nothing, as NativeTest drives it, or through the model's entry points
@@ -96,7 +97,7 @@ class LifecycleTest {
                     finish(activity)
                     continue
                 }
-                assertEquals(Screen.GoOffline, onMain { activity.model.state.value.screen })
+                assertEquals(Ui.discardedTo(offline = true), onMain { activity.model.state.value.screen })
                 assertEquals(Notice.Left, onMain { activity.model.state.value.notice })
                 assertTrue("the slot is not at home: the session was not discarded", Core.selfTest() is Reply.Done)
                 pass("left during a backup's scrypt (attempt $attempt): discarded at once, the reply discarded, the session gone, no ANR")
@@ -205,7 +206,7 @@ class LifecycleTest {
             await("the app reads Wi-Fi on", 30) { !onMain { activity.model.state.value.offline } }
             probe("online: airplane_mode_on=${settings("airplane_mode_on")}, wifi_on=${settings("wifi_on")}")
             release.countDown()
-            await("the start screen", 30) { onMain { activity.model.state.value.screen } == Screen.GoOffline }
+            await("the start screen", 30) { onMain { activity.model.state.value.screen } == Ui.discardedTo(offline = false) }
             assertFalse("the start's session was kept", kept.get())
             assertEquals(Notice.Offline, onMain { activity.model.state.value.notice })
             assertTrue("the slot is not at home: the session was not discarded", Core.selfTest() is Reply.Done)
@@ -249,7 +250,7 @@ class LifecycleTest {
             val away = onMain { activity.model.state.value }
             val after = SystemClock.elapsedRealtime() - begun
             probe("words page: Home pressed; the stop seen after $after ms, the screen then ${screenId(away.screen)}")
-            assertEquals("leaving the words did not discard at once", Screen.GoOffline, away.screen)
+            assertEquals("leaving the words did not discard at once", Ui.discardedTo(offline = true), away.screen)
             assertEquals(Notice.Left, away.notice)
             assertEquals(Overlay.Cover, away.overlay)
             assertTrue("the page on show was not wiped", onMain { page.position == 0 && page.word().size == 0 })
@@ -263,8 +264,8 @@ class LifecycleTest {
      * The dice (group 15), a Public screen: dice-50-words12's first ten rolls, then Home. Away 50 s (the
      * phone's real clock), the session is held and back in the app it is there under the privacy cover,
      * the same ten rolls; the cover tapped away, Home again: 70 s away wipes it (the 60 s rule: while away
-     * if the timers run, else on the return, before anything shows; Q75), and back in the app Go offline
-     * says why, the slot at home.
+     * if the timers run, else on the return, before anything shows; Q75), and back in the app Home says
+     * why (Q81), the slot at home.
      */
     @Test
     fun fiftySecondsAwayFromTheDiceKeepTheSessionAndSeventyWipeIt() {
@@ -307,11 +308,11 @@ class LifecycleTest {
             await("back in the app", 30) { stage(activity) == Stage.RESUMED }
             val again = SystemClock.elapsedRealtime() - leftAgain
             val wiped = onMain { activity.model.state.value }
-            probe("dice: back after $again ms away; away at 70 s the app showed ${screenId(whileAway)} (go_offline: the timers wiped it while away)")
-            assertEquals("70 s away did not wipe the session", Screen.GoOffline, wiped.screen)
+            probe("dice: back after $again ms away; away at 70 s the app showed ${screenId(whileAway)} (home: the timers wiped it while away)")
+            assertEquals("70 s away did not wipe the session", Ui.discardedTo(offline = true), wiped.screen)
             assertEquals(Notice.Background, wiped.notice)
             assertTrue("the slot is not at home: the session was not wiped", Core.selfTest() is Reply.Done)
-            pass("dice: 50 s away kept the session (back after $back ms), 70 s away wiped it (Go offline, the Background notice)")
+            pass("dice: 50 s away kept the session (back after $back ms), 70 s away wiped it (Home, the Background notice)")
             finish(activity)
         }
     }
@@ -494,7 +495,7 @@ class LifecycleTest {
 
     /**
      * First launch, then its Continue (through the model, as its button calls it), which runs the
-     * start-up self-test, to Go offline: past the start-up, a discard's start screen is Go offline and
+     * start-up self-test, to Go offline: past the start-up, a discard's start screen is Ui.discardedTo's and
      * going online discards (lead decision M5-50).
      */
     private fun selfTested(activity: MainActivity) {

@@ -370,7 +370,6 @@ class CheckScreensTest {
         assertNoSession("the discard took the slot home")
         rig.model.appReturned()
         rig.model.dismissOverlay()
-        rig.model.startOffline()
         rig.begin(Mode.DiceOnly, Words.Twelve)
         assertEquals("0 / 99 rolls, 0.0 bits", diceLine(rig), "the kept Wiped outlived the discard")
     }

@@ -361,7 +361,6 @@ class ReadbackScreensTest {
         assertNoSession("the discard took the slot home")
         rig.model.appReturned()
         rig.model.dismissOverlay()
-        rig.model.startOffline()
         rig.toSkippedResult(DICE_50).toWords()
         repeat(words.size - 1) { rig.model.nextPage() }
         rig.model.startReadback()

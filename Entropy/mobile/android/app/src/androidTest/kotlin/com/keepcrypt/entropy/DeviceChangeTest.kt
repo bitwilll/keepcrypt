@@ -21,7 +21,7 @@ import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitPick
 import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.device
-import com.keepcrypt.entropy.Ui.find
+import com.keepcrypt.entropy.Ui.gate
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.pressFace
 import com.keepcrypt.entropy.Ui.tap
@@ -101,7 +101,7 @@ class DeviceChangeTest {
                 on(activity, Screen.CheckResult, START_SECONDS)
                 assertTrue("the check did not pass", text("check_result_text").startsWith("No collision for seal "))
                 tap("show_words")
-                find("privacy_gate")
+                gate()
                 assertTrue("the words showed before the privacy gate", onMain { model.state.value.gate })
                 activity = changes(activity, "the words' privacy gate", night, fontScale)
                 tap("pass_gate")

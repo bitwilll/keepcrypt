@@ -29,7 +29,7 @@ import org.junit.runner.RunWith
  * other level it passes at once, saying so): a words page, a Protected screen holding a session, left untouched.
  * The cover must come at 30 s, the warning at 9 minutes and the wipe at 10, each measured on SystemClock's elapsed
  * real time (the model's clock) from the last input (the model's last press, nextPage, as its screens call it);
- * the wipe lands on Go offline with the Idle notice and the slot at home. Under the cover and under the warning, each read
+ * the wipe lands on Home with the Idle notice (Q81, Ui.discardedTo) and the slot at home. Under the cover and under the warning, each read
  * as it is first seen, the words page is out of the accessibility tree (Q80 (a); Capture.assertOverlayAlone: the overlay's
  * pane title alone, no tag of the page, no node showing one of its secret texts). The window keeps the screen on while
  * the session is held (M5-72 (b)), so the display does not sleep through the ten minutes. The JVM's IdleTest and
@@ -91,7 +91,7 @@ class IdleClockTest {
                     warning = at
                     underWarning = Capture.assertOverlayAlone(pkg, "idle_warning", IDLE_WARNING_TITLE, secrets, "the idle warning over the words page")
                 }
-                if (state.screen == Screen.GoOffline) wipe = at
+                if (state.screen == Ui.discardedTo(offline = true)) wipe = at
                 SystemClock.sleep(POLL_MS)
             }
             probe("idle on a words page, from the last input: the cover at ${cover} ms, the warning at ${warning} ms, the wipe at ${wipe} ms")
@@ -101,7 +101,7 @@ class IdleClockTest {
             assertTrue("the wipe's start screen does not say Idle", onMain { activity.model.state.value.notice } == Notice.Idle)
             assertTrue("the slot is not at home after the idle wipe", Core.selfTest() is Reply.Done)
             pass(
-                "idle on a words page on the real clock: covered at $cover ms, warned at $warning ms, wiped at $wipe ms (Go offline, " +
+                "idle on a words page on the real clock: covered at $cover ms, warned at $warning ms, wiped at $wipe ms (Home, " +
                     "Idle), the slot at home; under the cover ($underCover nodes) and the warning ($underWarning) nothing of the page in " +
                     "the accessibility tree",
             )

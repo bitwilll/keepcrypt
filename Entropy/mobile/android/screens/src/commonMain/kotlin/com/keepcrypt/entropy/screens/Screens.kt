@@ -367,10 +367,11 @@ fun paneTitleOf(state: UiState): String = if (state.gate) PRIVACY_GATE_TITLE els
 
 /**
  * The privacy gate before a Protected screen (docs/mobile-apps.md, "Session lifetime" and step 10;
- * docs/pi-firmware.md's gate): every Protected screen is entered through "I'm alone, show words". Before
- * the words it also gives the SeedBook's safety rules (swb's "enforced in the copy on screen"; the Pi's
- * gate before words-insert) and the warning to use headphones if a screen reader speaks them (swb's
- * "Accessibility").
+ * docs/pi-firmware.md's gate): every Protected screen is entered through "I'm alone, show words", and the
+ * gate is part of that screen (Q82: leaving on it discards at once, and it is covered after 30 s). Every
+ * gate gives the warning to use headphones if a screen reader speaks the next screen (Q83; swb's
+ * "Accessibility"); before the words it also gives the SeedBook's safety rules (swb's "enforced in the copy
+ * on screen"; the Pi's gate before words-insert).
  */
 @Composable
 fun PrivacyGate(testRegistry: Boolean, pass: () -> Unit, words: Boolean = false) {
@@ -378,8 +379,8 @@ fun PrivacyGate(testRegistry: Boolean, pass: () -> Unit, words: Boolean = false)
         KitText("The next screen shows a secret. No person or camera may see it.")
         if (words) {
             KitText(SEEDBOOK_RULES, KitType.small, tag = "seedbook_rules")
-            KitText(HEADPHONES_WARNING, KitType.small, tag = "headphones_warning")
         }
+        KitText(HEADPHONES_WARNING, KitType.small, tag = "headphones_warning")
     }
 }
 

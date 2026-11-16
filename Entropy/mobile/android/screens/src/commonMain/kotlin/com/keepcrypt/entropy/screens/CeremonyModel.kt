@@ -223,7 +223,9 @@ data class UiState(
  *   reply but Done halts), then Go offline (its Start only offline), Home, Length, and the ceremony,
  *   which needs airplane mode on and Wi-Fi off on every screen from Home on (Q57): Device entropy and
  *   Commitment in Mixed mode only, then Dice. A discard that hits the self-test returns to First
- *   launch, whose Continue runs it again; once it has passed, a discard's start screen is Go offline.
+ *   launch, whose Continue runs it again; once it has passed, a discard's start screen is Home while
+ *   the phone is still offline (a leave, a timer's wipe, 60 s away; Q81, PF:127's "returns Home") and
+ *   Go offline when it went online, each saying why.
  *   System Back goes back only where nothing is lost (back).
  * - The dice's Done makes the seed, and the collision check follows (group 16; docs/mobile-apps.md,
  *   step 9; docs/seal-watchonly-braille.md, "Checking the seal"): the prompt, which shows no seal
@@ -504,7 +506,7 @@ class CeremonyModel(
     /**
      * The offline monitor's report (Q57), in the foreground or away. After the start-up, going online
      * while a session or Check a backup's file is held (holds) or a long call runs discards at once, and
-     * the start screen, Go offline, says why; on a screen past Go offline with nothing held, Go offline
+     * the start screen, Go offline (the phone online), says why; on a screen past Go offline with nothing held, Go offline
      * comes back, with nothing to say. Before the start-up self-test passes, and on First launch and Go
      * offline, only the state changes.
      */
@@ -1656,15 +1658,17 @@ class CeremonyModel(
 
     /**
      * The start screen after a discard: until the start-up self-test has passed (a discard that hit it),
-     * First launch, whose Continue runs it again, with nothing to say (no session was held); then Go
-     * offline, saying why the session went.
+     * First launch, whose Continue runs it again, with nothing to say (no session was held); then, saying
+     * why the session went, Home while the phone is offline (Q81: a leave, a timer's wipe or 60 s away
+     * with the phone still offline; docs/pi-firmware.md, "returns Home"), and Go offline while it is
+     * online (going online's discard), since every screen from Home on needs it offline.
      */
     private fun toStart(notice: Notice?) {
         if (!started) {
             show(Screen.FirstLaunch)
             return
         }
-        show(Screen.GoOffline, notice = notice)
+        show(if (mutable.value.offline) Screen.Home else Screen.GoOffline, notice = notice)
     }
 
     /** The state a long call came from, as it was (its page and public values), when the call entered no other screen. */

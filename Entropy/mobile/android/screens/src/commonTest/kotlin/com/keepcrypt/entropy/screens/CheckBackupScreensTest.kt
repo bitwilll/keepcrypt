@@ -97,16 +97,17 @@ class CheckBackupScreensTest {
         assertNoSession(what + " left something in core")
     }
 
-    /** On Home, nothing held: 9 minutes without input bring no warning, and 10 no wipe. */
+    /** On Home, nothing held: 9 minutes without input bring no warning, and 10 no wipe (the notice a discard left stays as it was). */
     private fun assertNothingHeld(rig: Rig, what: String) {
         assertEquals(Screen.Home, rig.screen, what)
+        val notice = rig.model.state.value.notice
         rig.clock.now += Timers.WARN_MILLIS
         rig.model.tick()
         assertNull(rig.model.state.value.overlay, what + ": 9 minutes on Home warned")
         rig.clock.now += Timers.WIPE_MILLIS - Timers.WARN_MILLIS
         rig.model.tick()
         assertEquals(Screen.Home, rig.screen, what + ": 10 minutes on Home wiped")
-        assertNull(rig.model.state.value.notice, what)
+        assertEquals(notice, rig.model.state.value.notice, what)
     }
 
     /** A model at Check a backup's result, the saved backup opened with its passphrase. */
@@ -547,7 +548,6 @@ class CheckBackupScreensTest {
         rig.clock.now += Timers.WIPE_MILLIS
         rig.model.tick()
         assertEntryWiped(rig, file, entries, Notice.Idle, "10 minutes on the entry")
-        rig.model.startOffline()
         assertNothingHeld(rig, "after the idle wipe")
     }
 
@@ -669,11 +669,12 @@ class CheckBackupScreensTest {
     }
 
     /**
-     * After a discard, from Go offline: Start, dice-50-words12 by Skip to its words, which no checked backup marks,
-     * to the last insert's read-back, then a leave, which discards it (the next model's start finds the slot at home).
+     * After a discard, from its start screen (Go offline's Start where the phone went online): dice-50-words12 by Skip
+     * to its words, which no checked backup marks, to the last insert's read-back, then a leave, which discards it (the
+     * next model's start finds the slot at home).
      */
     private fun assertTheNextCeremonysWordsAreTheirOwn(rig: Rig, discard: String) {
-        rig.model.startOffline()
+        if (rig.screen == Screen.GoOffline) rig.model.startOffline()
         assertEquals(Screen.Home, rig.screen, discard)
         rig.toSkippedResult(DICE_50).toWords()
         assertNull(rig.model.state.value.opened, "after " + discard + ", the ceremony's words are marked as a checked backup's")

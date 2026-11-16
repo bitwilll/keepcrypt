@@ -317,7 +317,6 @@ class WordsScreensTest {
         assertNoSession("the discard took the slot home")
         rig.model.appReturned()
         rig.model.dismissOverlay()
-        rig.model.startOffline()
         rig.toSkippedResult(DICE_50).toWords()
         rig.model.toOverview()
         val inserts = assertNotNull(rig.model.state.value.overview)

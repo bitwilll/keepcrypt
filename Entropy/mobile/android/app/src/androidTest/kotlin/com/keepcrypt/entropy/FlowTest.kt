@@ -20,6 +20,7 @@ import com.keepcrypt.entropy.Ui.awaitPick
 import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.enabled
 import com.keepcrypt.entropy.Ui.find
+import com.keepcrypt.entropy.Ui.gate
 import com.keepcrypt.entropy.Ui.letterKeys
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.pressFace
@@ -44,7 +45,6 @@ import com.keepcrypt.entropy.screens.ASCII_PAGES
 import com.keepcrypt.entropy.screens.CHECKLIST
 import com.keepcrypt.entropy.screens.DICE_KEYS
 import com.keepcrypt.entropy.screens.DICE_ONLY
-import com.keepcrypt.entropy.screens.HEADPHONES_WARNING
 import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
 import com.keepcrypt.entropy.screens.MAX_ROLLS
 import com.keepcrypt.entropy.screens.Notice
@@ -145,7 +145,7 @@ class FlowTest {
             awaitText("dice_count", "50 / 50 rolls, 129.2 bits")
             find("dice_minimum")
             shellText("cmd wifi set-wifi-enabled enabled")
-            on(activity, Screen.GoOffline, 30)
+            on(activity, Ui.discardedTo(offline = false), 30)
             assertEquals(Notice.Offline, onMain { activity.model.state.value.notice })
             assertEquals("The session was wiped: the phone went online.", text("notice"))
             // The one mixed state the flows reach (airplane_mode_on 1, wifi_on 2): each state on its own line.
@@ -319,10 +319,9 @@ class FlowTest {
         on(activity, Screen.CheckResult)
         awaitText("check_result_text", SKIPPED)
         tap("show_words")
-        find("privacy_gate")
+        gate()
         assertTrue("the words showed before the privacy gate", onMain { activity.model.state.value.gate })
         awaitText("seedbook_rules", SEEDBOOK_RULES)
-        awaitText("headphones_warning", HEADPHONES_WARNING)
         device.pressBack()
         stays(activity, Screen.Words, "Back on the words' privacy gate")
         assertTrue("Back took the privacy gate away", onMain { activity.model.state.value.gate })
@@ -425,7 +424,7 @@ class FlowTest {
             tap("skip_watch_only")
             on(activity, Screen.RegisterOffer)
             tap("show_registration")
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             await("past the registration QR's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RegisterQr && !it.gate } } }
             val registration = onMain { activity.model.state.value.registration } ?: throw AssertionError("no registration QR")
@@ -472,7 +471,7 @@ class FlowTest {
                     on(activity, Screen.DeviceSwap)
                     awaitText("device_swap_text", "Words 13-24 go on device 2 of 2.")
                     tap("continue")
-                    find("privacy_gate")
+                    gate()
                     tap("pass_gate")
                 } else if (index + 1 < words.size) {
                     onMain { activity.model.nextPage() }
@@ -487,7 +486,7 @@ class FlowTest {
             tap("next")
             on(activity, Screen.DeviceSwap)
             tap("continue")
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             assertOverview(activity, words, 3, 2, 2)
             tap("insert_view")
@@ -586,7 +585,7 @@ class FlowTest {
             tap("show_watch_only")
             on(activity, Screen.Bip39Ask)
             tap("with_bip39_passphrase")
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             await("past the BIP39 entry's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.Bip39Entry && !it.gate } } }
             on(activity, Screen.Bip39Entry)
@@ -631,7 +630,7 @@ class FlowTest {
                 is Reply.Refused, Reply.Discarded -> throw AssertionError("core made no export of the passphrase's wallet")
             }
             tap("watch_summary_next")
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             await("past the account QR's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.WatchAccountQr && !it.gate } } }
             on(activity, Screen.WatchAccountQr)
@@ -657,7 +656,7 @@ class FlowTest {
             on(activity, Screen.RegisterOffer)
             assertTrue("the export's QRs were not wiped as the registration's offer came", blank(watch.account) && blank(watch.descriptors))
             tap("show_registration")
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             await("past the registration QR's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RegisterQr && !it.gate } } }
             val registration = onMain { activity.model.state.value.registration } ?: throw AssertionError("no registration QR")
@@ -673,7 +672,7 @@ class FlowTest {
             on(activity, Screen.RevealDOffer)
             awaitText("reveal_d_warning", REVEAL_D)
             tap("show_d")
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             await("past D's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RevealD && !it.gate } } }
             on(activity, Screen.RevealD)

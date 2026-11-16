@@ -17838,10 +17838,24 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       "covered at 30616 ms, warned at 540199 ms, wiped at 600312 ms ... under the cover (9 nodes) and the warning (9)
       nothing of the page in the accessibility tree"; ui (its own boot) JourneyTest 4, StopJourneyTest. The gate clean,
       418 files, its --selftest 1639 passed.
-    - [ ] U3k (Q81, Q82, Q83): a discard while still offline lands Home with its notice (idle, 60 s away, leaving a
+    - [x] U3k (Q81, Q82, Q83): a discard while still offline lands Home with its notice (idle, 60 s away, leaving a
       Protected screen), Go offline only when the phone went online (PF:127); the gate stays part of the Protected
       screen (MA:34 says so); the headphones warning on every privacy gate, swb:286 widened to match. JVM tables and
       the journeys' landing expectations (kept in one place) follow.
+      Proof (M5 commit U3k, Stage U-6, partial: local; CI at the next push): CeremonyModel's toStart shows Home while
+      the phone is offline and Go offline while it is online, with the notice either way; the landing is named once
+      in the JVM tests (Rig.assertDiscarded, from the fake's offline state) and once in the device tests
+      (Ui.discardedTo); PrivacyGate draws HEADPHONES_WARNING ("If a screen reader speaks the next screen, ...") on
+      every gate, the SeedBook rules still before the words only, and every device test that meets a gate checks the
+      warning there (Ui.gate); MA:34 says the gate is part of the Protected screen (Q82), swb:286 names what TalkBack
+      and VoiceOver speak and the warning on every gate (Q83); no new quoted text, so DocsTextsTest is unchanged.
+      Gradle (strict, --rerun-tasks): the five APKs and every JVM test task, 269 results, 0 failures, no new warning.
+      On kc37 (android-local.sh, each part exit 0): journeys FlowTest 7, CheckTest 2, MixedJourneyTest, BackupTest
+      (age -d hand-off); ui JourneyTest 4, StopJourneyTest; registry SnapshotDrillTest 4, LifecycleTest 8 ("70 s away
+      wiped it (Home, the Background notice)"; Wi-Fi on during a start: Go offline), DeviceChangeTest, AwayTest 3
+      ("back on, Home says why"), ScanRefusedTest, IdleClockTest (API 36's; not made at 37), KillTest's four,
+      CrashTest; capture (the gates drawn anew) ControlTest 3, CaptureTest 9 in both APKs (disableSecureWindows not made
+      on the user build; the 412 dp walk green), PhoneMotionTest, DoubleTapTest 4, NativeTest. The gate clean, 418 files, its --selftest 1639 passed.
     - [ ] U3i-b (Q78): the capture walk's layout check at font scale 2.0 on both levels (M5-84 (d)): every control
       reachable by scrolling, no text cut, every control 48 dp or more.
     - Verification: each commit's Kotlin built and its classes run on kc37 (android-local.sh --part), the gate, every

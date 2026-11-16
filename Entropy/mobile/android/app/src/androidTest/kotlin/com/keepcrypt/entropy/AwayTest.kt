@@ -70,13 +70,13 @@ class AwayTest {
             await("the activity stopped with the screen off", 30) { stage(activity) == Stage.STOPPED }
             val away = onMain { activity.model.state.value }
             probe("words page: the screen off; the stop seen after " + (SystemClock.elapsedRealtime() - begun) + " ms, the screen then " + screenId(away.screen))
-            assertEquals("the screen turning off on a words page did not discard at once", Screen.GoOffline, away.screen)
+            assertEquals("the screen turning off on a words page did not discard at once", Ui.discardedTo(offline = true), away.screen)
             assertEquals(Notice.Left, away.notice)
             assertTrue("the page on show was not wiped", onMain { page.position == 0 && page.word().size == 0 })
             assertTrue("the slot is not at home: the session was not discarded", Core.selfTest() is Reply.Done)
             wake(activity)
-            assertEquals("back with the screen on, not the start screen", Screen.GoOffline, onMain { activity.model.state.value.screen })
-            pass("the screen off on a words page: discarded at once (by the stop), the page wiped, the session gone; back on, Go offline says why")
+            assertEquals("back with the screen on, not the start screen", Ui.discardedTo(offline = true), onMain { activity.model.state.value.screen })
+            pass("the screen off on a words page: discarded at once (by the stop), the page wiped, the session gone; back on, Home says why")
             finish(activity)
         }
     }

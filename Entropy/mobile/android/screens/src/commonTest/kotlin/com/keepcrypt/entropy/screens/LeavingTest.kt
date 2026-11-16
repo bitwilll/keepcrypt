@@ -18,8 +18,8 @@ import kotlin.test.assertTrue
  * which only uncovers; 61 s away wipes what is held, with the Background notice, whether the timers ran
  * while away or the process was frozen and the wipe comes at the return, before anything shows; a Public
  * screen that holds nothing keeps its place 61 s away. The words' states the walk's screens do not name
- * (Walk.states) are Protected, their privacy gates included, as built: whether a gate is a Public screen is
- * the owner's open Q82. Every long call (a start, the self-test, the dice's Done, a scanned go-ahead QR's
+ * (Walk.states) are Protected, their privacy gates included: a gate is part of the Protected screen behind
+ * it (the owner's Q82). Every long call (a start, the self-test, the dice's Done, a scanned go-ahead QR's
  * check, the backup's encryption and its check, a snapshot's and a backup's read and load, a backup's
  * opening) is discarded at once by a leave or by going online while it runs, its screen kept until its
  * reply, then the start screen with the notice; the self-test, which holds no session, starts again from

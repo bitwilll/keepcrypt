@@ -26,7 +26,7 @@ import kotlinx.coroutines.cancel
  * holds a session is read from the slot itself: the dice counts are offered only while one is
  * rolling, and the self-test only at home, empty (each other call halts). First launch is the first
  * screen and its Continue runs the start-up self-test (lead decision M5-50); a discard's start screen
- * is Go offline once that has passed, First launch before. The held state the phone keeps its screen on
+ * is Home or Go offline once that has passed (Rig.assertDiscarded, Q81), First launch before. The held state the phone keeps its screen on
  * by (lead decision M5-72 (b)) follows a session from its start's reply to Finish's end, and each discard,
  * a halt and wipeAll end it. Each test leaves the slot at home (wipeAll after it). A halt of the real slot latches it for the process, so that test is CeremonyModelHaltTest,
  * in a JVM of its own (and NoCoreCallBeforeContinueTest, which halts it first).

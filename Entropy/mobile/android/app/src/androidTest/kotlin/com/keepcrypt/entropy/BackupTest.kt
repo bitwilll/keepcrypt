@@ -10,7 +10,7 @@ import com.keepcrypt.entropy.Capture.shellText
 import com.keepcrypt.entropy.Ui.START_SECONDS
 import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitText
-import com.keepcrypt.entropy.Ui.find
+import com.keepcrypt.entropy.Ui.gate
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.roll
 import com.keepcrypt.entropy.Ui.tap
@@ -67,7 +67,7 @@ class BackupTest {
             tap("summary_next")
             on(activity, Screen.BackupOffer)
             tap("make_backup")
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             await("past the passphrase's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.BackupPassphrase && !it.gate } } }
             val passphrase = onMain { readPassphrase(activity.model) }
@@ -112,7 +112,7 @@ class BackupTest {
             tap("check_backup")
             Picker.pick(name)
             on(activity, Screen.BackupCheckEntry)
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             await("past the entry's gate", 10) { onMain { !activity.model.state.value.gate } }
             val other = if (passphrase[0].decodeToString().take(4) == "aban") "zoo" else "aban"
@@ -139,7 +139,7 @@ class BackupTest {
             awaitText("backup_fingerprint", fingerprint)
             awaitText("backup_seal_id", DICE_50_SEAL_ID)
             tap("show_backup_words")
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             for (index in DICE_50_WORDS.indices) {
                 await("the backup's insert " + (index + 1), 10) {

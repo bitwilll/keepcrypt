@@ -260,9 +260,11 @@ class HomeScreensTest {
         assertNull(rig.model.state.value.loaded, "a load discarded is not the model's")
         assertTrue(zeroed(file.given), "the bytes read were zeroed, though the discard came before core's load was made")
         rig.model.appReturned()
+        rig.offline.set(false)
+        assertEquals(Screen.GoOffline, rig.screen, "going online on Home, nothing held")
         val late = kcrFile(WITH_DICE_50)
         rig.model.snapshotPicked(late)
-        rig.assertDiscarded(Notice.Left, "a file after Home has gone does nothing")
+        assertEquals(Screen.GoOffline, rig.screen, "a file after Home has gone does nothing")
         assertEquals(0, late.reads)
     }
 

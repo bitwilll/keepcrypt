@@ -20,7 +20,7 @@ import com.keepcrypt.entropy.Journeys.wordsToFinish
 import com.keepcrypt.entropy.Ui.START_SECONDS
 import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitText
-import com.keepcrypt.entropy.Ui.find
+import com.keepcrypt.entropy.Ui.gate
 import com.keepcrypt.entropy.Ui.grantCamera
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.tapRolls
@@ -107,7 +107,7 @@ class SnapshotDrillTest {
             assertTrue("the collision result does not draw dice-50-words12's Seal ID", shown(Screen.Collision, DICE_50_SEAL_ID))
             done(Core.collisionReport(), "the report: the slot waits at the restart, the words never made available").wipe()
             tap("show_report")
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             await("past the gate", 10) { !onMain { activity.model.state.value.gate } }
             on(activity, Screen.CollisionReport)
@@ -241,7 +241,7 @@ class SnapshotDrillTest {
         assertTrue("the collision result does not draw dice-50-words12's Seal ID", shown(Screen.Collision, DICE_50_SEAL_ID))
         done(Core.collisionReport(), "the report: the slot waits at the restart, the words never made available").wipe()
         tap("show_report")
-        find("privacy_gate")
+        gate()
         assertTrue("the report showed before the privacy gate", onMain { activity.model.state.value.gate })
         tap("pass_gate")
         await("past the gate", 10) { !onMain { activity.model.state.value.gate } }

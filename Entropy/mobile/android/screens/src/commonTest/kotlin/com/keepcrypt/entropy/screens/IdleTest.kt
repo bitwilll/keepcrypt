@@ -145,8 +145,6 @@ class IdleTest {
         rig.begin(Mode.DiceOnly, Words.Twelve)
         idle(rig, Timers.WIPE_MILLIS)
         rig.assertDiscarded(Notice.Idle, "10 minutes on the dice")
-        rig.model.startOffline()
-        assertEquals(Screen.Home, rig.screen)
         assertEquals(loaded, rig.model.state.value.loaded, "the snapshot the idle wipe left")
         // And core still holds it: the next seed's Check now runs against it on its own. The snapshot
         // registers the seal of 50 rolls of the faces 1 to 6 in turn (kcr.json's dice-50-words12), the rolls
@@ -160,12 +158,12 @@ class IdleTest {
         assertNotNull(rig.model.state.value.registry, "the collision was found by the snapshot")
     }
 
-    /** From Go offline after a discard: Start, then a new dice-only seed of 12 words; the dice's minimum. */
+    /** From a discard's start screen, offline (Go offline's Start where the phone went online): a new dice-only seed of 12 words; the dice's minimum. */
     private fun nextMinimum(rig: Rig, what: String): Int {
         rig.offline.set(true)
         rig.model.appReturned()
         rig.model.dismissOverlay()
-        rig.model.startOffline()
+        if (rig.screen == Screen.GoOffline) rig.model.startOffline()
         assertEquals(Screen.Home, rig.screen, what)
         rig.begin(Mode.DiceOnly, Words.Twelve)
         assertEquals(Screen.Dice, rig.screen, what)

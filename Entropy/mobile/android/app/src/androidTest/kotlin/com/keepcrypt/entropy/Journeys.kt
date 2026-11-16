@@ -7,7 +7,7 @@ import com.keepcrypt.entropy.Ui.assertInsert
 import com.keepcrypt.entropy.Ui.assertInsertAt
 import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitText
-import com.keepcrypt.entropy.Ui.find
+import com.keepcrypt.entropy.Ui.gate
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.sameWord
 import com.keepcrypt.entropy.Ui.shown
@@ -56,7 +56,7 @@ internal object Journeys {
         val devices = count / INSERTS_PER_DEVICE
         fun device(index: Int) = index / INSERTS_PER_DEVICE + 1
         tap("show_words")
-        find("privacy_gate")
+        gate()
         assertTrue("the words showed before the privacy gate", onMain { activity.model.state.value.gate })
         tap("pass_gate")
         await("past the words' gate", 10) { !onMain { activity.model.state.value.gate } }
@@ -68,7 +68,7 @@ internal object Journeys {
                 on(activity, Screen.DeviceSwap)
                 awaitText("device_swap_text", "Words 13-24 go on device 2 of 2.")
                 tap("continue")
-                find("privacy_gate")
+                gate()
                 assertTrue("device 2's words showed before the privacy gate", onMain { activity.model.state.value.gate })
                 tap("pass_gate")
             }
@@ -139,7 +139,7 @@ internal object Journeys {
      */
     fun registration(activity: MainActivity, sealCode: String?) {
         tap("show_registration")
-        find("privacy_gate")
+        gate()
         tap("pass_gate")
         await("past the registration QR's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RegisterQr && !it.gate } } }
         val registration = onMain { activity.model.state.value.registration } ?: throw AssertionError("no registration QR")
@@ -233,7 +233,7 @@ internal object Journeys {
         on(activity, Screen.RevealDOffer)
         awaitText("reveal_d_warning", REVEAL_D)
         tap("show_d")
-        find("privacy_gate")
+        gate()
         tap("pass_gate")
         await("past D's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.RevealD && !it.gate } } }
         val commits = onMain {

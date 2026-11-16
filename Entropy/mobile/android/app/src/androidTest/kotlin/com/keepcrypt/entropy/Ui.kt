@@ -23,6 +23,7 @@ import com.keepcrypt.entropy.screens.ASCII_PAGES
 import com.keepcrypt.entropy.screens.ASCII_PAGE_KEYS
 import com.keepcrypt.entropy.screens.CeremonyModel
 import com.keepcrypt.entropy.screens.DICE_KEYS
+import com.keepcrypt.entropy.screens.HEADPHONES_WARNING
 import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
 import com.keepcrypt.entropy.screens.LETTER_KEYS
 import com.keepcrypt.entropy.screens.PadEntry
@@ -161,6 +162,23 @@ internal object Ui {
         reveal(tag)
         return device.wait(Until.findObject(By.res(tag)), FIND_MS) ?: throw AssertionError("not on screen: " + tag)
     }
+
+    /**
+     * The privacy gate on screen (find), with the warning to use headphones that every gate gives (Q83: a screen
+     * reader speaks the words, the backup passphrase, D, the BIP39 passphrase and every letter typed on a
+     * Protected pad); every device test that meets a gate checks it here.
+     */
+    fun gate() {
+        find(PRIVACY_GATE)
+        awaitText("headphones_warning", HEADPHONES_WARNING)
+    }
+
+    /**
+     * Where a discard lands once the start-up self-test has passed (Q81; docs/pi-firmware.md's "returns Home"):
+     * Home while the phone is still offline (a leave, the idle wipe, 60 s away), Go offline once it went online,
+     * each saying why. The device tests' one statement of it, as Rig.assertDiscarded is the JVM tests'.
+     */
+    fun discardedTo(offline: Boolean): Screen = if (offline) Screen.Home else Screen.GoOffline
 
     /**
      * block's value, block run again while a node it found has been replaced by a redraw before it reads

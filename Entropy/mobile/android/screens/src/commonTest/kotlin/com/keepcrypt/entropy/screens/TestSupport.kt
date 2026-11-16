@@ -206,12 +206,12 @@ internal class Rig(scope: CoroutineScope = CoroutineScope(Dispatchers.Unconfined
     /**
      * A discard's landing (leaving the app, going online or a timer's wipe, Q57, once the start-up
      * self-test has passed; core's own discarded reply, with no notice): the start screen, saying why,
-     * with nothing held. The start screen is Go
-     * offline, as built (group 15, M5-50); where a wipe lands while the phone is still offline is the
-     * owner's open Q81, and only this line names it (Stage U's U2b).
+     * with nothing held. The start screen is Home while the phone is still offline and Go offline once
+     * it went online (Q81; docs/pi-firmware.md's "returns Home"), as the fake reports it now; only this
+     * line names it (Stage U's U2b, U3k).
      */
     fun assertDiscarded(notice: Notice?, what: String = "the discard") {
-        assertEquals(Screen.GoOffline, screen, what + ": the start screen")
+        assertEquals(if (offline.offline) Screen.Home else Screen.GoOffline, screen, what + ": the start screen")
         assertEquals(notice, model.state.value.notice, what + ": the notice")
         assertFalse(model.held.value, what + ": something is still held")
     }

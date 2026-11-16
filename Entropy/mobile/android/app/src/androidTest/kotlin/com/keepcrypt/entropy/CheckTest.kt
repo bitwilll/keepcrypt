@@ -21,6 +21,7 @@ import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.device
 import com.keepcrypt.entropy.Ui.enabled
 import com.keepcrypt.entropy.Ui.find
+import com.keepcrypt.entropy.Ui.gate
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.pressFace
 import com.keepcrypt.entropy.Ui.roll
@@ -226,7 +227,7 @@ class CheckTest {
                 text("check_result_text"),
             )
             tap("show_words")
-            find("privacy_gate")
+            gate()
             assertTrue("the words showed before the privacy gate", onMain { activity.model.state.value.gate })
             tap("pass_gate")
             await("past the gate", 10) { !onMain { activity.model.state.value.gate } }

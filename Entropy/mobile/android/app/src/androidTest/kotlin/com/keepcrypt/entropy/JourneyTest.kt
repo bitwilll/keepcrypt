@@ -31,7 +31,7 @@ import com.keepcrypt.entropy.Ui.await
 import com.keepcrypt.entropy.Ui.awaitText
 import com.keepcrypt.entropy.Ui.device
 import com.keepcrypt.entropy.Ui.enabled
-import com.keepcrypt.entropy.Ui.find
+import com.keepcrypt.entropy.Ui.gate
 import com.keepcrypt.entropy.Ui.grantCamera
 import com.keepcrypt.entropy.Ui.on
 import com.keepcrypt.entropy.Ui.shown
@@ -117,7 +117,7 @@ class JourneyTest {
             awaitText("collision_text", COLLISION_FOUND)
             assertTrue("the collision result does not draw the destroyed seed's Seal ID", shown(Screen.Collision, DICE_50_SEAL_ID))
             tap("show_report")
-            find("privacy_gate")
+            gate()
             assertTrue("the report showed before the privacy gate", onMain { activity.model.state.value.gate })
             tap("pass_gate")
             await("past the report's gate", 10) { !onMain { activity.model.state.value.gate } }
@@ -267,7 +267,7 @@ class JourneyTest {
             tap("show_watch_only")
             on(activity, Screen.Bip39Ask)
             tap("with_bip39_passphrase")
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             await("past the BIP39 entry's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.Bip39Entry && !it.gate } } }
             on(activity, Screen.Bip39Entry)
@@ -284,7 +284,7 @@ class JourneyTest {
                 is Reply.Refused, Reply.Discarded -> throw AssertionError("core made no export of the passphrase's wallet")
             }
             tap("watch_summary_next")
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             await("past the account QR's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.WatchAccountQr && !it.gate } } }
             assertTrue("the account QR drawn is not core's (neither is printed)", Checker.read(watch.account) == Checker.read(core.account))
@@ -398,7 +398,7 @@ class JourneyTest {
             val summary = summaryToBackupOffer(activity)
             val fingerprint = fingerprintHex(summary.fingerprint)
             tap("make_backup")
-            find("privacy_gate")
+            gate()
             tap("pass_gate")
             await("past the passphrase's gate", 10) { onMain { activity.model.state.value.let { it.screen == Screen.BackupPassphrase && !it.gate } } }
             // The passphrase's words, read in-process (never printed), zeroed on every way out of the journey,
@@ -440,7 +440,7 @@ class JourneyTest {
                 tap("check_backup")
                 Picker.pick(saved)
                 on(activity, Screen.BackupCheckEntry, START_SECONDS)
-                find("privacy_gate")
+                gate()
                 tap("pass_gate")
                 await("past the entry's gate", 10) { onMain { !activity.model.state.value.gate } }
                 for ((index, word) in passphrase.withIndex()) {
@@ -452,7 +452,7 @@ class JourneyTest {
                 awaitText("backup_fingerprint", fingerprint)
                 awaitText("backup_seal_id", DICE_50_SEAL_ID)
                 tap("show_backup_words")
-                find("privacy_gate")
+                gate()
                 tap("pass_gate")
                 for (index in DICE_50_WORDS.indices) {
                     assertInsert(activity, DICE_50_WORDS, index, 1, 1)
