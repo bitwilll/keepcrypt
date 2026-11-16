@@ -301,7 +301,7 @@ LaunchState: COLD
   'shell am broadcast -a android.intent.action.CLOSE_SYSTEM_DIALOGS') [ "${KC_ANR:-}" = stuck ] || : > "$s/anr-closed" ;;
   'shell input '* | 'shell wm '* | 'shell settings '* | 'shell svc '* | 'shell getprop '* | 'shell getconf '* | \
     'shell logcat -b crash -d' | 'shell dumpsys dropbox' | 'shell dumpsys content_capture' | \
-    'shell pm list instrumentation' | 'shell am force-stop '*) ;;
+    'shell pm list instrumentation' | 'shell am force-stop '* | 'shell pm revoke '* | 'shell pm clear-permission-flags '*) ;;
   *) echo "stub adb: unexpected command: $*" >&2; exit 1 ;;
 esac
 EOF
@@ -1104,6 +1104,16 @@ instrument() {
     done
     tests="$tests $t"
   done
+  # Each run starts with target's CAMERA as installed: revoked and its user flags cleared, from the host,
+  # while no process of the app runs (each run before ends with its process gone). A test that granted it
+  # (JourneyTest's Ui.grantCamera) cannot take it back from inside: Android kills a process whose granted
+  # runtime permission is revoked, and the instrumentation runs in the app's process, so on one boot
+  # (android-local.sh's whole run) ScanRefusedTest's own revoke killed it ("Process crashed.", open item
+  # 2026-11-16). Each part on its own boot, as CI's jobs run them, never had it granted at a run's start.
+  dev shell pm revoke "$target" android.permission.CAMERA > "$work/revoke.log" 2>&1 ||
+    { cat "$work/revoke.log"; fail_later "pm revoke $target CAMERA failed before ($*)"; }
+  dev shell pm clear-permission-flags "$target" android.permission.CAMERA user-set user-fixed > "$work/revoke.log" 2>&1 ||
+    { cat "$work/revoke.log"; fail_later "pm clear-permission-flags $target CAMERA failed before ($*)"; }
   # $tests unquoted: class and test names hold no space.
   sh "$here/android-instrument.sh" "$adb" "$serial" "$api" "$target.test" "$target" $tests > "$work/instrument.log" 2>&1
   rc=$?

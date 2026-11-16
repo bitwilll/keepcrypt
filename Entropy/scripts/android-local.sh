@@ -350,7 +350,8 @@ case "$*" in
     ;;
   'shell input '* | 'shell wm '* | 'shell settings '* | 'shell svc '* | 'shell getprop '* | 'shell getconf '* | \
     'shell cmd connectivity '* | 'shell cmd wifi '* | 'shell logcat -b crash -d' | 'shell dumpsys dropbox' | \
-    'shell dumpsys content_capture' | 'shell pm list instrumentation' | 'shell am force-stop '*) ;;
+    'shell dumpsys content_capture' | 'shell pm list instrumentation' | 'shell am force-stop '* | \
+    'shell pm revoke '* | 'shell pm clear-permission-flags '*) ;;
   *) echo "stub adb: unexpected command: $*" >&2; exit 1 ;;
 esac
 EOF

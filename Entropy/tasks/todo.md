@@ -16163,12 +16163,18 @@ green.
 registry part, and two tests leave state that a later one trips on (found by the Stage U-6 workflow, seen again on kc37
 today); a part on its own boot, as android-local.sh --part and CI's jobs run it, passes. (1) JourneyTest grants CAMERA
 (Ui.grantCamera, pm grant) and never revokes it; ScanRefusedTest's reset() then runs pm revoke inside the app's process,
-and Android kills a process whose granted runtime permission is revoked: "Process crashed.", 0 of 1. (2) BackupTest leaves
-keepcrypt-backup-copy.txt in Downloads; JourneyTest's Picker.save reads DocumentsUI's name field once and read
-keepcrypt-backup-copy.txt for the app's suggested name (the facts probe moments later listed the right one; why
-DocumentsUI briefly shows the newest file's name is not proven). Neither is a defect of the app. To fix: each run
-starts as installed (CAMERA revoked from the host between instrumented runs, when no app process holds it) and each
-test leaves Downloads as it found it.
+and Android kills a process whose granted runtime permission is revoked: "Process crashed.", 0 of 1. (2) BackupTest leaves files in
+Downloads; JourneyTest's Picker.save then read keepcrypt-backup-copy.txt for the app's suggested name. Neither is a
+defect of the app. Fixed (2026-11-16, the test harness and the leg script alone):
+- android-emulator.sh's instrument() revokes the target's CAMERA and clears its user flags from the host before each
+  instrumented run, while no app process runs, so each run starts as installed (a no-op on each part's own boot, as
+  CI runs them). Both selftests' stand-in adbs accept the two pm commands (android-emulator 64, android-local 47).
+  kc37's whole run then passed ScanRefusedTest (21 of 22 runs).
+- Picker.save matched the name field by the id android:id/title alone, which DocumentsUI's list of the folder's files
+  gives each listed file's name too: with Downloads holding a file, the first listed file was read as the name (the
+  first guess, a field that briefly shows another name, was wrong: a 10 s wait for the right text still read
+  BackupTest's backup's name while the field held the app's). The field is now the EditText with that id.
+- BackupTest removes its .txt copy once refused (its backup stays: the age -d hand-off reads it).
 
 **Open item (2026-10-21): intermittent recents failures on API 36.** The Android run 39556542012 (at 8c9eca8, which
 changed only the workflow's timeout and todo.md) failed on API 36 while the same tests passed at 89cf334: ControlTest's

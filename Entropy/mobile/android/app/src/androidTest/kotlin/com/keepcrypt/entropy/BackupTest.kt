@@ -108,6 +108,10 @@ class BackupTest {
             on(activity, Screen.Home)
             awaitText("file_refusal", fileRefusalText(FileRefusal.NotAge))
             assertEquals(FileRefusal.NotAge, onMain { activity.model.state.value.fileRefusal })
+            // The copy is needed no more (the hand-off reads the backup itself): Downloads is left as the save left it,
+            // so a later save's picker on the same boot lists no file this test made but its backup (android-local.sh's
+            // whole run, open item 2026-11-16).
+            Picker.removeFromDownloads(RENAMED)
 
             tap("check_backup")
             Picker.pick(name)
