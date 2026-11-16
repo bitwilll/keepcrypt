@@ -14085,9 +14085,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   tasks/lessons.md and tasks/todo.md, so the APKs are the final head's.
 
 **20. Review**
-- [ ] "M5: local proof", the CI runs, the probe facts, "M5: device records", the gate status, numbered lead decisions,
+- [x] "M5: local proof", the CI runs, the probe facts, "M5: device records", the gate status, numbered lead decisions,
   "Ticked in this commit" and "Still unticked", as in M4.
   Proof: the Review section.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): the M5 sections of Review (device records, local proof, CI, U4's list, the items named, the owner's
+  approvals, ticked and unticked, the gate status).
 
 **Deferred, with their milestone**
 - **M5b** (after the M5 gate, its own branch, as M4b; Q61): "Verify another device's ceremony" (a core API replaying
@@ -14115,54 +14117,104 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   (every screen id with its drawn-screen proof; screencap, `UiAutomation`, continuous raw-frame recording, `SECURE` on
   every window; control (a) on both APIs and control (c) on 36; the first frame), and the owner's P1 on a phone.
   Proof: the run ID at the final head; P1's report.
-- [ ] **Gate: the merged manifest has no INTERNET permission.** `--apk` on both APKs equals the expected summaries
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: both capture jobs green, CaptureTest 2 runs (both APKs) on API 34 and 36, every screen "drawn, then
+  screencap and takeScreenshot black over the app's window; SECURE on all 1 of its windows; no content capture", the
+  raw-frame recordings black, recents "shows none of the app's content", control (a) on both and control (c) lit then
+  black again. Unticked until P1's report.
+- [x] **Gate: the merged manifest has no INTERNET permission.** `--apk` on both APKs equals the expected summaries
   (exactly `HIDE_OVERLAY_WINDOWS`, `DETECT_SCREEN_RECORDING`, `CAMERA`, plus androidx.core's signature permission if
   the probe kept it; no provider, receiver or service; backup off; not debuggable); the merger-report grep; the canary
   APK refused; `--selftest-apk`'s INTERNET case fails; `dumpsys package` on the emulator.
   Proof: both summaries and the run ID.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): `--apk` on both APKs "clean: the manifest summary equals mobile/android/expected/manifest-<variant>.txt, with
+  no network permission, provider, receiver, service or <queries>, backup, cleartext traffic and debugging off and one
+  exported activity, and the merger report names no INTERNET" (the permissions CAMERA, DETECT_SCREEN_RECORDING,
+  HIDE_OVERLAY_WINDOWS and androidx.core's DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION); the canary APK "refused, with
+  the INTERNET, provider and DexRef hits"; `--selftest-apk` 89 passed in the gates job; `dumpsys package` "no
+  INTERNET" for both apps in every emulator job.
 - [ ] **Gate: the backup round trip passes.** `ffi_backup_round_trip`; the emulator's DocumentsUI save, "Backup
   verified", `age -d` through the pty hand-off and Check a backup; P2 on the phone.
   Proof: test names, run ID, P2.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: `ffi_backup_round_trip` ok in its three configurations; BackupTest on API 34 and 36 "saved
+  through DocumentsUI ... read back and verified (Backup verified)", then "age-check: pass (1.1.1): age -d through
+  the pty decrypted the backup (946 bytes) ... and refused a wrong passphrase"; Check a backup through the picker.
+  Unticked until P2.
 - [ ] **Gate: snapshot import works.** The test-registry APK loads `with-dice-50` through the picker with its Stale
   warning and it stops `dice-50-words12` (emulator and P4); the shipping APK refuses it.
   Proof: run ID, P4.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: both registry jobs' snapshot drill, "with-dice-50 picked from Downloads through DocumentsUI
+  and loaded (No. 4, dated 2026-03-01, 7 entries, the Stale warning)", dice-50-words12's check stopped; the shipping
+  app "refused: This build trusts no registry key yet ...; nothing loaded". Unticked until P4.
 - [ ] **Gate: Sparrow watch-only import works.** P3: Sparrow 2.5.5 imports the account QR from the phone and its first
   receive address matches the wallet summary; Bitcoin Core 31.1 imports the descriptor with the same address (swb:235).
   CI: the drawn matrices decode to core's QR text.
   Proof: P3's report; the JVM test.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: the build job's QrRoundTripTest (:core-ffi androidHostTest, ZXing on the JVM; its report
+  required by the JVM test results step) reads every matrix back: the account UR's fingerprint equals the summary's
+  and the descriptor's structure holds. Unticked until P3 (P2's watch-only step).
 - [ ] **Gate: a go-ahead QR from the test registry reveals the words.** P4's camera scan of `clear-empty-bucket` reveals
   `dice-99-words12`'s words after the Stale warning, with the Seal ID checked first; CI feeds the same UR through the
   decoder (canned YUV frames) and `onGoAheadText`.
   Proof: P0b and P4, run ID.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: "the scanned clear-empty-bucket QR: dice-99-words12's check passed (9FHYMCQA, as of
+  2026-03-01), 0 entries in this seal's bucket, the Stale warning, the words available" on API 34 and 36. Unticked
+  until P0b and P4.
 - [ ] **Gate: a Stop wipes them.** `collision-dice-50`'s QR and the `with-dice-50` snapshot each end in the collision
   result ("Collision found. This seed is not unique and has been destroyed.", M5-55) with no words page, the
   collision-report QR and a restart at 99 (`ffi_drill_12`, emulator, P4).
   Proof: test names, run ID, P4.
-- [ ] **Boot path and native libraries:** the ARM and 16 KB leg green; which ABIs ran (natively or translated) recorded;
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: `ffi_drill_12` ok; "the scanned collision-dice-50 QR: the collision before any words, 1 entry
+  in this seal's bucket, the Stale warning and its Seal ID YVM9CPP3; the report behind the gate; Add fresh entropy: 0
+  / 99" and the snapshot drill's collision, on API 34 and 36. Unticked until P4.
+- [x] **Boot path and native libraries:** the ARM and 16 KB leg green; which ABIs ran (natively or translated) recorded;
   any ABI CI could not run named in the gate report.
   Proof: run ID; the Review line.
-- [ ] **Matrix "Symbol and stub-marker scan"** (Android): both `libkeepcrypt.so` builds per ABI in the cross legs; both
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): the 16 KB leg (API 36 ps16k image, page size 16384) "every check passed": "native library: x86_64,
+  arm64-v8a (page size 16384): JNI_OnLoad, the self-test and dice-50-words12's Seal ID through the bridge" (x86_64 from
+  lib/x86_64 natively, arm64-v8a from lib/arm64 through the image's translation); API 34 and 36 ran the x86_64 library
+  in every instrumented class. armeabi-v7a ran on no emulator (CI has no 32-bit ARM image); its build is scanned in
+  the cross leg and by `--apk`. The gate report names it.
+- [x] **Matrix "Symbol and stub-marker scan"** (Android): both `libkeepcrypt.so` builds per ABI in the cross legs; both
   APKs in the Android job, with the dex reference scan.
   Proof: run IDs.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): the three Android cross legs "clean, 3 file(s): no marker, no test key, no other RNG symbol ...; getrandom
+  imported" for the shipping library and exactly the registry marker and the test key for the test-registry one;
+  `--apk` on both APKs: 3 libkeepcrypt.so, each the scanned copy's bytes, and "612 com.keepcrypt classes in 2 dex
+  files with no banned RNG reference".
 - [ ] **Matrix "Screen-capture tests"**: every build on CI emulators; a real phone at the gate (P1), as BP:318 and MA:74
   read after Q55.
   Proof: the Android job's runs on every pushed head; P1.
-- [ ] **Matrix "No-network checks"**: the manifest summaries, the KtSdk, KtBinary and network rules, the classpath list.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met (see the first gate item); unticked until P1.
+- [x] **Matrix "No-network checks"**: the manifest summaries, the KtSdk, KtBinary and network rules, the classpath list.
   Proof: run IDs; selftest counts.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): the manifest summaries (above); banned-api-check clean over 414 files with its KtSdk, KtBinary and network
+  rules, its selftest 819 + 820 passed, canaries all 94; the build job's `android-deps-review.py classpath` against
+  expected/ and its --selftest, green.
 - [ ] **Matrix "Full ceremony with offline verification"** (Android): `ffi_verify_py_tie`; P2 with verify.py on the
   offline computer (exit 0, same words, same Seal ID).
   Proof: test output; P2.
-- [ ] **Matrix "Duplicate-seed drill"** (Android part): `ffi_drill_12` and the emulator drill; end to end in M9.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): `ffi_verify_py_tie` ok in its three configurations; unticked until P2 and P3's verify.py run.
+- [x] **Matrix "Duplicate-seed drill"** (Android part): `ffi_drill_12` and the emulator drill; end to end in M9.
   Proof: test output; run ID.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): `ffi_drill_12` ok; the emulator drill (SnapshotDrillTest, the Match found journey and the scanned
+  collision QR) on API 34 and 36; end to end in M9.
 - [ ] **Matrix "Watch-only import"**: P3.
 - [ ] **Matrix "Metal read-back drill"**: `ffi_readback_drill`; P2's deliberate misread.
   Proof: test names; P2.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): `ffi_readback_drill` ok; unticked until P2's deliberate misread.
 - [ ] **Matrix "Reproducible build"** (APK): M7 (Deferred).
-- [ ] **CI:** the 14 required checks green at the final head with names unchanged; the Android job green at the final
+- [x] **CI:** the 14 required checks green at the final head with names unchanged; the Android job green at the final
   head within its budget; `gates` <= 12 min and `test` <= 6 min; any emulator re-run logged.
   Proof: run IDs and times.
-- [ ] **Definition of done:** tests alongside every commit; vectors wherever the docs define them; clippy, fmt, deny,
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): Entropy CI 43950083336, all 14 green with names unchanged (gates 3 min 11 s, test 5 min 28 s); Entropy
+  Android 43950082932, all 9 jobs green within the M5-30 budgets (build 14 min 37 s; API 34 capture then 16 KB 978 s of
+  22 min, journeys 377 s of 9, ui 339 s of 8, registry 613 s of 12; API 36 capture 1035 s of 22, journeys 416 s of 9,
+  ui 416 s of 10, registry 1147 s of 25); Entropy Pi image 43950083258 green. No emulator job was re-run at this head.
+- [x] **Definition of done:** tests alongside every commit; vectors wherever the docs define them; clippy, fmt, deny,
   audit, vet and the banned-API gate clean; proof under Review; each stage's security review recorded.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): every commit's Proof line names its tests; the vectors (vectors/*.json) drive the ffi and emulator checks;
+  the local suite at 3a3cecce and CI at 62396383 clean (fmt, clippy both ways, deny, audit, vet, the gate); each
+  stage's three reviews and fixes are its "review fix" commits and their Proof lines; Review below.
 
 ### New dependencies
 
@@ -20778,3 +20830,204 @@ are under "M4: hardware records" above.
   `pi/os/`.
 - After merge: main's push run of the image workflow must give the same hash, recorded in the PR conversation and in
   M5's Inputs.
+
+### M5: device records (the owner's reports, in P0-P5's form)
+- **P0b** (the scanner smoke test): first issued 2026-10-22 from run 39744137391 at 1a63e0f; reissued for the owner's
+  Galaxy S25 as the test-registry APK of bf132744 (`p0b-bf13274/keepcrypt-testregistry-bf13274.apk.zip`). No report
+  yet: waiting for the owner's "done" and pass or fail per item.
+- **P0-P5**: issued in this commit (the checklist block above) from Entropy Android 43950082932 at 62396383. No
+  report yet.
+
+### M5: local proof (2026-11-17, at 3a3cecce)
+Apple M4 Max, macOS 27.2.1, toolchain 1.98.1 (rust-toolchain.toml), cargo-llvm-cov 0.9.1, python3 3.12.5 and
+`/usr/bin/python3` 3.9.6, Homebrew age 1.3.2, Android Studio's JBR (OpenJDK 25.0.3) for Gradle, run from `Entropy/`.
+M5 ran 2026-10-17 to 2026-11-17 on `m5-android` (draft PR bitwilll/keepcrypt#9), cut from M4's merge 95c43598: 355
+commits (`git rev-list --count 95c43598..3a3cecce`), in the stages of "Commit order on `m5-android`" (A to E, the
+Compose Multiplatform re-plan after Q64, the re-cut after Q73, Stage L's local loop after Q76, Stage U's end-to-end
+pass U-1 to U-6 after Q77-Q85, then F). Each stage was implemented, reviewed three ways (plan, security, recompute),
+fixed and pushed, so both required workflows and the Android workflow ran on its head; its review fixes are the
+"Stage ... review fix" commits, each with a Proof line under the item it amends. 3a3cecce (commit 22) changes only
+CLAUDE.md's Commands block, tasks/lessons.md and this file, so the code and tests are 62396383's, the tree CI ran.
+
+**Suite at 3a3cecce** (2026-11-17; each command's full output in the session scratchpad; exit 0 each):
+
+```text
+cargo fmt --all --check                                                   clean
+cargo clippy --workspace --all-targets --locked -- -D warnings            clean
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings   clean
+cargo test --workspace --locked                                           504 passed, 0 failed, 3 ignored (34 s)
+cargo test -p keepcrypt-core --locked --features test-sources             269 passed, 0 failed, 1 ignored (63 s)
+cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked  59 passed, 0 failed
+  ... --features keepcrypt-core/test-registry                             59 passed, 0 failed
+cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry   69 passed, 0 failed, 2 ignored
+cargo deny --locked check                                                 advisories ok, bans ok, licenses ok, sources ok
+cargo audit                                                               110 crate dependencies, no finding
+cargo vet --locked                                                        Vetting Succeeded (18 fully audited, 86 exempted)
+scripts/check-path-deps.sh                                                clean, 104 packages, all from crates.io
+python3 -I tools/verify/vectorgen.py --selftest (3.12.5 and 3.9.6)        13 checks each
+python3 -I tools/verify/verify.py selftest                                8 known-answer groups
+scripts/banned-api-check.sh                                               clean, 419 files scanned
+scripts/banned-api-check.sh --workflows ../.github/workflows              clean, 3 workflows
+scripts/banned-api-check.sh --selftest-apk                                89 passed, 0 failed
+scripts/canaries.sh                                                       PASS: all 94 checks ran
+sh scripts/android-emulator.sh --selftest                                 64 passed, 0 failed
+android-rust 27, android-frames 53, android-age-check 18, android-instrument 50, android-handoff 20,
+android-local 47: passed, 0 failed; android-deps-review --selftest needs gpg (not on this Mac; CI's build job runs it)
+```
+
+**The Android app, locally** (reported as local; CI's emulator jobs are the gate):
+- kc37 (API 37 Play image, android-local.sh), the whole run on one boot with 62396383's APKs: 22 of 22 instrumented runs passed in
+  29 min 39 s, "every check made on kc37 passed (each check not made or not met is named above)". Named there, as
+  before: not met, the camera client's decode of goahead-collision-dice-50.png off the virtual scene's wall (60 s, no
+  decode); not made on this user build (ro.debuggable=0), the nothing-persisted listing, control (c) and the
+  real-clock idle run (API 36's alone), which CI's jobs make.
+- kc34 (API 34 default arm64 image, CI's API 34 image type, debuggable; scratchpad's run-kc34.sh, made 2026-11-16 to
+  reproduce CI's API 34 failures): every part passed with e60e5444's tap (capture, journeys, ui, registry), and the
+  journeys part again with 62396383's save-panel selector (BackupTest's probe naming the field as core's suggested
+  name).
+
+### M5: CI at the final head
+The final head's code is 62396383 (3a3cecce and this commit change no code or test, M4's lead decision 25):
+- **Entropy CI 43950083336** at 62396383, all 14 required checks green, names unchanged: test 5 min 28 s (cargo test
+  over the release, test-sources, ffi in both configurations, pi-sim; `ffi_backup_round_trip`, `ffi_drill_12`,
+  `ffi_readback_drill` and `ffi_verify_py_tie` ok in each of their three configurations; core lib 166 passed, 1
+  ignored, test-sources 194 passed, 1 ignored); gates 3 min 11 s (banned-api-check clean, 414 files; the gate selftest
+  in two shards, 819 and 820 passed, 0 failed; `--selftest-apk` 89; android-rust selftest 27); supply-chain 7 min 25 s
+  (deny ok; Vetting Succeeded, 18 fully audited, 86 exempted; canaries PASS, all 94 checks ran); coverage 2 min 32 s,
+  97.38% of core's lines (8408, 220 missed); lint 1 min 46 s; verifier 57 s; age-interop 1 min 24 s; changes 14 s; the
+  six cross legs 2 min 8 s to 2 min 58 s: aarch64-linux-android, armv7-linux-androideabi and x86_64-linux-android each
+  "clean, 3 file(s): no marker, no test key, no other RNG symbol, no std random-key path, no stripped file; getrandom
+  imported" for the shipping `libkeepcrypt.so` and exactly the two expected hits (the registry marker and the test key)
+  for the test-registry build; aarch64-apple-ios and -sim clean, `_CCRandomGenerateBytes` imported;
+  arm-unknown-linux-gnueabihf clean. `gates` <= 12 min and `test` <= 6 min: met.
+- **Entropy Pi image 43950083258** at 62396383: green.
+- **Entropy Android 43950082932** at 62396383 (not a required check; Q55): all 9 jobs green within the M5-30 budgets set in
+  62396383: the build job 14 min 37 s (the strict Gradle build, the JVM test reports for every class, `--apk` on both
+  APKs and the canary refused, the dependency review and its selftest, the selftests of android-frames,
+  android-instrument, android-emulator and android-handoff, the upload with SHA256SUMS); API 34 capture then 16 KB
+  978 s, journeys 377 s, ui 339 s, registry 613 s; API 36 capture 1035 s, journeys 416 s, ui 416 s, registry
+  1147 s. On both API levels every instrumented class passed: ControlTest, CaptureTest (both APKs), PhoneMotionTest,
+  DoubleTapTest, FlowTest, CheckTest, MixedJourneyTest, BackupTest with "the age -d hand-off passed", JourneyTest,
+  StopJourneyTest, SnapshotDrillTest, LifecycleTest, DeviceChangeTest, AwayTest, ScanRefusedTest, IdleClockTest,
+  KillTest's four and CrashTest. The 16 KB leg "every check passed", with the x86_64 and arm64-v8a libraries loaded
+  at page size 16384. Every emulator job: `dumpsys package` "no INTERNET" for both apps and "nothing persisted" with
+  its positive control.
+- Before it: Entropy Android 43904980358 at e60e5444 and 43917696008 at 012aa5e7, every job green; Entropy CI
+  43917696155 at 012aa5e7 red on gates and supply-chain's canaries (the KtInput hit, fixed in 62396383; lessons.md
+  2026-11-17). No emulator job was re-run to green at any of these heads.
+
+### M5: what Stage U found (U4's list)
+App defects, each fixed at its root (commit; the test; whether its proof shows it failing before the fix):
+1. The stop screen named no reason (U3a db7655b3, U3a2-U3a4): the slot keeps the first halt's fixed reason code;
+   CeremonyModelTest, ffi halt tests, CaptureTest's halt_reason line; mutants fail them, K1 failed the walk on kc37.
+2. Check a backup's file and entries were not held (U3b a8e5af72): no 9-minute warning, no online notice;
+   CheckBackupScreensTest, failing before.
+3. Nothing kept the screen on, so a timeout discarded a words page being punched (U3m bf266edd): CeremonyModelTest
+   (did not compile before), LifecycleTest's timeout test (failed on kc37 before).
+4. Delete on an empty pad past word 1 did nothing (U3c e7349ce4): it reopens the word before, as the Pi;
+   CheckBackupScreensTest, failing before.
+5. The seal card's check QR was never wholly on screen at CI's window (U3d babe8299): its own check_qr page;
+   CheckScreensTest, CheckTest "wholly in view". Not shown failing before. The braille dot numbers clipped at font
+   1.15 (same commit): sized from the cell; no test measures it (U3i-b's layout walk at font 2.0 now covers its box).
+6. Pad keys, Delete and page buttons bypassed the model's press path (U3e b94ba463, U3e2 dd2d617a): they acted under
+   a cover, warning or gate, and a stale press typed on the next page; PadPressTest, a mutant and the page case
+   failing before.
+7. Every key redrew the whole pad; dice keys 40 dp squares (U3f b41fd45d): PadsTest, failing with a plain Int.
+8. TalkBack had no pane titles, headings, live regions or QR names (U3g 8c04264d, U3g2): ScreenTitlesTest (did not
+   compile before), CaptureTest's pane titles; headings and live regions have no test.
+9. A second start made a second activity over the one slot (U2a cd8440b1): singleTask; LifecycleTest, the failure
+   reasoned, not run.
+10. A double tap opened two pickers (U2c 528538a6): PickerPressTest, failing before.
+11. A double tap went through a one-way confirm (U2i2 72cd4faf, U2i3): PressGuard; DoubleTapTest failed in CI run
+    41247649576, PressGuardTest.
+12. Pad keys under 48 dp (U3h-c cc6a5f18): CaptureTest's layout check failed in run 41279169126; PadsTest.
+13. U3h-c's taller pads squeezed the text column (U3i-a f71ce834, Q78, Q85): actions scroll with the text, "More
+    below"; FlowTest, JourneyTest and the capture walk failed in run 43613600587.
+14. A reading under the idle warning left it up (38878182, U3j's review fix): IdleTest; not shown failing before.
+Test-harness and CI defects (the tests' own, each fixed and its failing run named in its Proof line): the capture
+walk's stale tree (21j), the edge tests' part (U1a2), the workflow-matrix selftest (U1a3, U1a4), the AVD partition
+(U1a5: shown by arithmetic, and later runs still asked for 7372.80 MB, so its effect is unproven), another app's ANR
+dialog (U1a8: its close path not yet exercised on a device), the tapped rolls' idle waits (U1b2), padKeys' label check
+(U4r), the gone: form (U4r), android-local's ui part (U4r), the picker's stale node (U4r2), DoubleTapTest's and
+DeviceChangeTest's preconditions (U2i2), presses inside the guard's 300 ms (U2i4), the destroyed-while-away case
+(U2k2, dropped), the second CAMERA prompt's id (U2l2), the back gesture on images with no gestural bar (U2k3), a gate
+word in PadsTest (U3f2), the halt reasons' test strength (U3a2, U3a3), the JVM walk's weak checks (U2b2-U2g2), the
+picker's facts outside Ui.fresh (U3i-a), the "More below" line's check (4200e616), assertOverlayAlone (6d4c1629),
+the layout walk's false positives (U3i-b), the stale-bounds tap (e60e5444), CAMERA left granted, the picker's
+ambiguous name id and BackupTest's .txt (012aa5e7, 62396383), and the KtInput hit (62396383).
+Changes, not bugs (the owner's answers of 2026-11-14): Q77 portrait and in-place configuration changes (U2m); Q78 and
+Q85 the scrolling actions and "More below" (U3i-a), the layout at font 2.0 (U3i-b); Q79 and Q80 labelled Protected
+keys, the tree cleared under the cover and the warning, reading as input (U3j); Q81-Q83 the offline discard to Home,
+the gate within its Protected screen, the headphones warning on every gate (U3k); Q84 minSdk 34 and resource ids only
+in the test-registry APK (U3n).
+
+### M5: items the gate report names (open, diagnosed, never rerun to green)
+1. **The lit raw frame** (open item 2026-10-21): repeated 2026-11-16 on API 36's test-registry cold launch (a whole
+   window of light grey, not the app's); cause unknown; android-frames.py now names the frame's colours (6a6619f6).
+2. **API 36 recents** (open item 2026-10-21): no repeat since; cause unknown.
+3. **The launcher's ANR dialog** (open item 2026-10-31): cause known (the emulator's launcher); U1a8's close never
+   exercised on a device.
+4. **The age -d hand-off's logcat count** (open item 2026-10-31): no repeat since; U4r names each match's position.
+5. **The API 34 offline blocks** (open item 2026-11-16): closed as the stale-bounds tap (e60e5444, green since);
+   the Wi-Fi memory reset kept as hygiene.
+6. **The back swipe**: U2k's tick covers the Back key alone; no CI image attaches a gestural bar, so the swipe branch
+   ran nowhere.
+
+### M5: for the owner's approval
+1. The new tap (e60e5444) and the budgets it allowed (62396383): every emulator job now budgeted at its measured
+   time plus 25% from two runs; one slow runner can stop a job, and the lead then re-measures (M5-30).
+2. Compose still offers test tags as accessibility extra data on 15 of 60 nodes of the shipping words page (U3n's
+   probe), 9 of them the secret tag's name, not a secret (Q84's residual).
+3. mobile-apps.md's Braille row (87471f9a) was reworded from Q79's and Q80's answers, beyond their exact text.
+4. M5-84 (b)'s wording ("the swipe is the test") holds on no CI image; the Back key stands in (item 6 above).
+5. 38878182: an accessibility reading ends the idle warning, which Q80 (b)'s answer implies but does not say.
+6. The NDK target and the cross legs stay at API 31 (`*-linux-android31-clang`) while the app's minSdk is 34: a
+   library built for 31 runs on 34; raising it is a version change for the owner.
+7. android-emulator.sh revokes CAMERA and runs `pm clear-permission-flags` before each instrumented run (012aa5e7):
+   a shell command on the emulator, no app change.
+8. Q80 (b) (reading counts as input) and the Protected keys' labels need a TalkBack session on a phone; no CI check
+   reads what TalkBack speaks. Recommended: add it to P1 as an optional item.
+9. kc34, the API 34 AVD made 2026-11-16 from the downloaded system-images;android-34;default;arm64-v8a (the owner's
+   go-ahead "download sdk emulator if needed"): local only, never a CI step.
+
+**Ticked in this commit**: Stage F's 19 (CLAUDE.md Commands, commit 22), 19's issue of P0-P5 (commit 23) and
+20 (this Review); Verification's "merged manifest has no INTERNET permission", "Boot path and native libraries",
+Matrix "Symbol and stub-marker scan", Matrix "No-network checks", Matrix "Duplicate-seed drill" (Android part; end to
+end in M9), "CI" and "Definition of done", each with its "Proof (M5 Review, 2026-11-17 ...)" line. U-6's last ticks
+(U2, U2k, U2l, U3h, U3h-b) came with 62396383. Every gate item that names a phone session has its CI part recorded in
+the same form and stays `[ ]`.
+
+**Still unticked**, with what each waits for: 
+- The gate's screenshot, backup round trip, snapshot import, Sparrow import, go-ahead and Stop items, and Matrix
+  "Screen-capture tests", "Full ceremony with offline verification", "Watch-only import" and "Metal read-back drill":
+  the owner's P0b and P1-P4 (P5 optional).
+- U3 (the UX audit): its parts are ticked (U3a-U3n); what TalkBack actually reads and speaks needs a phone session
+  (for the owner's approval, item 8).
+- U4: the list above; fixes 5, 9 and 14 and some harness fixes have no test shown failing before the fix (named
+  above), for the owner's approval.
+- Matrix "Reproducible build" (APK): M7.
+- The six named items above, until a run shows their cause or the owner accepts them.
+
+### M5 gate status: NOT MET (2026-11-17): CI's part complete, waiting for the owner's phone sessions
+The gate in docs/build-plan.md:299: "Screenshot and recording tests come back blank; merged manifest has no INTERNET
+permission; backup round trip passes; snapshot import and Sparrow watch-only import work; a go-ahead QR from the test
+registry reveals the words and a Stop wipes them".
+- Screenshot and recording tests come back blank: CI's part met on API 34 and 36 for both APKs (run
+  43950082932); P1 on the phone is owed.
+- Merged manifest has no INTERNET permission: met (run 43950082932's `--apk`, the canary refused, `dumpsys package`
+  on every emulator job).
+- Backup round trip passes: CI's part met (`ffi_backup_round_trip`, BackupTest's save, "Backup verified", age -d
+  through the pty, Check a backup); P2 is owed.
+- Snapshot import works: CI's part met (the drill's load through DocumentsUI, the Stale warning, the shipping APK's
+  refusal); P4 is owed.
+- Sparrow watch-only import works: owed (P2's watch-only step and P3); CI decodes the drawn matrices.
+- A go-ahead QR from the test registry reveals the words: CI's part met (the scanned clear-empty-bucket QR through
+  the decoder); P0b and P4's camera scans are owed.
+- A Stop wipes them: CI's part met (`ffi_drill_12`, the scanned collision QR and the snapshot's collision, no words, 0
+  / 99); P4 is owed.
+- Deliverables: the Compose Multiplatform screens (:screens) on the Android target, the JNI bridge (keepcrypt-ffi,
+  keepcrypt-guard, keepcrypt-jni), capture protection (:secure-ui, FLAG_SECURE on every window, the capture tests),
+  the backup through the file picker: built, and green at 62396383.
+- Next: the owner runs P0b (if not yet), then P0-P4 from the block above, and sends back only what P0's preamble
+  allows; the lead records them under "M5: device records", ticks the owed items, and sets this status to MET for
+  the owner's approval. Nothing of M6 starts before that approval.
