@@ -11737,7 +11737,7 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
 - [ ] `mobile/android/`: `settings.gradle.kts` (`FAIL_ON_PROJECT_REPOS`; `google()` content-filtered to `androidx.*`,
   `com.android.*`, `com.google.*`; `mavenCentral()`; no plugin portal), `build.gradle.kts`, `gradle.properties`
   (`org.gradle.java.installations.auto-download=false`, SDK auto-download off, no build scans),
-  `gradle/libs.versions.toml` with exact versions; compileSdk 37, targetSdk 36, minSdk 31, build-tools 36.0.0,
+  `gradle/libs.versions.toml` with exact versions; compileSdk 37, targetSdk 36, minSdk 34 (Q84; 31 before U3n), build-tools 36.0.0,
   `ndkVersion` 30.0.16248370, JDK 17; profileinstaller excluded from every configuration; the reproducibility settings
   in "Built into this plan". **Every** Gradle dependency and plugin of M5 (app, JVM test, androidTest, capture-control)
   is declared in this commit, so lockfiles and verification metadata are written once.
@@ -12080,8 +12080,9 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   no package, no new dropbox `data_app_crash`), and a failing class no longer stops the leg (8g); `--selftest` 20/0.
   The crash test itself comes with group 14.
 - [ ] **Driving:** the instrumentation shares the app's process, so flows call the same `CeremonyViewModel` entry points
-  the pads call (dice, letters, choices); UiAutomator clicks Public screens by resource id (Compose test tags with
-  `testTagsAsResourceId`), DocumentsUI, the camera permission prompt and Home. A UiAutomator smoke test on one
+  the pads call (dice, letters, choices); UiAutomator clicks Public screens by resource id (Compose test tags: the
+  test-registry APK alone turns them into ids, `testTagsAsResourceId`; on both APKs the tests read them in-process,
+  androidTest's Tags.kt, Q84 and U3n), DocumentsUI, the camera permission prompt and Home. A UiAutomator smoke test on one
   Protected pad runs on API 36 only if the probe shows UiAutomation sees data-sensitive nodes.
   Proof: the flow tests pass on both APIs.
 - [ ] **Capture harness** (shell-uid captures through `UiAutomation.executeShellCommandRwe` (screencap, with its stderr)
@@ -17724,10 +17725,12 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
         android-local.sh's run counts), both selftests, the gate, the strict build, and CI's registry jobs.
     - [ ] U2k: leaving by other ways than Home (AwayTest, registry part after DeviceChangeTest, M5-81): the screen
       turning off (KEYCODE_SLEEP; then KEYCODE_WAKEUP and wm dismiss-keyguard) on a words page, a Protected screen,
-      discarded at once (Go offline, the Left notice, the page wiped, the slot at home), and on the dice, a Public
+      discarded at once (Home with the Left notice while offline, Q81 and U3k; the page wiped, the slot at home), and on the dice, a Public
       screen, covered and kept (5 s off, back under the cover with its 10 rolls); the back gesture (gesture navigation
       switched on through the system's gestural overlay, three-button navigation put back after; a swipe in from the
-      left edge, the Back key where the switch does not take, named so) doing what the model's back does:
+      left edge where SystemUI's EdgeBackGestureHandler is enabled and attached, the Back key otherwise, named so with
+      SystemUI's facts, M5-84 (b) and U2k3; no environment run so far attaches it, kc37 and CI's images alike, so the
+      swipe branch is exercised nowhere yet and a tick claims the Back key alone) doing what the model's back does:
       nothing on the dice (its rolls kept) and the seal card, the check QR back to the seal card (BackTest's JVM table
       holds every screen).
     - [ ] U2l: the camera denied twice and the idle rules on the real clock (registry part after AwayTest, M5-82):
@@ -17736,7 +17739,7 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       a third Scan: no prompt, refused at once; the same check QR throughout, Type code reaching the code entry.
       IdleClockTest, on API 36 alone (it passes at once elsewhere, saying so): a words page left untouched, the cover
       at 30 s, the warning at 9 minutes and the wipe at 10 from the last input, each within 2.5 s on the model's
-      clock, the wipe on Go offline with the Idle notice, the slot at home.
+      clock, the wipe on Home with the Idle notice (Q81 and U3k: the phone is offline), the slot at home.
     - [ ] U3h: the layout check, in two parts:
       - [x] U3h-a (JVM): KitColorsTest holds every pair the screens draw at WCAG's 4.5:1 (white, muted and warning on
         black; white on the stop red; the strip's black on the warning yellow), with the ratio checked on known
@@ -17774,7 +17777,13 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       CaptureTest 7/7 in both APKs (disableSecureWindows not made on the user build), PhoneMotionTest, DoubleTapTest
       4/4, NativeTest; the 412 dp walk: every control 48 dp or more, every text inside the window; ui JourneyTest 4/4
       (after Picker.facts read inside Ui.fresh: a picker redraw's StaleObjectException), StopJourneyTest; JVM 229
-      tests, 0 failures (KitTest 2 new). The gate clean, 416 files.
+      tests in :screens and :app, 0 failures (KitTest 2 new; :core-ffi's and :secure-ui's tasks, untouched by U3i-a,
+      not counted; every JVM test task gave 266 results at the next two commits, U3n's and U2m's Proofs). The gate clean,
+      416 files.
+      Review fix (2026-11-16, partial: local; CI at the next push): the capture walk (Capture.nodesThrough, at 1.0, on
+      the 412 dp phone and at 2.0) checks the "More below" line at each position: one node, MORE_BELOW, a polite live
+      region, exactly while the column scrolls on from there, none at its end or on a screen that fits; on kc37
+      CaptureTest 10 in both APKs green.
     - [x] U3n (Q84): minSdk 34 (libs.versions android-min-sdk), every Build.VERSION check below 34 removed; the shipping
       APK drops testTagsAsResourceId (it stays in the test-registry flavour only, or the tests read tags in-process
       through the Compose root's semantics: whichever needs no new dependency); the CI legs API 31 -> API 34
@@ -17812,7 +17821,12 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       while landscape was asked, the activity portrait"), its configuration showing the font scale and night mode, the
       state, what is held and every pad kept, FLAG_SECURE on; then one recreate() on each (M5-80's Bundle check kept):
       "given an empty saved-state Bundle". The picker or camera answer is not exercised with a picker up: it rests on
-      the activity not being recreated. Locally (android-local.sh --part registry, exit 0): SnapshotDrillTest 4,
+      the activity not being recreated. Review fix (2026-11-16, partial: local; CI's registry jobs at the next push):
+      DeviceChangeTest's second test changes the font scale and the night mode while Load registry snapshot's picker
+      is up and then picks with-dice-50; on kc37 "picker (com.google.android.documentsui) up while the font scale went
+      to 1.3 and the night mode switched, both reaching the app's process with MainActivity STOPPED; ... the same
+      MainActivity, never destroyed, took the answer". The camera prompt's answer is not exercised: a prompt only
+      pauses the activity. Locally (android-local.sh --part registry, exit 0): SnapshotDrillTest 4,
       LifecycleTest 8, DeviceChangeTest 1 (93.5 s), AwayTest 3, ScanRefusedTest, IdleClockTest, KillTest's four (each
       start "given no Bundle"), CrashTest; --part capture, exit 0: ControlTest 3, CaptureTest 8 in both APKs
       (disableSecureWindows not made on the user build; the empty-Bundle recreation and the 412 dp walk green),
@@ -17839,6 +17853,14 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       "covered at 30616 ms, warned at 540199 ms, wiped at 600312 ms ... under the cover (9 nodes) and the warning (9)
       nothing of the page in the accessibility tree"; ui (its own boot) JourneyTest 4, StopJourneyTest. The gate clean,
       418 files, its --selftest 1639 passed.
+      Review fixes (2026-11-16, partial: local; CI at the next push): a reading under the idle warning ends it, since
+      the warning shows only after 9 minutes without input (the model's reading: the cover back on a Protected
+      screen, the screen on a Public one; IdleTest's readingRestartsTheIdleTimeTakesNoCoverAwayAndEndsTheWarning).
+      Capture.assertOverlayAlone also reads the merged semantics tree in-process (Tags.merged): Compose's node
+      provider leaves out every node the full-window overlay covers, so its tree alone passed with the clearing
+      reverted (kc37, a negative control not committed: "18 nodes of the screen beneath are in the merged semantics
+      tree, tagged [words, insert_header, secret, face_six, previous, next, overview]", in both APKs, every
+      provider-tree check passing). With the clearing in place, capture's CaptureTest 10 in both APKs green.
     - [x] U3k (Q81, Q82, Q83): a discard while still offline lands Home with its notice (idle, 60 s away, leaving a
       Protected screen), Go offline only when the phone went online (PF:127); the gate stays part of the Protected
       screen (MA:34 says so); the headphones warning on every privacy gate, swb:286 widened to match. JVM tables and

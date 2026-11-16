@@ -72,7 +72,7 @@ abstract class SecureActivity : ComponentActivity() {
 - Compose dialogs and popups create their own windows: pass `securePolicy = SecureFlagPolicy.SecureOn` in every `DialogProperties` and `PopupProperties`.
 - When the recording callback reports visible (Android 15+), replace words with a redacted placeholder as a second layer.
 - Mark the word views `accessibilityDataSensitive` (API 34, the minimum) so only genuine accessibility tools can read them.
-- Never the system keyboard: dice use a 1 to 6 pad, words a letter pad for their first four letters (core completes them), and the go-ahead code and the BIP39 passphrase their own pads. Android's own docs warn keyboard taps can leak on older versions, one reason minSdk is 34.
+- Never the system keyboard: dice use a 1 to 6 pad, words a letter pad for their first four letters (core completes them), and the go-ahead code and the BIP39 passphrase their own pads. Android's own docs warn keyboard taps can leak on older versions, one reason for a recent minSdk.
 - **Test:** on each Protected screen, CI's shell screenshot (`screencap`) must return a blank window and its shell screen recording must show it blank, on every app build on CI's emulators; one real phone at each app milestone's gate; a Pixel and a Samsung before every release.
 
 ## Screen capture protection: iPhone

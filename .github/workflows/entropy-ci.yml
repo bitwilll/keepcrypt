@@ -572,8 +572,9 @@ jobs:
           - target: arm-unknown-linux-gnueabihf
             os: ubuntu-24.04
             crates: keepcrypt-core keepcrypt-pi
-          # Android, minSdk 31 (docs/mobile-apps.md), with NDK r30; the FFI's three crates, so
-          # keepcrypt-jni's library is built and checked below.
+          # Android (the app's minSdk is 34, docs/mobile-apps.md), with NDK r30's clang at API 31,
+          # as scripts/android-rust.sh builds the app's library (API 31's stubs run on 34); the FFI's
+          # three crates, so keepcrypt-jni's library is built and checked below.
           - target: aarch64-linux-android
             os: ubuntu-24.04
             ndk_clang: aarch64-linux-android31-clang
