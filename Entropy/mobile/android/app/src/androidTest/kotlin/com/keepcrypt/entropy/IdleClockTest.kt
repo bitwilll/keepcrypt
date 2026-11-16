@@ -85,11 +85,11 @@ class IdleClockTest {
                 val (state, at) = onMain { activity.model.state.value to SystemClock.elapsedRealtime() - lastInput }
                 if (cover < 0 && state.overlay == Overlay.Cover) {
                     cover = at
-                    underCover = Capture.assertOverlayAlone(pkg, "cover", COVER_TITLE, secrets, "the cover over the words page")
+                    underCover = Capture.assertOverlayAlone(activity, pkg, "cover", COVER_TITLE, secrets, "the cover over the words page")
                 }
                 if (warning < 0 && state.overlay == Overlay.Warning) {
                     warning = at
-                    underWarning = Capture.assertOverlayAlone(pkg, "idle_warning", IDLE_WARNING_TITLE, secrets, "the idle warning over the words page")
+                    underWarning = Capture.assertOverlayAlone(activity, pkg, "idle_warning", IDLE_WARNING_TITLE, secrets, "the idle warning over the words page")
                 }
                 if (state.screen == Ui.discardedTo(offline = true)) wipe = at
                 SystemClock.sleep(POLL_MS)

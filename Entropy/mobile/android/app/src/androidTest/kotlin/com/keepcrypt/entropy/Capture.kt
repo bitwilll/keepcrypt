@@ -533,10 +533,13 @@ internal object Capture {
      * up): of every node of pkg's windows (nodes, read in-process), the overlay's node is there, its pane title is
      * the only one, no node carries a test tag but the overlay's and the TEST REGISTRY strip's (so none of the
      * screen's: its id, its controls', SECRET_TAG), and no node's text is one of secrets, the screen's secret texts
-     * (compared in-process, never printed). what names the case in the messages, whose tags are fixed names. The
-     * count of nodes read is returned, for the caller's pass line.
+     * (compared in-process, never printed). The same holds in activity's own merged semantics tree (Tags.merged):
+     * Compose's node provider also leaves out each node a later sibling covers, so the overlay over the whole window
+     * would hide the screen from the provider's tree even with its semantics in place, and only the merged tree,
+     * which keeps covered nodes, shows that the clearing took them away. what names the case in
+     * the messages, whose tags are fixed names. The count of nodes read is returned, for the caller's pass line.
      */
-    fun assertOverlayAlone(pkg: String, tag: String, title: String, secrets: Set<String>, what: String): Int {
+    fun assertOverlayAlone(activity: Activity, pkg: String, tag: String, title: String, secrets: Set<String>, what: String): Int {
         val found = nodes(pkg)
         assertTrue("$what: its node is not in the tree", found.any { it.resourceName == tag })
         assertEquals("the pane titles under $what", listOf(title), found.mapNotNull { it.paneTitle }.distinct())
@@ -544,6 +547,12 @@ internal object Capture {
         assertTrue("$what: ${beneath.size} nodes of the screen beneath are in the tree, tagged ${beneath.distinct()}", beneath.isEmpty())
         val shown = found.count { it.text != null && it.text in secrets }
         assertEquals("$what: nodes that show a secret text of the screen beneath (none is printed)", 0, shown)
+        val merged = onMain { Tags.merged(activity) }
+        assertTrue("$what: its node is not in the merged semantics tree", merged.any { it.tag == tag })
+        val kept = merged.mapNotNull { it.tag }.filter { it != tag && it != STRIP_TAG }
+        assertTrue("$what: ${kept.size} nodes of the screen beneath are in the merged semantics tree, tagged ${kept.distinct()}", kept.isEmpty())
+        val held = merged.count { node -> node.texts.any { it in secrets } }
+        assertEquals("$what: merged semantics nodes that hold a secret text of the screen beneath (none is printed)", 0, held)
         return found.size
     }
 

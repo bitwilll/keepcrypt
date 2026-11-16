@@ -1175,7 +1175,7 @@ class CaptureTest {
             probe("a reading ${read - passed} ms after the gate; the cover ${covered} ms after the reading")
             assertTrue("the cover did not come 30 s after the reading ($covered ms)", covered in COVER_MS - TICK_MS..COVER_MS + LATE_MS)
             val secrets = onMain { wordsPageSecrets(checkNotNull(activity.model.state.value.insert)) }
-            val count = Capture.assertOverlayAlone(pkg, COVER_TAG, COVER_TITLE, secrets, "the cover over a words page")
+            val count = Capture.assertOverlayAlone(activity, pkg, COVER_TAG, COVER_TITLE, secrets, "the cover over a words page")
             onMain { activity.model.dismissOverlay() }
             waitUntil("the cover taken away") { onMain { activity.model.state.value.overlay } == null }
             val back = Capture.nodesOf(pkg, Screen.Words)

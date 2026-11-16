@@ -52,6 +52,25 @@ internal object Tags {
             .filter { SemanticsProperties.TestTag in it.config }
             .map { it.config[SemanticsProperties.TestTag] }
 
+    /** A node of a merged semantics tree: its test tag, if any, and its texts (its own and those merged into it). */
+    class Merged(val tag: String?, val texts: List<String>)
+
+    /**
+     * The activity's Compose view's merged semantics tree, each node as its test tag and texts, in tree order
+     * (Capture.assertOverlayAlone, Q80 (a)). As in Compose's accessibility, a node whose semantics are cleared
+     * (clearAndSetSemantics) has no descendants in it; unlike Compose's node provider, which also leaves out a
+     * node a later sibling covers, it keeps a covered node. Main thread only.
+     */
+    fun merged(activity: Activity): List<Merged> =
+        root(activity).semanticsOwner.getAllSemanticsNodes(mergingEnabled = true, skipDeactivatedNodes = true).map { node ->
+            val config = node.config
+            val texts = buildList {
+                if (SemanticsProperties.Text in config) addAll(config[SemanticsProperties.Text])
+                if (SemanticsProperties.EditableText in config) add(config[SemanticsProperties.EditableText])
+            }
+            Merged(if (SemanticsProperties.TestTag in config) config[SemanticsProperties.TestTag] else null, texts.map { it.text })
+        }
+
     /** The activity's Compose view (its screens' one), whose semantics the tests read in-process (Layout too). Main thread only. */
     fun root(activity: Activity): ViewRootForTest =
         composeRoot(activity.window.decorView) ?: throw AssertionError("no Compose view in the activity")
