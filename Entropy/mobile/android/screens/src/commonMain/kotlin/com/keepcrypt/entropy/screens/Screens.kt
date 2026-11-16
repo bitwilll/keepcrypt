@@ -19,6 +19,7 @@ import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.changedToDown
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.paneTitle
 import androidx.compose.ui.semantics.semantics
@@ -34,14 +35,15 @@ import com.keepcrypt.entropy.ffi.Mode
  * until 300 ms after the frame that composed it, on uptimeMillis, the phone's uptime clock that touches
  * carry, so a double tap's second touch cannot press what the first one put under it; M5-79; guard is the
  * activity's, so the instrumentation can read it); the cover and the warning lie over the screen and take the tap that removes them,
- * so it reaches nothing under them.
+ * so it reaches nothing under them, and while either is up the screen under it is out of the accessibility tree (Q80 (a)).
  * airplaneSettings is Go offline's button, scanner the scan screen's go-ahead QR scanner and documents
  * the backup's, Check a backup's and Load registry snapshot's document pickers (the platform's seams,
  * which the save screen's Save and Home's Check a backup and Load registry snapshot hand to the model); onShown reports each screen once it is composed
  * (the capture harness's drawn-screen proof); onClose is the stop screen's "Close app", which ends the
  * process (the platform's). The system Back is the platform's too, and goes to the model's back. The
  * screen's column carries its pane title (paneTitleOf), and each overlay its own, so TalkBack says which
- * screen came, by fixed names alone (U3g).
+ * screen came, by fixed names alone (U3g). Reading counts as input as a touch does (Q80 (b)): the activity
+ * hands the model's input each accessibility focus and reading of its views (SecureActivity's onAccessibilityReading).
  */
 @Composable
 fun Screens(
@@ -86,8 +88,11 @@ fun Screens(
                 }
             },
     ) {
-        // The system bars' insets are taken here, once, so a screen's own safeDrawingPadding adds none.
-        Column(Modifier.fillMaxSize().safeDrawingPadding().semantics { paneTitle = paneTitleOf(state) }) {
+        // The system bars' insets are taken here, once, so a screen's own safeDrawingPadding adds none. While
+        // the cover or the idle warning lies over the screen, the screen's semantics are cleared (Q80 (a)):
+        // nothing under the overlay, a word, D or a passphrase among it, is in the accessibility tree.
+        val beneath = if (state.overlay == null) Modifier.semantics { paneTitle = paneTitleOf(state) } else Modifier.clearAndSetSemantics {}
+        Column(Modifier.fillMaxSize().safeDrawingPadding().then(beneath)) {
             val notice = state.notice
             if (notice != null && !isWorking(state.screen) && state.screen != Screen.Stop) {
                 NoticeLine(notice)
@@ -402,7 +407,8 @@ private fun Redacted(testRegistry: Boolean) {
  * its text centred inside the system bars' insets under the TEST REGISTRY strip in that build, as every
  * screen has it (Q60, lead decision M5-51). Both come from this one call, so the strip and the insets
  * are the same code for each and CaptureTest's check of the cover's strip holds for the warning's; only
- * the text and the pane title (U3g) are the overlay's own.
+ * the text and the pane title (U3g) are the overlay's own. Screens clears the semantics of the screen
+ * under either (Q80 (a)), so the overlay is all an accessibility service finds.
  */
 @Composable
 private fun OverlayScreen(overlay: Overlay, testRegistry: Boolean, dismiss: () -> Unit) {

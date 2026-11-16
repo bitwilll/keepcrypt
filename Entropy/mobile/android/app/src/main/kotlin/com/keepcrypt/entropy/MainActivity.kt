@@ -28,7 +28,7 @@ import kotlinx.coroutines.launch
  * a recreation. A phone's configuration changes (a rotation, the font scale, night mode) recreate nothing: the
  * manifest keeps the activity portrait and has it handle them in place, Compose redrawing (Q77). Each start shows First launch first, with no core call; its Continue runs
  * the real self-test through the bridge (behind the self-test's screen), then Go offline (lead
- * decision M5-50). The app's comings and goings and the recording reports go to the model, and so
+ * decision M5-50). The app's comings and goings, the recording reports and accessibility reading go to the model, and so
  * does the system Back, always (the model goes back only where nothing is lost, and otherwise does
  * nothing, so Back never leaves a ceremony or the app). Go offline's button opens the airplane-mode
  * settings through AirplaneModeSettings. The scan screen's scanner is GoAheadScanner, whose CAMERA
@@ -143,6 +143,11 @@ class MainActivity : SecureActivity() {
 
     override fun onRecordingChanged(visible: Boolean) {
         model.recordingChanged(visible)
+    }
+
+    /** A person reading the screens through an accessibility service is input for the idle time, as a touch is (Q80 (b)). */
+    override fun onAccessibilityReading() {
+        model.input()
     }
 
     /**

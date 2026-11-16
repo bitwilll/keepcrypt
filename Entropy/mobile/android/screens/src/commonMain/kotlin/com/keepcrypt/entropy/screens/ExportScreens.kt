@@ -131,9 +131,9 @@ fun Bip39Ask(testRegistry: Boolean, onNone: () -> Unit, onPassphrase: () -> Unit
 /**
  * The BIP39 passphrase's entry (the Pi's bip39-entry, Q32 (c)), a Protected screen behind the privacy
  * gate: the passphrase as typed (a space a middle dot), one secret node; the ASCII pad (Pads.kt's
- * AsciiPad, whose keys say only their role), one of its three pages of keys at a time, the page the
- * model's (the state's page: Previous keys and Next keys are its previousPage and nextPage); Delete, and
- * Done once a character is typed; Back returns to the question, the passphrase wiped (the Pi's KEY2). The
+ * AsciiPad, whose keys carry their characters marked sensitive), one of its three pages of keys at a
+ * time, the page the model's (the state's page: Previous keys and Next keys are its previousPage and
+ * nextPage); Delete, and Done once a character is typed; Back returns to the question, the passphrase wiped (the Pi's KEY2). The
  * passphrase lives in the model's PadEntry: a character's press goes to onKey and Delete to onDelete (the
  * model's padKey and padDelete), and only what reads the passphrase (Pads.kt: its length is Compose state)
  * redraws when it changes.

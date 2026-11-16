@@ -17818,10 +17818,26 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       PhoneMotionTest, DoubleTapTest 4, NativeTest. Gradle (strict, --rerun-tasks) built the five APKs, every JVM test
       task 266 results, 0 failures, no new warning. Selftests: android-emulator 64, android-instrument 50, android-local
       47 passed; the gate clean, 417 files, its --selftest 1639 passed; canaries.sh 94 checks.
-    - [ ] U3j (Q79, Q80): a Protected pad's key carries its letter as text marked data-sensitive with its click action
+    - [x] U3j (Q79, Q80): a Protected pad's key carries its letter as text marked data-sensitive with its click action
       kept (TalkBack can finish a ceremony); under the 30-second cover and the idle warning the screen beneath has its
       semantics cleared; accessibility focus and its reading (TYPE_VIEW_ACCESSIBILITY_FOCUSED and the like) count as
       input for the idle clock. JVM tests for the clock; CaptureTest checks the keys' marks and the cleared tree.
+      Proof (M5 commit U3j, Stage U-6, partial: local; CI at the next push): Pads.kt's Protected key is its clickable,
+      then clearAndSetSemantics with the button role, its label as text and isSensitiveData (no tag); Screens clears
+      the screen's semantics while an overlay is up; SecureActivity's root delegate hands each accessibility focus and
+      text-traversal event (isReading) to onAccessibilityReading, MainActivity's model.input(); mobile-apps.md's
+      Braille row says so. JVM (Gradle strict, both APKs and every test task): 269 results, 0 failures, ReadingRuleTest
+      2 and IdleTest's readingRestartsTheIdleTimeAndTakesNoOverlayAway. On kc37 (android-local.sh): capture ControlTest
+      3, CaptureTest 9 in both APKs (disableSecureWindows not made on the user build): the walk's read-back entry,
+      backup confirm, BIP39 entry and Check a backup's entry each "its pad's 26 (32) keys carry their labels, each data
+      sensitive and clickable, none tagged"; the reading test "a reading 20006 ms after the gate put the cover at
+      30490 ms after it; under the cover, of 9 nodes, the cover's alone" (test-registry 30668 ms, 10 nodes);
+      PhoneMotionTest, DoubleTapTest 4, NativeTest; journeys FlowTest 7, CheckTest 2, MixedJourneyTest, BackupTest (age
+      -d hand-off); registry (its own boot) SnapshotDrillTest 4, LifecycleTest 8, DeviceChangeTest, AwayTest 3,
+      ScanRefusedTest, KillTest's four, CrashTest, and IdleClockTest made on API 37 by a local edit not committed:
+      "covered at 30616 ms, warned at 540199 ms, wiped at 600312 ms ... under the cover (9 nodes) and the warning (9)
+      nothing of the page in the accessibility tree"; ui (its own boot) JourneyTest 4, StopJourneyTest. The gate clean,
+      418 files, its --selftest 1639 passed.
     - [ ] U3k (Q81, Q82, Q83): a discard while still offline lands Home with its notice (idle, 60 s away, leaving a
       Protected screen), Go offline only when the phone went online (PF:127); the gate stays part of the Protected
       screen (MA:34 says so); the headphones warning on every privacy gate, swb:286 widened to match. JVM tables and

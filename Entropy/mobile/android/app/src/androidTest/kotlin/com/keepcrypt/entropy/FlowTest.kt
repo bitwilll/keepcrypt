@@ -336,8 +336,9 @@ class FlowTest {
      * nothing there); each of the 12 insert pages paged by Next is the vector's word with its position
      * and device (read in-process, compared and never printed), Back on the fourth going to the third;
      * Next disabled on the last; the overview's three pages from there and Insert view back; on the last
-     * insert, the read-back: the letter pad's 26 keys found with their button role alone and nothing on
-     * the screen naming a letter (lead decision M5-46; the dice pad's six keep their labels), the first
+     * insert, the read-back: the letter pad's 26 keys found with their letters as their text, each marked
+     * data sensitive and clickable, and nothing else on the screen naming a letter (Q79; lead decision M5-46's
+     * Public half: the dice pad's six keep their labels and ids), the first
      * inserts read back, then an e or an i among an insert's first four letters typed on the pad as its
      * mirror partner: the mismatch names that face a mirror misread; Show the insert, whose one way on is
      * back to the read-back; the insert typed on the pad correctly: a match, the whole word shown; the rest
@@ -442,8 +443,8 @@ class FlowTest {
             assertTrue("the slot is not at home: Finish did not end the session", Core.selfTest() is Reply.Done)
             pass(
                 "dice-50-words12's words: the gate with the SeedBook rules, 12 insert pages equal to the vector's words " +
-                    "(in-process), Back and the overview's three pages; the letter pad's 26 keys with the button role alone " +
-                    "and the dice pad's six labelled (M5-46); an e/i misread named a mirror misread on its face, the " +
+                    "(in-process), Back and the overview's three pages; the letter pad's 26 keys labelled, data sensitive " +
+                    "(Q79), and the dice pad's six labelled (M5-46); an e/i misread named a mirror misread on its face, the " +
                     "insert reviewed and read again on the pad; 12 inserts read back, the summary, the registration QR " +
                     "(its seal code kcr.json's) and no D offer for a dice-only seed, the checklist, Finish: Home with the slot empty",
             )
@@ -530,7 +531,7 @@ class FlowTest {
      * their read-back through the model's entry points (each insert read from the page the state holds, its
      * copy wiped at once), the summary, the backup's offer skipped; the watch-only offer, the BIP39 question
      * and "I use a passphrase": its entry behind the privacy gate, the ASCII pad's three pages of keys each
-     * with its button role alone (lead decision M5-46) and no node naming a key, paged by Next keys and
+     * labelled, data sensitive and clickable (Q79), and no other node naming a key, paged by Next keys and
      * Previous keys, the passphrase typed into the model's PadEntry, as the pad types it (no passphrase goes
      * into a selector or a click's point, lead decision M5-68 (e)), the keys paged on and back so a frame
      * comes before Delete's state is read, Delete taking a character back, and Done: the summary says it is that passphrase's wallet, another fingerprint than the
@@ -695,8 +696,8 @@ class FlowTest {
             on(activity, Screen.Home)
             assertTrue("the slot is not at home: Finish did not end the session", Core.selfTest() is Reply.Done)
             pass(
-                "a new seed's exports: the BIP39 passphrase's entry behind the gate, the ASCII pad's three pages of keys with " +
-                    "their role alone, Delete; its wallet's summary (another fingerprint); the account QR (a crypto-account " +
+                "a new seed's exports: the BIP39 passphrase's entry behind the gate, the ASCII pad's three pages of keys labelled, " +
+                    "data sensitive (Q79), Delete; its wallet's summary (another fingerprint); the account QR (a crypto-account " +
                     "UR) and the descriptor QR (two descriptors under its fingerprint) equal to core's, in-process, then " +
                     "wiped; the registration QR, core's; D behind the gate, SHA-256 under KCE/v1/commit equal to C; the " +
                     "checklist, Finish: Home",

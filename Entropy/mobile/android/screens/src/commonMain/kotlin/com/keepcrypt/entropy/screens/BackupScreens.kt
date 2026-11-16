@@ -228,13 +228,13 @@ fun BackupPassphrase(
 /**
  * The passphrase's confirm (pi-firmware.md, USB step 2; the Pi's backup-confirm), a Protected screen:
  * question page + 1 of two, "Which is word N?", core's four choices, two a row, and the answer typed on
- * the letter pad (Pads.kt's LetterPad, whose keys say only their role), its first four letters or a
- * whole three-letter word, so no choice is a button that names its word; Delete, and Done at three or
- * four letters. The choices go two a row so that all four lie in view above the pad on a 360 x 568 dp
- * window (720x1280 at 320 dpi under a 24 dp status bar and a 48 dp navigation bar) under the TEST
- * REGISTRY strip: one a row, the fourth lay below the text column's end there, out of view and so out
- * of the accessibility tree (Entropy Android run 40681107802, API 36; kc37 at 720x1184, local). The
- * letters live in the model's PadEntry: a letter's press goes to onKey and Delete to onDelete (the
+ * the letter pad (Pads.kt's LetterPad, whose keys carry their letters marked sensitive), its first four
+ * letters or a whole three-letter word, so no choice is a button that names its word; Delete, and Done
+ * at three or four letters. The choices go two a row so that all four lie in view above the pad on a
+ * 360 x 568 dp window (720x1280 at 320 dpi under a 24 dp status bar and a 48 dp navigation bar) under
+ * the TEST REGISTRY strip: one a row, the fourth lay below the text column's end there, out of view and
+ * so out of the accessibility tree (Entropy Android run 40681107802, API 36; kc37 at 720x1184, local).
+ * The letters live in the model's PadEntry: a letter's press goes to onKey and Delete to onDelete (the
  * model's padKey and padDelete), and only what reads the letters (Pads.kt: their length is Compose
  * state) redraws when they change.
  */

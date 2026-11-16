@@ -30,6 +30,7 @@ import com.keepcrypt.entropy.screens.PressGuard
 import com.keepcrypt.entropy.screens.SECRET_TAG
 import com.keepcrypt.entropy.screens.Screen
 import com.keepcrypt.entropy.screens.asciiPage
+import com.keepcrypt.entropy.screens.keyLabel
 import com.keepcrypt.entropy.screens.screenId
 import com.keepcrypt.entropy.screens.shownView
 import java.util.regex.Pattern
@@ -445,10 +446,10 @@ internal object Ui {
      * Touches the middle of bounds (a Protected pad's key's, in screen pixels) as a finger does: a touch
      * down and up injected through UiAutomation, never UiObject2.click, which logs the point it taps at
      * debug level ("Clicking on (x, y).") with no isLoggable guard, and on the pad's fixed grid a point names
-     * its key: a letter typed goes into no log (lead decision M5-68 (e)). A Protected key's semantics are its
-     * role alone (Pads.kt's clearAndSetSemantics drops the clickable's click action too), so a touch is its
-     * press, as an accessibility click is a Public key's; nothing here logs the point. The caller checks the
-     * press landed (typeLetters reads the pad's entry), so no idle wait follows.
+     * its key: a letter typed goes into no log (lead decision M5-68 (e)). A Protected key keeps its click
+     * action (Q79), for TalkBack, but a journey presses it with a touch, as a sighted user does; nothing here
+     * logs the point. The caller checks the press landed (typeLetters reads the pad's entry), so no idle wait
+     * follows.
      */
     fun touch(bounds: Rect) {
         val down = SystemClock.uptimeMillis()
@@ -514,43 +515,53 @@ internal object Ui {
 
     /**
      * The keys of the Protected pad on screen, in its order: the nodes under the screen's root with the
-     * button role and no text, description or resource id, which must be count; and no node there but the
-     * entry's own secret one has a text that names (a key's label) or a Public key's id (key_ and a key), so
-     * nothing names a key (lead decision M5-46). The entry's secret node (SECRET_TAG, the typed text the
-     * screen shows, under FLAG_SECURE) is left out of the label check: the BIP39 entry shows a passphrase as
-     * typed, so after one character it is one character long, which is no key's label (the review of U-4
-     * found the check failing there, Entropy Android 41203734694). Read through UiAutomation's own nodes
-     * (appNode's walk, in tree order, as UI Automator's search returns them), with no idle wait and no
-     * selector logged (Stage U's U1c; U1b2 found a search costs 500 ms of quiet), and read again until the
-     * count is there, for up to 10 s. The pad is scrolled into view first (scrolledTo: every key visible, its
-     * last and first shown whole, showWhole), since a key out of view is in no tree.
+     * button role whose text is one of labels (the pad's keys' labels, Pads.kt's keyLabel), which must be
+     * labels, in their order, each marked accessibility-data sensitive, clickable and with no description or
+     * resource id (Q79: a Protected key carries its label as its text, marked sensitive as a secret's node
+     * is, and keeps its click, so TalkBack reads and presses it); no other node there but the entry's own
+     * secret one has a text that names a key (a key's label, or any text names matches), and none has a
+     * Public key's id (key_ and a key). The entry's secret node (SECRET_TAG, the typed text the screen shows,
+     * under FLAG_SECURE) is left out of the label check: the BIP39 entry shows a passphrase as typed, so
+     * after one character it is one character long, a key's label (the review of U-4 found the check failing
+     * there, Entropy Android 41203734694). The texts are compared in-process, none printed. Read through
+     * UiAutomation's own nodes (appNode's walk, in tree order, as UI Automator's search returns them), with
+     * no idle wait and no selector logged (Stage U's U1c; U1b2 found a search costs 500 ms of quiet), and
+     * read again until all of labels are there, for up to 10 s. The pad is scrolled into view first
+     * (scrolledTo: every key visible, its last and first shown whole, showWhole), since a key out of view
+     * is in no tree.
      */
-    private fun padKeys(screen: Screen, count: Int, names: Regex): List<AccessibilityNodeInfo> =
-        poll("the pad's $count keys on " + screenId(screen)) {
-            val shown = scrolledTo { keysNow(screen, count, names)?.takeIf { keys -> keys.all { it.isVisibleToUser } } } ?: return@poll null
+    private fun padKeys(screen: Screen, labels: List<String>, names: Regex): List<AccessibilityNodeInfo> =
+        poll("the pad's ${labels.size} keys on " + screenId(screen)) {
+            val shown = scrolledTo { keysNow(screen, labels, names)?.takeIf { keys -> keys.all { it.isVisibleToUser } } } ?: return@poll null
             val moved = showWhole(shown.last()) or showWhole(shown.first())
-            if (moved) keysNow(screen, count, names) else shown
+            if (moved) keysNow(screen, labels, names) else shown
         }
 
-    /** padKeys' read of the pad's keys on screen as the app has them now, or null while there are not count of them. */
-    private fun keysNow(screen: Screen, count: Int, names: Regex): List<AccessibilityNodeInfo>? {
+    /** padKeys' read of the pad's keys on screen as the app has them now, or null while not all of labels are there. */
+    private fun keysNow(screen: Screen, labels: List<String>, names: Regex): List<AccessibilityNodeInfo>? {
         val nodes = under(appNode(screenId(screen)) ?: return null)
-        val keys = nodes.filter {
-            it.className?.toString() == BUTTON && it.text.isNullOrEmpty() && it.contentDescription.isNullOrEmpty() &&
-                it.viewIdResourceName.isNullOrEmpty()
-        }
-        if (keys.size != count) return null
-        val labels = nodes.filter { it.viewIdResourceName != SECRET_TAG }
-        assertFalse("a node on " + screenId(screen) + " names a key", labels.any { it.text?.toString()?.matches(names) == true })
-        assertFalse("a key on " + screenId(screen) + " has a Public key's id", nodes.any { it.viewIdResourceName?.startsWith("key_") == true })
+        val labelled = labels.toSet()
+        val keys = nodes.filter { it.className?.toString() == BUTTON && it.text?.toString() in labelled }
+        if (keys.size != labels.size) return null
+        val id = screenId(screen)
+        assertTrue("the keys on $id are not the pad's keys in its order (no key is printed)", keys.map { it.text.toString() } == labels)
+        assertTrue("a key on $id is not marked accessibility-data sensitive", keys.all { it.isAccessibilityDataSensitive })
+        assertTrue("a key on $id takes no click", keys.all { it.isClickable })
+        assertTrue("a key on $id has a description or a resource id", keys.all { it.contentDescription.isNullOrEmpty() && it.viewIdResourceName.isNullOrEmpty() })
+        val others = nodes.filter { node -> node.viewIdResourceName != SECRET_TAG && keys.none { it == node } }
+        assertFalse(
+            "a node on $id that is no key names a key",
+            others.any { node -> node.text?.toString()?.let { it in labelled || it.matches(names) } == true },
+        )
+        assertFalse("a node on $id has a Public key's id", nodes.any { it.viewIdResourceName?.startsWith("key_") == true })
         return keys
     }
 
     /** The letter pad's 26 keys on screen (the read-back entry, the backup's confirm or Check a backup's entry), as padKeys reads them. */
-    fun letterKeys(screen: Screen): List<AccessibilityNodeInfo> = padKeys(screen, LETTER_KEYS.length, A_LETTER)
+    fun letterKeys(screen: Screen): List<AccessibilityNodeInfo> = padKeys(screen, LETTER_KEYS.map(::keyLabel), A_LETTER)
 
-    /** The ASCII pad's keys on its page page (the BIP39 passphrase's entry), as padKeys reads them: no node there shows any one character. */
-    fun asciiKeys(page: Int): List<AccessibilityNodeInfo> = padKeys(Screen.Bip39Entry, asciiPage(page).length, ANY_CHARACTER)
+    /** The ASCII pad's keys on its page page (the BIP39 passphrase's entry), as padKeys reads them: no other node there shows any one character. */
+    fun asciiKeys(page: Int): List<AccessibilityNodeInfo> = padKeys(Screen.Bip39Entry, asciiPage(page).map(::keyLabel), ANY_CHARACTER)
 
     /**
      * Touches the key keys() gives at index (read afresh from the app before the touch, its node
@@ -715,7 +726,7 @@ internal object Ui {
      * its resource id, key_ and the key, clickable, with its key as the text of the node its label draws
      * inside it, which TalkBack reads with the key. Its class name is not read: on kc37 (local) a Public
      * key, whose label is a node under it, reports android.view.View, not BUTTON, which a Protected key
-     * (its semantics cleared, so with no node under it) reports. Each key's three reads are of one node,
+     * (its semantics set whole on it, its label its own text, so with no node under it) reports. Each key's three reads are of one node,
      * found afresh while a redraw replaces it (fresh).
      */
     fun assertPublicPadLabelled(what: String, keys: String) {

@@ -14,6 +14,8 @@ import com.keepcrypt.entropy.ffi.Core
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Words
+import com.keepcrypt.entropy.screens.COVER_TITLE
+import com.keepcrypt.entropy.screens.IDLE_WARNING_TITLE
 import com.keepcrypt.entropy.screens.Notice
 import com.keepcrypt.entropy.screens.Overlay
 import com.keepcrypt.entropy.screens.Screen
@@ -27,7 +29,9 @@ import org.junit.runner.RunWith
  * other level it passes at once, saying so): a words page, a Protected screen holding a session, left untouched.
  * The cover must come at 30 s, the warning at 9 minutes and the wipe at 10, each measured on SystemClock's elapsed
  * real time (the model's clock) from the last input (the model's last press, nextPage, as its screens call it);
- * the wipe lands on Go offline with the Idle notice and the slot at home. The window keeps the screen on while
+ * the wipe lands on Go offline with the Idle notice and the slot at home. Under the cover and under the warning, each read
+ * as it is first seen, the words page is out of the accessibility tree (Q80 (a); Capture.assertOverlayAlone: the overlay's
+ * pane title alone, no tag of the page, no node showing one of its secret texts). The window keeps the screen on while
  * the session is held (M5-72 (b)), so the display does not sleep through the ten minutes. The JVM's IdleTest and
  * TimersTest hold every boundary on a fake clock; this run holds the phone's clock and the model's tick (1 s).
  */
@@ -69,14 +73,24 @@ class IdleClockTest {
                 SystemClock.elapsedRealtime()
             }
             assertTrue("not on insert 2's page", onMain { activity.model.state.value.let { it.screen == Screen.Words && it.page == 1 } })
+            val pkg = Capture.instrumentation.targetContext.packageName
+            val secrets = onMain { Capture.wordsPageSecrets(checkNotNull(activity.model.state.value.insert)) }
             var cover = -1L
             var warning = -1L
             var wipe = -1L
+            var underCover = 0
+            var underWarning = 0
             val end = lastInput + LIMIT_MS
             while (wipe < 0 && SystemClock.elapsedRealtime() < end) {
                 val (state, at) = onMain { activity.model.state.value to SystemClock.elapsedRealtime() - lastInput }
-                if (cover < 0 && state.overlay == Overlay.Cover) cover = at
-                if (warning < 0 && state.overlay == Overlay.Warning) warning = at
+                if (cover < 0 && state.overlay == Overlay.Cover) {
+                    cover = at
+                    underCover = Capture.assertOverlayAlone(pkg, "cover", COVER_TITLE, secrets, "the cover over the words page")
+                }
+                if (warning < 0 && state.overlay == Overlay.Warning) {
+                    warning = at
+                    underWarning = Capture.assertOverlayAlone(pkg, "idle_warning", IDLE_WARNING_TITLE, secrets, "the idle warning over the words page")
+                }
                 if (state.screen == Screen.GoOffline) wipe = at
                 SystemClock.sleep(POLL_MS)
             }
@@ -86,7 +100,11 @@ class IdleClockTest {
             assertTrue("the wipe did not come at 10 minutes (${wipe} ms)", wipe in 600_000L..600_000L + LATE_MS)
             assertTrue("the wipe's start screen does not say Idle", onMain { activity.model.state.value.notice } == Notice.Idle)
             assertTrue("the slot is not at home after the idle wipe", Core.selfTest() is Reply.Done)
-            pass("idle on a words page on the real clock: covered at $cover ms, warned at $warning ms, wiped at $wipe ms (Go offline, Idle), the slot at home")
+            pass(
+                "idle on a words page on the real clock: covered at $cover ms, warned at $warning ms, wiped at $wipe ms (Go offline, " +
+                    "Idle), the slot at home; under the cover ($underCover nodes) and the warning ($underWarning) nothing of the page in " +
+                    "the accessibility tree",
+            )
             finish(activity)
         }
     }

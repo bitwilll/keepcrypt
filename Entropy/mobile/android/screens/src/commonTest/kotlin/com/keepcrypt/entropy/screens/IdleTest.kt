@@ -106,6 +106,37 @@ class IdleTest {
         }
     }
 
+    /**
+     * Reading is input (Q80 (b)): the activity hands the model's input each accessibility focus and text read
+     * (SecureActivity's isReading), with no tap. On a words page it starts the idle time again, so the cover
+     * comes 30 s after the last reading; under the cover it uncovers nothing but puts the warning 9 minutes
+     * after it; under the warning it keeps everything for 10 minutes more, the warning staying up until a tap.
+     */
+    @Test
+    fun readingRestartsTheIdleTimeAndTakesNoOverlayAway() {
+        val rig = Walk.to(Screen.Words)
+        idle(rig, Timers.COVER_MILLIS - 1)
+        rig.model.input()
+        idle(rig, Timers.COVER_MILLIS - 1)
+        assertNull(rig.model.state.value.overlay, "29.999 s after a reading")
+        idle(rig, 1)
+        assertEquals(Overlay.Cover, rig.model.state.value.overlay, "30 s after a reading")
+        rig.model.input()
+        assertEquals(Overlay.Cover, rig.model.state.value.overlay, "a reading took the cover away")
+        idle(rig, Timers.WARN_MILLIS - 1)
+        assertEquals(Overlay.Cover, rig.model.state.value.overlay, "8 minutes 59.999 s after a reading under the cover")
+        idle(rig, 1)
+        assertEquals(Overlay.Warning, rig.model.state.value.overlay, "9 minutes after a reading under the cover")
+        rig.model.input()
+        idle(rig, Timers.WIPE_MILLIS - 1)
+        assertEquals(Screen.Words, rig.screen, "9 minutes 59.999 s after a reading under the warning")
+        assertEquals(Overlay.Warning, rig.model.state.value.overlay, "the warning stays up until a tap")
+        assertTrue(rig.model.held.value, "a reading under the warning kept everything")
+        idle(rig, 1)
+        rig.assertDiscarded(Notice.Idle, "10 minutes after a reading under the warning")
+        assertTrue(Core.selfTest() is Reply.Done, "the idle wipe left something in core")
+    }
+
     @Test
     fun aLoadedSnapshotSurvivesTheIdleWipe() {
         val rig = Walk.to(Screen.Snapshot)

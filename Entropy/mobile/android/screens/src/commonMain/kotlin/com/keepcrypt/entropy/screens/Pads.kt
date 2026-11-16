@@ -21,8 +21,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.isSensitiveData
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.text
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -32,8 +35,9 @@ import com.keepcrypt.entropy.ffi.Secret
 // keyboard never opens. Each pad's keys come in a fixed order, and each press goes to the model (padKey,
 // U3e), which types it into a PadEntry, never a String, that hands it to Core as a Secret. On Protected
 // screens (the letter pad's read-back and backup-passphrase entry, the ASCII pad's BIP39 passphrase) a
-// key's semantics hold its role alone: nothing about which key was pressed reaches an accessibility
-// event. The dice pad and the go-ahead code's pad are on Public screens.
+// key carries its label as text marked sensitive, as a secret's node is (Q79): TalkBack reads and presses
+// it, so a ceremony can be finished with it, and Android 14+ gives it to accessibility tools alone, as it
+// gives them the letters typed. The dice pad and the go-ahead code's pad are on Public screens.
 
 /** The dice pad's keys: the faces 1 to 6. */
 const val DICE_KEYS = "123456"
@@ -240,16 +244,22 @@ fun keyLabel(key: Char): String = if (key == ' ') "space" else key.toString()
 @Composable
 private fun RowScope.Key(label: String, enabled: Boolean, sensitive: Boolean, press: () -> Unit) {
     val cell = Modifier.weight(1f).heightIn(min = KEY_DP.dp)
-    // Sensitive: the key's semantics are its role alone, so its press says nothing about the key. A
-    // Public key (the dice and the go-ahead code) has its label as its TalkBack label, the button role
-    // and a test tag, key_ and its label, for UI Automator (group 15's flow tests).
+    // Sensitive (a Protected pad, Q79): the key's semantics are set whole on it, its label as its text,
+    // marked sensitive as Kit.kt's secret() marks a secret's node, and the button role, with no tag. The
+    // clickable comes before the clearAndSetSemantics, which clears only what lies inside it (the label's
+    // own node), so the key keeps its click action and TalkBack can press it. A Public key (the dice and
+    // the go-ahead code) has its label as its TalkBack label, the button role and a test tag, key_ and its
+    // label, for UI Automator (group 15's flow tests).
     val described = if (sensitive) {
-        cell.clearAndSetSemantics { role = Role.Button }
+        cell.clickable(enabled = enabled, onClick = press).clearAndSetSemantics {
+            role = Role.Button
+            text = AnnotatedString(label)
+            isSensitiveData = true
+        }
     } else {
-        cell.semantics { role = Role.Button }.testTag("key_$label")
+        cell.semantics { role = Role.Button }.testTag("key_$label").clickable(enabled = enabled, onClick = press)
     }
     val framed = described
-        .clickable(enabled = enabled, onClick = press)
         .padding(KEY_GAP_DP.dp)
         .border(1.dp, if (enabled) Color.White else Color.Gray)
     Box(framed, contentAlignment = Alignment.Center) {

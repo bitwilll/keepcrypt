@@ -3,7 +3,9 @@ package com.keepcrypt.entropy.secure
 import android.os.Build
 import android.os.Bundle
 import android.view.View
+import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
 import androidx.activity.ComponentActivity
 import java.util.function.Consumer
 
@@ -21,6 +23,10 @@ import java.util.function.Consumer
  *   effect on content capture is applied by the capture service, not by the app); and
  *   accessibility-data sensitive, so only accessibility tools (TalkBack and its braille displays
  *   among them) read it. The app needs Android 14 (minSdk 34, Q84), so each of these is always set.
+ * - Reading counts as input (Q80 (b)): the root view's accessibility delegate sees every event its views
+ *   send up to the window, and hands each one that is a person reading them (isReading: an accessibility
+ *   focus, a text read by its parts) to onAccessibilityReading, so a braille display's reader, who reads
+ *   without touching, is not covered at 30 s or wiped at 10 minutes mid-reading.
  * - No saved instance state: the Bundle Android keeps across a process death is left empty, and
  *   onCreate never reads one, so nothing of a session can come back from it.
  * - The app's comings and goings, for the ceremony model: onAppReturned on every start, onAppResumed
@@ -46,6 +52,19 @@ abstract class SecureActivity : ComponentActivity() {
             importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_NO_EXCLUDE_DESCENDANTS
             importantForContentCapture = View.IMPORTANT_FOR_CONTENT_CAPTURE_NO_EXCLUDE_DESCENDANTS
             setAccessibilityDataSensitive(View.ACCESSIBILITY_DATA_SENSITIVE_YES)
+            accessibilityDelegate = Reading()
+        }
+    }
+
+    /**
+     * The root view's accessibility delegate: each event a view under it sends up (Compose sends its nodes'
+     * through its view's parent, requestSendAccessibilityEvent) passes here on its way to the window, and
+     * one that is reading (isReading) is reported first; every event goes on unchanged.
+     */
+    private inner class Reading : View.AccessibilityDelegate() {
+        override fun onRequestSendAccessibilityEvent(host: ViewGroup, child: View, event: AccessibilityEvent): Boolean {
+            if (isReading(event.eventType)) onAccessibilityReading()
+            return super.onRequestSendAccessibilityEvent(host, child, event)
         }
     }
 
@@ -89,4 +108,20 @@ abstract class SecureActivity : ComponentActivity() {
 
     /** Android 15+: the platform reports a recording of the screen (visible) or its end. */
     protected open fun onRecordingChanged(visible: Boolean) {}
+
+    /** An accessibility service read one of the activity's views for its user (isReading): input, as a touch is. Main thread. */
+    protected open fun onAccessibilityReading() {}
 }
+
+/**
+ * Whether an accessibility event of eventType is a person reading the app (Q80 (b)): a node taking
+ * accessibility focus (TalkBack's touch exploration and swipes, a braille display moving from node to
+ * node; Compose sends it only for a service's focus action, under touch exploration) or a text read by its
+ * characters, words or lines (a braille display panning through one). Only an accessibility service acting
+ * for its user sends either. No other event counts: a focus cleared also comes when the focused node goes
+ * (the cover drawn over the screen, a page turned), and a scroll, a content or window change, a selection
+ * or an announcement can be the app's own doing; a click is input already, through the press it makes.
+ */
+fun isReading(eventType: Int): Boolean =
+    eventType == AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED ||
+        eventType == AccessibilityEvent.TYPE_VIEW_TEXT_TRAVERSED_AT_MOVEMENT_GRANULARITY

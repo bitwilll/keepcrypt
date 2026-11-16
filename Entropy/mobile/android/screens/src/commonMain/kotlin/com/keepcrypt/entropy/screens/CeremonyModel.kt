@@ -543,8 +543,10 @@ class CeremonyModel(
     }
 
     /**
-     * A tap anywhere: the idle time starts again. Nothing during a long call or on the stop screen: a
-     * press while the app is busy goes no further (docs/pi-firmware.md, "Buttons").
+     * A tap anywhere, or a person reading the screen through an accessibility service (Q80 (b): an
+     * accessibility focus or a text read by its parts, SecureActivity's onAccessibilityReading): the idle
+     * time starts again; a cover or a warning stays up until a tap takes it away. Nothing during a long call
+     * or on the stop screen: a press while the app is busy goes no further (docs/pi-firmware.md, "Buttons").
      */
     fun input() {
         if (busy()) return

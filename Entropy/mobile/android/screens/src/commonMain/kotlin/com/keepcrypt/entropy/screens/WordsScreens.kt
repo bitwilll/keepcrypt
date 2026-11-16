@@ -313,8 +313,8 @@ fun DeviceSwap(testRegistry: Boolean, onContinue: () -> Unit) {
 /**
  * The read-back entry (docs/mobile-apps.md, step 11; swb's "Read-back from the metal", mandatory; the
  * Pi's readback-entry), a Protected screen: the insert to read back, its position and device, and the
- * faces typed so far on the letter pad (Pads.kt's LetterPad, whose keys say only their role), with no
- * suggestion; Delete, and Done at three or four letters. After a match the whole word shows, and Next
+ * faces typed so far on the letter pad (Pads.kt's LetterPad, whose keys carry their letters marked
+ * sensitive), with no suggestion; Delete, and Done at three or four letters. After a match the whole word shows, and Next
  * goes on. The letters live in the model's PadEntry, whose length is Compose state (Pads.kt): a letter's
  * press goes to onKey and Delete to onDelete (the model's padKey and padDelete), and only what reads the
  * letters redraws when they change.

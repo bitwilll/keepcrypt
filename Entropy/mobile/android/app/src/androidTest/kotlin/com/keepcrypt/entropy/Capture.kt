@@ -365,7 +365,7 @@ internal object Capture {
         val contentDescription: String?,
         /** The node's class name (a Compose button reports android.widget.Button by its role). */
         val className: String?,
-        /** Whether the node takes a click (a Protected pad's key keeps its role alone, no click action). */
+        /** Whether the node takes a click (a Protected pad's key too, Q79). */
         val clickable: Boolean,
         /**
          * The node itself, which equals the same node read again (AccessibilityNodeInfo's equals: its source
@@ -519,6 +519,29 @@ internal object Capture {
 
     /** More reads than nodesThrough takes of any screen here. */
     private const val READS = 64
+
+    /**
+     * Under an overlay (the privacy cover or the idle warning; tag and title, its test tag and pane title) the
+     * screen beneath is out of the accessibility tree (Q80 (a); Screens.kt clears its semantics while either is
+     * up): of every node of pkg's windows (nodes, read in-process), the overlay's node is there, its pane title is
+     * the only one, no node carries a test tag but the overlay's and the TEST REGISTRY strip's (so none of the
+     * screen's: its id, its controls', SECRET_TAG), and no node's text is one of secrets, the screen's secret texts
+     * (compared in-process, never printed). what names the case in the messages, whose tags are fixed names. The
+     * count of nodes read is returned, for the caller's pass line.
+     */
+    fun assertOverlayAlone(pkg: String, tag: String, title: String, secrets: Set<String>, what: String): Int {
+        val found = nodes(pkg)
+        assertTrue("$what: its node is not in the tree", found.any { it.resourceName == tag })
+        assertEquals("the pane titles under $what", listOf(title), found.mapNotNull { it.paneTitle }.distinct())
+        val beneath = found.mapNotNull { it.resourceName }.filter { !it.startsWith("android:id/") && it != tag && it != STRIP_TAG }
+        assertTrue("$what: ${beneath.size} nodes of the screen beneath are in the tree, tagged ${beneath.distinct()}", beneath.isEmpty())
+        val shown = found.count { it.text != null && it.text in secrets }
+        assertEquals("$what: nodes that show a secret text of the screen beneath (none is printed)", 0, shown)
+        return found.size
+    }
+
+    /** The TEST REGISTRY strip's test tag (Kit.kt's TestRegistryStrip), which an overlay carries in that build. */
+    private const val STRIP_TAG = "test_registry_strip"
 
     /**
      * The secret texts a words page draws for insert, as WordsScreens.kt draws them: the word, its

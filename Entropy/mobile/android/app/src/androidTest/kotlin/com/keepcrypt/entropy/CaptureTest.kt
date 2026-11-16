@@ -8,6 +8,7 @@ import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
 import android.widget.Button
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
@@ -43,11 +44,13 @@ import com.keepcrypt.entropy.ffi.KcHalt
 import com.keepcrypt.entropy.ffi.Mode
 import com.keepcrypt.entropy.ffi.Reply
 import com.keepcrypt.entropy.ffi.Words
+import com.keepcrypt.entropy.screens.COVER_TITLE
 import com.keepcrypt.entropy.screens.CeremonyModel
 import com.keepcrypt.entropy.screens.DICE_KEYS
 import com.keepcrypt.entropy.screens.DocumentPickers
 import com.keepcrypt.entropy.screens.DocumentPlace
 import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
+import com.keepcrypt.entropy.screens.LETTER_KEYS
 import com.keepcrypt.entropy.screens.Overlay
 import com.keepcrypt.entropy.screens.PASSPHRASE_WORDS
 import com.keepcrypt.entropy.screens.PickedFile
@@ -55,10 +58,13 @@ import com.keepcrypt.entropy.screens.QrKind
 import com.keepcrypt.entropy.screens.SECRET_TAG
 import com.keepcrypt.entropy.screens.ScanStop
 import com.keepcrypt.entropy.screens.Screen
+import com.keepcrypt.entropy.screens.UiState
+import com.keepcrypt.entropy.screens.asciiPage
 import com.keepcrypt.entropy.screens.bip39Shown
 import com.keepcrypt.entropy.screens.choiceText
 import com.keepcrypt.entropy.screens.deviceLegText
 import com.keepcrypt.entropy.screens.isProtected
+import com.keepcrypt.entropy.screens.keyLabel
 import com.keepcrypt.entropy.screens.overviewLine
 import com.keepcrypt.entropy.screens.passphraseLines
 import com.keepcrypt.entropy.screens.passphraseText
@@ -681,6 +687,7 @@ class CaptureTest {
         for (w in found) assertTrue("a window without SECURE: " + w.title, w.secure)
         val reads = Capture.nodesThrough(pkg, screen)
         assertSecretsMarked(screen, activity.model, name, lines, reads)
+        assertPadKeysMarked(screen, activity.model, name, reads)
         assertLaidOut(activity, reads, name)
         pass(
             "$name: drawn, then screencap and takeScreenshot black over the app's window; " +
@@ -690,7 +697,7 @@ class CaptureTest {
 
     /**
      * The screen's layout (Stage U's U3h-b): every control the screen shows (a node that takes a click, or a
-     * button by its role: a Protected pad's keys keep the role alone) has a touch target at least 48 dp each way,
+     * button by its role) has a touch target at least 48 dp each way,
      * and every text it shows lies across inside the app's window, none cut at its left or right edge. Judged on
      * the nodes in view at each of reads, the screen's column scrolled through (Capture.nodesThrough), so a node
      * out of view at one position is judged where it is in view; a control's size is the largest it was read at,
@@ -766,6 +773,35 @@ class CaptureTest {
         val unmarked = secrets.count { !it.dataSensitive }
         assertEquals("secret nodes not marked data sensitive on " + name, 0, unmarked)
         pass("$name: all ${secrets.size} of its secret nodes ($away off screen) are data sensitive (API ${Build.VERSION.SDK_INT})")
+    }
+
+    /**
+     * A Protected pad's keys carry their labels, marked (Q79): on a screen that shows one (the read-back entry
+     * before its match, the backup's confirm and Check a backup's entry: the letter pad; the BIP39 entry: its
+     * page of the ASCII pad), the screen's nodes with the button role whose text is one of the pad's labels
+     * (Pads.kt's keyLabel) are its keys, each label once, and every one is marked accessibility-data sensitive,
+     * as a secret's node is, takes a click (TalkBack presses it) and carries no tag (no id names a key). From the
+     * same reads as the secrets' check, each node once (joined); compared in-process, only counts printed.
+     */
+    private fun assertPadKeysMarked(screen: Screen, model: CeremonyModel, name: String, reads: List<List<Capture.NodeFacts>>) {
+        val labels = onMain { protectedPadLabels(screen, model.state.value) } ?: return
+        val keys = joined(reads).filter { it.className == Ui.BUTTON && it.text in labels }
+        assertTrue(
+            "$name: " + keys.size + " buttons show a key's label, not the pad's " + labels.size + " keys once each",
+            keys.size == labels.size && keys.mapNotNull { it.text }.toSet() == labels.toSet(),
+        )
+        assertEquals("$name: the pad's keys not marked data sensitive", 0, keys.count { !it.dataSensitive })
+        assertEquals("$name: the pad's keys that take no click", 0, keys.count { !it.clickable })
+        assertEquals("$name: the pad's keys with a tag", 0, keys.count { it.resourceName != null })
+        pass("$name: its pad's ${keys.size} keys carry their labels, each data sensitive and clickable, none tagged (Q79)")
+    }
+
+    /** The labels of the Protected pad screen shows in state, as Pads.kt draws them (keyLabel); null where it shows none. */
+    private fun protectedPadLabels(screen: Screen, state: UiState): List<String>? = when (screen) {
+        Screen.ReadbackEntry -> if (state.matched) null else LETTER_KEYS.map(::keyLabel)
+        Screen.BackupConfirm, Screen.BackupCheckEntry -> LETTER_KEYS.map(::keyLabel)
+        Screen.Bip39Entry -> asciiPage(state.page).map(::keyLabel)
+        else -> null
     }
 
     /**
@@ -937,8 +973,8 @@ class CaptureTest {
      * returns), so the cover is up; UI Automator then finds the cover by its resource id and, inside
      * it, the strip, or no strip anywhere in the shipping APK. The idle warning comes from the same
      * call (Screens.kt's OverlayScreen), strip included, so this holds for its strip too; only its
-     * text is its own, and no emulator test reaches it (nine minutes without input while a session is
-     * held). Where the strip lies against the system bars is not read here: UI Automator gives only
+     * text is its own, and only IdleClockTest reaches it (nine minutes without input while a session is
+     * held, on API 36). Where the strip lies against the system bars is not read here: UI Automator gives only
      * visible bounds, cut to the window as accessibility reports it.
      */
     @Test
@@ -977,6 +1013,64 @@ class CaptureTest {
             pass("no TEST REGISTRY strip on the cover or the screen under it in the shipping APK")
         }
         finish(activity)
+    }
+
+    /**
+     * Reading counts as input and the cover hides the words from accessibility (Q80, commit U3j). A gate seed's
+     * first words page (gateSeedsWords) is on show; READ_AFTER_MS later an accessibility focus event goes up from
+     * the app's Compose view as Compose sends one when a service focuses a node (its view's parent's
+     * requestSendAccessibilityEvent; Compose itself sends it only under touch exploration, which no test turns on),
+     * through the root view's delegate (SecureActivity's): the cover must come 30 s after that reading, not 30 s
+     * after the gate (the model's tick, 1 s, and this poll, LATE_MS late at most). Under the cover the screen
+     * beneath is out of the accessibility tree (Capture.assertOverlayAlone: the cover's pane title alone, no tag of
+     * the words page, no node showing one of its secret texts, compared in-process). The cover tapped away (the
+     * model's dismissOverlay, as its tap calls it), the same read finds the page again: its pane title, its id and
+     * its secret nodes. The idle warning comes from the same overlay call and the same clearing (Screens.kt);
+     * IdleClockTest checks the tree under it on the real clock (API 36).
+     */
+    @Test
+    fun aReadingRestartsTheIdleTimeAndTheCoverHidesTheWordsFromAccessibility() {
+        Capture.whileOffline {
+            val activity = gateSeedsWords()
+            val passed = SystemClock.elapsedRealtime()
+            SystemClock.sleep(READ_AFTER_MS)
+            val read = onMain {
+                sendReading(activity)
+                SystemClock.elapsedRealtime()
+            }
+            var covered = -1L
+            while (covered < 0 && SystemClock.elapsedRealtime() < read + COVER_MS + LATE_MS) {
+                if (onMain { activity.model.state.value.overlay } == Overlay.Cover) covered = SystemClock.elapsedRealtime() - read
+                SystemClock.sleep(POLL_MS)
+            }
+            probe("a reading ${read - passed} ms after the gate; the cover ${covered} ms after the reading")
+            assertTrue("the cover did not come 30 s after the reading ($covered ms)", covered in COVER_MS - TICK_MS..COVER_MS + LATE_MS)
+            val secrets = onMain { wordsPageSecrets(checkNotNull(activity.model.state.value.insert)) }
+            val count = Capture.assertOverlayAlone(pkg, COVER_TAG, COVER_TITLE, secrets, "the cover over a words page")
+            onMain { activity.model.dismissOverlay() }
+            waitUntil("the cover taken away") { onMain { activity.model.state.value.overlay } == null }
+            val back = Capture.nodesOf(pkg, Screen.Words)
+            assertEquals("the pane titles once uncovered", listOf(screenTitle(Screen.Words)), back.mapNotNull { it.paneTitle }.distinct())
+            assertTrue("no secret node once uncovered", back.any { it.resourceName == SECRET_TAG })
+            pass(
+                "a reading ${read - passed} ms after the gate put the cover at ${covered} ms after it; under the cover, of " +
+                    "$count nodes, the cover's alone, nothing of the words page; uncovered, the page's nodes back",
+            )
+            finish(activity)
+        }
+    }
+
+    /**
+     * An accessibility focus event, as Compose sends one for a node a service focuses: up from the activity's
+     * Compose view (the innermost first child under its content) through its parent's requestSendAccessibilityEvent,
+     * the path every event of Compose's takes (AndroidComposeViewAccessibilityDelegateCompat's sendEvent).
+     * Main thread only.
+     */
+    private fun sendReading(activity: MainActivity) {
+        var view: View = activity.findViewById(android.R.id.content)
+        while (view is ViewGroup && view.childCount > 0) view = view.getChildAt(0)
+        val parent = checkNotNull(view.parent) { "the Compose view has no parent" }
+        parent.requestSendAccessibilityEvent(view, AccessibilityEvent(AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED))
     }
 
     private fun stage(activity: MainActivity): Stage =
@@ -1287,6 +1381,24 @@ class CaptureTest {
 
         /** The permission the scan screen asks for. */
         const val CAMERA = "android.permission.CAMERA"
+
+        /** How long after the gate the cover test's reading comes: before the 30 s cover the gate would bring. */
+        const val READ_AFTER_MS = 20_000L
+
+        /** The cover's 30 s (Timers.COVER_MILLIS). */
+        const val COVER_MS = 30_000L
+
+        /** The model's tick: a step is seen up to this much late, and the reading's clock read up to this much early. */
+        const val TICK_MS = 1_000L
+
+        /** How late the cover may be seen: the model's 1 s tick and the poll. */
+        const val LATE_MS = 2_500L
+
+        /** How often the cover test reads the state. */
+        const val POLL_MS = 200L
+
+        /** The cover's test tag (Screens.kt's OverlayScreen). */
+        const val COVER_TAG = "cover"
 
         /** The TEST REGISTRY strip's resource id and text (Kit.kt's TestRegistryStrip). */
         const val STRIP = "test_registry_strip"
