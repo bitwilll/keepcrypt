@@ -107,34 +107,54 @@ class IdleTest {
     }
 
     /**
-     * Reading is input (Q80 (b)): the activity hands the model's input each accessibility focus and text read
+     * Reading is input (Q80 (b)): the activity hands the model's reading each accessibility focus and text read
      * (SecureActivity's isReading), with no tap. On a words page it starts the idle time again, so the cover
      * comes 30 s after the last reading; under the cover it uncovers nothing but puts the warning 9 minutes
-     * after it; under the warning it keeps everything for 10 minutes more, the warning staying up until a tap.
+     * after it; under the warning, which shows only after 9 minutes without input, it ends the warning: the
+     * cover is back on a Protected screen, with everything kept and the warning 9 minutes on, and on a Public
+     * screen (the dice, a session held) the screen is.
      */
     @Test
-    fun readingRestartsTheIdleTimeAndTakesNoOverlayAway() {
+    fun readingRestartsTheIdleTimeTakesNoCoverAwayAndEndsTheWarning() {
         val rig = Walk.to(Screen.Words)
         idle(rig, Timers.COVER_MILLIS - 1)
-        rig.model.input()
+        rig.model.reading()
         idle(rig, Timers.COVER_MILLIS - 1)
         assertNull(rig.model.state.value.overlay, "29.999 s after a reading")
         idle(rig, 1)
         assertEquals(Overlay.Cover, rig.model.state.value.overlay, "30 s after a reading")
-        rig.model.input()
+        rig.model.reading()
         assertEquals(Overlay.Cover, rig.model.state.value.overlay, "a reading took the cover away")
         idle(rig, Timers.WARN_MILLIS - 1)
         assertEquals(Overlay.Cover, rig.model.state.value.overlay, "8 minutes 59.999 s after a reading under the cover")
         idle(rig, 1)
         assertEquals(Overlay.Warning, rig.model.state.value.overlay, "9 minutes after a reading under the cover")
-        rig.model.input()
-        idle(rig, Timers.WIPE_MILLIS - 1)
-        assertEquals(Screen.Words, rig.screen, "9 minutes 59.999 s after a reading under the warning")
-        assertEquals(Overlay.Warning, rig.model.state.value.overlay, "the warning stays up until a tap")
+        rig.model.reading()
+        assertEquals(Overlay.Cover, rig.model.state.value.overlay, "a reading under the warning on a Protected screen: the cover, not the screen")
+        assertEquals(Screen.Words, rig.screen, "a reading under the warning")
         assertTrue(rig.model.held.value, "a reading under the warning kept everything")
+        idle(rig, Timers.WARN_MILLIS - 1)
+        assertEquals(Overlay.Cover, rig.model.state.value.overlay, "8 minutes 59.999 s after a reading under the warning")
+        idle(rig, 1)
+        assertEquals(Overlay.Warning, rig.model.state.value.overlay, "9 minutes after a reading under the warning")
+        idle(rig, Timers.WIPE_MILLIS - Timers.WARN_MILLIS - 1)
+        assertEquals(Screen.Words, rig.screen, "9 minutes 59.999 s after a reading under the warning")
         idle(rig, 1)
         rig.assertDiscarded(Notice.Idle, "10 minutes after a reading under the warning")
         assertTrue(Core.selfTest() is Reply.Done, "the idle wipe left something in core")
+        assertTrue(Core.wipeAll() is Reply.Done)
+        val dice = Walk.to(Screen.Dice)
+        assertTrue(dice.model.held.value, "the dice hold a session")
+        idle(dice, Timers.WARN_MILLIS)
+        assertEquals(Overlay.Warning, dice.model.state.value.overlay, "9 minutes on the dice")
+        dice.model.reading()
+        assertNull(dice.model.state.value.overlay, "a reading under the warning on a Public screen: the screen")
+        assertEquals(Screen.Dice, dice.screen, "a reading under the warning on the dice")
+        assertTrue(dice.model.held.value, "a reading under the warning on the dice kept everything")
+        idle(dice, Timers.WARN_MILLIS - 1)
+        assertNull(dice.model.state.value.overlay, "8 minutes 59.999 s after a reading on the dice")
+        idle(dice, 1)
+        assertEquals(Overlay.Warning, dice.model.state.value.overlay, "9 minutes after a reading on the dice")
     }
 
     @Test

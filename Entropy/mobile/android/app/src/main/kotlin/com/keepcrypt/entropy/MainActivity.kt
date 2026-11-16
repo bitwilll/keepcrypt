@@ -147,7 +147,7 @@ class MainActivity : SecureActivity() {
 
     /** A person reading the screens through an accessibility service is input for the idle time, as a touch is (Q80 (b)). */
     override fun onAccessibilityReading() {
-        model.input()
+        model.reading()
     }
 
     /**

@@ -43,7 +43,7 @@ import com.keepcrypt.entropy.ffi.Mode
  * process (the platform's). The system Back is the platform's too, and goes to the model's back. The
  * screen's column carries its pane title (paneTitleOf), and each overlay its own, so TalkBack says which
  * screen came, by fixed names alone (U3g). Reading counts as input as a touch does (Q80 (b)): the activity
- * hands the model's input each accessibility focus and reading of its views (SecureActivity's onAccessibilityReading).
+ * hands the model's reading each accessibility focus and reading of its views (SecureActivity's onAccessibilityReading).
  */
 @Composable
 fun Screens(

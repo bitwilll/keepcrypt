@@ -545,14 +545,31 @@ class CeremonyModel(
     }
 
     /**
-     * A tap anywhere, or a person reading the screen through an accessibility service (Q80 (b): an
-     * accessibility focus or a text read by its parts, SecureActivity's onAccessibilityReading): the idle
-     * time starts again; a cover or a warning stays up until a tap takes it away. Nothing during a long call
-     * or on the stop screen: a press while the app is busy goes no further (docs/pi-firmware.md, "Buttons").
+     * A tap anywhere (the screens' pointer handler, before the tap reaches its control): the idle time starts
+     * again; a cover or a warning stays up until the tap on it takes it away (dismissOverlay). Nothing during a
+     * long call or on the stop screen: a press while the app is busy goes no further (docs/pi-firmware.md,
+     * "Buttons").
      */
     fun input() {
         if (busy()) return
         timers.input()
+    }
+
+    /**
+     * A person reading the screen through an accessibility service (Q80 (b): an accessibility focus or a
+     * text read by its parts, SecureActivity's onAccessibilityReading): input, as a tap is, so the idle time
+     * starts again. The idle warning shows only after 9 minutes without input (docs/mobile-apps.md, "Session
+     * lifetime"), so a reading ends it: on a Protected screen the cover it came over is back (only a tap shows a
+     * Protected screen again), on a Public screen the screen is. A cover stays up until a tap takes it away.
+     * Nothing during a long call or on the stop screen, as input.
+     */
+    fun reading() {
+        if (busy()) return
+        timers.input()
+        val current = mutable.value
+        if (current.overlay == Overlay.Warning) {
+            mutable.value = current.copy(overlay = if (isProtected(current.screen)) Overlay.Cover else null)
+        }
     }
 
     /**
