@@ -14064,9 +14064,18 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   listing's one new hit. Neither shader cache appeared, so M5-70 (d)'s rule 8 question does not arise.
 
 **19. Gate evidence and Commands**
-- [ ] CLAUDE.md Commands gains the ffi test-registry line, `--apk` and `--selftest-apk`, the android scripts (CI-only
+- [x] CLAUDE.md Commands gains the ffi test-registry line, `--apk` and `--selftest-apk`, the android scripts (CI-only
   ones marked so) and the new canaries count.
   Proof: the diff touches only the Commands block; the count equals `want_checks`.
+  Proof (M5 commit 22, Stage F, 2026-11-17): `git diff -U0 CLAUDE.md` has one hunk (@@ -224 +224,27), inside the
+  Commands block: the two ffi lines (release and test registry, as entropy-ci.yml's test job runs them), android-rust.sh
+  for both flavours, the strict Gradle build (entropy-android.yml's task list), android-deps-review.py classpath,
+  android-deps-review.sh (CI-only), `--apk` with its six arguments, `--selftest-apk`, android-emulator.sh --part
+  (CI-only), android-local.sh, the eight selftests, and canaries.sh's count 73 -> 94, equal to canaries.sh's
+  want_checks=94 (its local run: "PASS: all 94 checks ran"). Each selftest run locally as written: android-rust 27,
+  android-frames 53, android-age-check 18, android-instrument 50, android-handoff 20, android-local 47, --selftest-apk
+  89, android-emulator 64, all passed, 0 failed; android-deps-review --selftest exits 2 here ("gpg is not on PATH",
+  this Mac has no gpg; CI's build job runs it with gpg), so its line says it needs gpg.
 - [ ] The owner's P0-P5 are issued with the run ID, commit and both APKs' SHA-256 of the final head's Android run, and
   the Seal IDs from `p4-seal-ids.txt`.
   Proof: the checklist block filled in.

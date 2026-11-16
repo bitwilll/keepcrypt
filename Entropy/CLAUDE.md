@@ -221,7 +221,33 @@ scripts/banned-api-check.sh --image-lists IMG KCONFIG          # the listing pi/
 scripts/banned-api-check.sh --selftest-image IMG KCONFIG       # the scan's positive controls, as mutations of the built image
 scripts/banned-api-check.sh --image IMG pi/os/expected KCONFIG BIN_SHA256   # the scan; a hit fails the leg before
                                      # leg a's upload, so an uploaded image passed it
-scripts/canaries.sh                  # 73 checks: proves every gate still fires, the scan's positive controls included
+# The phone FFI (ffi/: keepcrypt-ffi, keepcrypt-guard, keepcrypt-jni), release and test-registry configurations:
+cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked
+cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked --features keepcrypt-core/test-registry
+# The Android app (mobile/android; CI: .github/workflows/entropy-android.yml, not a required check; needs the
+# Android SDK, NDK and JDK the workflow pins). Rust libraries for both flavours, then the strict Gradle build:
+sh scripts/android-rust.sh shipping
+sh scripts/android-rust.sh withTestRegistry
+sh scripts/android-gradle.sh --dependency-verification strict :app:assembleShippingRelease :app:assembleWithTestRegistryRelease :app:assembleShippingReleaseAndroidTest :app:assembleWithTestRegistryReleaseAndroidTest :capture-control:assembleRelease :core-ffi:testAndroidHostTest :screens:testAndroidHostTest test
+python3 -I scripts/android-deps-review.py classpath   # every Maven module on the shipped classpath, against expected/
+sh scripts/android-deps-review.sh DIR   # the dependency review on a mirror of the locked artifacts (CI-only)
+scripts/banned-api-check.sh --apk VARIANT APK mobile/android/expected MERGER_REPORT CERT_SHA256 mobile/android/app/src/VARIANT/jniLibs
+                                     # VARIANT shipping or withTestRegistry: the manifest summary (no INTERNET), the
+                                     # merger report, the signing cert, the native libraries and the dex reference scan
+scripts/banned-api-check.sh --selftest-apk   # --apk's positive controls on stub APKs (INTERNET among them)
+sh scripts/android-emulator.sh --part PART --booted API   # CI's leg jobs (CI-only): PART capture, journeys, ui or
+                                     # registry on a booted API 34 or 36 emulator; its header lists what each runs
+sh scripts/android-local.sh [--part PART] [APK_DIR]   # the same parts on the owner's Mac (kc37 AVD), reported as local
+# Their selftests, each on stand-ins (no device, no SDK):
+sh scripts/android-rust.sh --selftest
+python3 -I scripts/android-deps-review.py --selftest   # needs gpg (CI's runner has it)
+python3 -I scripts/android-frames.py --selftest       # the raw-frame checker the capture tests' recording uses
+python3 -I scripts/android-age-check.py --selftest    # the age -d hand-off of BackupTest's backup (needs age)
+sh scripts/android-instrument.sh --selftest
+sh scripts/android-emulator.sh --selftest
+sh scripts/android-handoff.sh --selftest
+sh scripts/android-local.sh --selftest
+scripts/canaries.sh                  # 94 checks: proves every gate still fires, the scan's positive controls included
 ```
 
 ## Definition of done (every task)

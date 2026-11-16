@@ -98,3 +98,11 @@ scripts that read the changed one (grep for its name and its markers) and run th
 - Rule: never message a running workflow agent; steer by stopping the workflow and relaunching with a note, or wait for
   its report. Never edit or restore a runner script while any run may be executing it: copy it elsewhere instead.
 
+
+## 2026-11-17: a test-harness fix pushed without the banned-API gate turned Entropy CI red
+- Mistake: 012aa5e7 named the text-input widget class in androidTest's Picker.kt; the gate's KtInput refuses it in every
+  scope, so Entropy CI's gates job and every canary that counts hits failed (run 43917696155). The owner had to ask why.
+- Root cause: only the emulator suites were run before the push; the Kotlin change was treated as test-only, outside
+  the gate's reach, which it is not (KtInput, KtLog and others scan androidTest too).
+- Rule: before every push that touches any source, scripts/banned-api-check.sh runs clean locally, and canaries.sh
+  too when hit counts could move. A gate hit is fixed in the code, never by relaxing or dodging the rule.
