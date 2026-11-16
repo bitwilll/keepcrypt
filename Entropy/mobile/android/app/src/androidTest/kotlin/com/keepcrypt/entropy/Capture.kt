@@ -380,11 +380,16 @@ internal object Capture {
      * of every search at debug level, its text included (UiDevice.findObjects: "Retrieving nodes with
      * selector: %s"; By.text's prints TEXT='...'; lead decision M5-68 (e)): the caller compares the texts
      * in-process. A node off screen is read too (UI Automator's own searches pass over one), and a child
-     * that cannot be read fails the walk, which would otherwise miss what it draws.
+     * that cannot be read fails the walk, which would otherwise miss what it draws. Each node is read again from
+     * the app first (refresh), as Ui.appNodes reads them, and one the app no longer has is left out with its
+     * subtree: the accessibility cache can keep a node's old bounds after a scroll (kc37, local, U3i-b: after
+     * showWhole moved the code entry's column 3 px at font scale 2.0, a row of keys still read 3 px short of
+     * whole at its old place, where the app had it whole).
      */
     fun nodes(pkg: String): List<NodeFacts> {
         val found = ArrayList<NodeFacts>()
         fun read(node: AccessibilityNodeInfo) {
+            if (!node.refresh()) return
             val bounds = Rect()
             node.getBoundsInScreen(bounds)
             found.add(
@@ -502,14 +507,16 @@ internal object Capture {
      * view out of the tree). Before each page on, a node the column's bottom edge cuts is shown whole
      * (Ui.showWhole, the least scroll that shows it) and the screen read again, so a page starts where no node
      * is cut and every node is read whole at one position, unless it is taller than the column. A screen whose
-     * column does not scroll gives one read. The reads, top first; nothing is printed.
+     * column does not scroll gives one read. atEach runs right after each read, at its position (CaptureTest's
+     * in-process layout read, Layout.read). The reads, top first; nothing is printed.
      */
-    fun nodesThrough(pkg: String, screen: Screen): List<List<NodeFacts>> {
+    fun nodesThrough(pkg: String, screen: Screen, atEach: () -> Unit = {}): List<List<NodeFacts>> {
         var pages = 0
         while (pages++ < Ui.PAGES && Ui.scrollPage(forward = false)) continue
         val reads = ArrayList<List<NodeFacts>>()
         while (true) {
             reads.add(nodesOf(pkg, screen))
+            atEach()
             assertTrue(screenId(screen) + "'s column was not scrolled through in " + READS + " reads", reads.size < READS)
             val cut = Ui.cutAtTheBottom()
             if (cut != null && Ui.showWhole(cut)) continue

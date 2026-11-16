@@ -75,6 +75,7 @@ import com.keepcrypt.entropy.screens.typedFaces
 import com.keepcrypt.entropy.screens.verdictLine
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import kotlin.math.abs
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -587,10 +588,8 @@ class CaptureTest {
 
     /**
      * The layout on a 412 dp phone (Stage U's U3h-b): the window manager set to 1080x2424 px at density 420 (put back
-     * with wm size reset and wm density reset in a finally), the same walk through every screen in a new activity,
-     * its detours too (walkScreens), each screen drawn and laid out as its column is scrolled through
-     * (assertLaidOut over Capture.nodesThrough: every control 48 dp or more, every text inside the window across);
-     * no capture is judged here, everyScreenIsDrawnAndThenBlackInEveryCapture does that at CI's window.
+     * with wm size reset and wm density reset in a finally), the layout walk (layoutWalk); no capture is judged
+     * here, everyScreenIsDrawnAndThenBlackInEveryCapture does that at CI's window.
      */
     @Test
     fun everyScreenIsLaidOutOnA412DpPhone() {
@@ -598,17 +597,67 @@ class CaptureTest {
             shell("wm size $PHONE_SIZE")
             shell("wm density $PHONE_DENSITY")
             probe("the window manager: " + Capture.shellText("wm size").replace('\n', ' ') + "; " + Capture.shellText("wm density").replace('\n', ' '))
-            Capture.whileOffline {
-                walkScreens { screen, activity, name ->
-                    proveDrawn(activity, screen)
-                    assertLaidOut(activity, Capture.nodesThrough(pkg, screen), "$name (412 dp)")
-                }
-            }
-            pass("every screen laid out on a 412 dp phone ($PHONE_SIZE at density $PHONE_DENSITY): controls of 48 dp or more, texts inside the window")
+            layoutWalk("412 dp")
+            pass("every screen laid out on a 412 dp phone ($PHONE_SIZE at density $PHONE_DENSITY): $LAID_OUT")
         } finally {
             shell("wm density reset")
             shell("wm size reset")
         }
+    }
+
+    /**
+     * The layout at the system's largest font scale, 2.0, at CI's window (Q78 with minSdk 34, lead decision
+     * M5-84 (d), commit U3i-b): settings put system font_scale 2.0 (put back as it was, or 1.0 when it was unset,
+     * in a finally, as DeviceChangeTest puts its 1.3 back), then the layout walk (layoutWalk), each screen judged
+     * once its activity's configuration has the scale. No capture is judged here.
+     */
+    @Test
+    fun everyScreenIsLaidOutAtFontScale2() {
+        val before = shellText("settings get system font_scale")
+        try {
+            shell("settings put system font_scale $FONT_SCALE")
+            probe("the font scale: " + shellText("settings get system font_scale") + " (it was $before)")
+            layoutWalk("font scale $FONT_SCALE") { activity, name ->
+                waitUntil("$name at font scale $FONT_SCALE") { onMain { abs(activity.resources.configuration.fontScale - FONT_SCALE) < 0.01f } }
+            }
+            pass("every screen laid out at font scale $FONT_SCALE at CI's window: $LAID_OUT")
+        } finally {
+            shell("settings put system font_scale " + if (before == "null") "1.0" else before)
+        }
+    }
+
+    /**
+     * The layout walk: walkScreens through every screen in a new activity, its detours too, each screen (after
+     * ready, given its activity and name) drawn and laid out (assertLaidOut) as its column is scrolled through
+     * (through), named in its lines with what; then, pass or fail, the camera's answer forgotten
+     * (forgetTheCameraAnswer).
+     */
+    private fun layoutWalk(what: String, ready: (MainActivity, String) -> Unit = { _, _ -> }) {
+        try {
+            Capture.whileOffline {
+                walkScreens { screen, activity, name ->
+                    ready(activity, name)
+                    proveDrawn(activity, screen)
+                    assertLaidOut(activity, through(activity, screen), "$name ($what)")
+                }
+            }
+        } finally {
+            forgetTheCameraAnswer()
+        }
+    }
+
+    /**
+     * CAMERA put back as a fresh install has it, not granted and with no answer kept: pm clear-permission-flags
+     * drops its user-set and user-fixed flags, and dumpsys package then shows neither. Each walk answers the scan
+     * screen's prompt with Don't allow (askedOnTheScanScreen), and Android shows no prompt after a second denial;
+     * with two layout walks before it in one run, the capture walk, which needs the prompt, met none (kc37, local,
+     * U3i-b). So each layout walk leaves no answer behind, and every walk after one meets a first prompt.
+     */
+    private fun forgetTheCameraAnswer() {
+        shell("pm clear-permission-flags $pkg $CAMERA user-set user-fixed")
+        val after = Capture.permission(pkg, CAMERA)
+        assertFalse("CAMERA granted after the layout walk", after.granted)
+        assertFalse("CAMERA's answer still kept after pm clear-permission-flags: " + after.state, ANSWER_KEPT.containsMatchIn(after.state))
     }
 
     private fun walkEveryScreen() {
@@ -685,10 +734,11 @@ class CaptureTest {
         assertTrue("no window's owner line names the app: windows are found by title alone", found.any { it.byOwner })
         probe("windows of the app: " + found.joinToString("; ") { "${it.title} (by owner ${it.byOwner}, SECURE ${it.secure})" })
         for (w in found) assertTrue("a window without SECURE: " + w.title, w.secure)
-        val reads = Capture.nodesThrough(pkg, screen)
+        val seen = through(activity, screen)
+        val reads = seen.reads
         assertSecretsMarked(screen, activity.model, name, lines, reads)
         assertPadKeysMarked(screen, activity.model, name, reads)
-        assertLaidOut(activity, reads, name)
+        assertLaidOut(activity, seen, name)
         pass(
             "$name: drawn, then screencap and takeScreenshot black over the app's window; " +
                 "SECURE on all ${found.size} of its windows; no content capture",
@@ -696,37 +746,116 @@ class CaptureTest {
     }
 
     /**
-     * The screen's layout (Stage U's U3h-b): every control the screen shows (a node that takes a click, or a
-     * button by its role) has a touch target at least 48 dp each way,
-     * and every text it shows lies across inside the app's window, none cut at its left or right edge. Judged on
-     * the nodes in view at each of reads, the screen's column scrolled through (Capture.nodesThrough), so a node
-     * out of view at one position is judged where it is in view; a control's size is the largest it was read at,
-     * since a position can cut it at the column's edge and nodesThrough reads each whole at one. Read in-process
-     * from the screen's own nodes; only screen ids, counts and sizes are printed.
+     * The showing screen's nodes at each position of its column as it is scrolled through (Capture.nodesThrough),
+     * and Compose's layout of it read in-process at each (Layout.read), position by position.
      */
-    private fun assertLaidOut(activity: MainActivity, reads: List<List<Capture.NodeFacts>>, name: String) {
+    private class Through(val reads: List<List<Capture.NodeFacts>>, val layout: List<List<Layout.Node>>)
+
+    private fun through(activity: MainActivity, screen: Screen): Through {
+        val layout = ArrayList<List<Layout.Node>>()
+        val reads = Capture.nodesThrough(pkg, screen) { layout.add(Layout.read(activity)) }
+        return Through(reads, layout)
+    }
+
+    /**
+     * The screen's layout (Stage U's U3h-b; U3i-b, Q78, M5-84 (d)): every control the screen shows (a node that
+     * takes a click, or a button by its role) has a touch target at least 48 dp each way, in Compose's own layout
+     * (Layout.read: its node's whole size, in view or not) and as the accessibility reads see it,
+     * and every text it shows lies across inside the app's window, none cut at its left or right edge. Judged on
+     * the nodes in view at each of the reads, the screen's column scrolled through (Capture.nodesThrough), so a node
+     * out of view at one position is judged where it is in view; a control's size is the largest it was read at,
+     * since a position can cut it at the column's edge and nodesThrough reads each whole at one. Then in Compose's
+     * own layout at those positions, which holds the nodes out of view too: every control and every text is shown
+     * whole by scrolling (shownWhole: what its parents' clips, the window and the system bars leave
+     * of it covers it, top to bottom across the positions, and its whole width at each), so a control that no
+     * scrolling brings into view and a text its parent or the window cuts are found; and no text overflows its own
+     * box. Read in-process from the screen's own nodes; only screen ids, tags, counts and sizes are printed.
+     */
+    private fun assertLaidOut(activity: MainActivity, walked: Through, name: String) {
+        val reads = walked.reads
         val nodes = reads.flatten().filter { it.visible && !it.bounds.isEmpty }
         val density = onMain { activity.resources.displayMetrics.density }
         val window = region(activity)
         val target = (MIN_TARGET_DP * density).toInt()
+        val laidControls = walked.layout.flatten().filter { it.control }.groupBy { it.id }.values
+        val laidSmall = laidControls.filter { it.first().width < target || it.first().height < target }
+        assertTrue(
+            "$name: " + laidSmall.size + " of its " + laidControls.size + " controls are under 48 dp in Compose's layout: " +
+                laidSmall.joinToString { described(it.first()) },
+            laidSmall.isEmpty(),
+        )
         val controls = nodes.filter { it.clickable || it.className == Ui.BUTTON }.groupBy { it.key }.values
         val small = controls.filter { seen -> seen.maxOf { it.bounds.width() } < target || seen.maxOf { it.bounds.height() } < target }
-        assertTrue(
-            "$name: " + small.size + " of its " + controls.size + " controls are under 48 dp: " +
-                small.joinToString { seen ->
-                    (seen.first().resourceName ?: "a key") + " " + seen.maxOf { it.bounds.width() } + "x" + seen.maxOf { it.bounds.height() } + " px"
-                },
-            small.isEmpty(),
-        )
+        // Before the failure, what the first two such nodes are (controlFacts).
+        for (seen in small.take(2)) probe("$name: a control under 48 dp: " + controlFacts(seen, walked.layout))
+        assertTrue("$name: " + small.size + " of its " + controls.size + " controls are under 48 dp: " + small.joinToString { seen -> sized(seen) }, small.isEmpty())
         val texts = nodes.filter { !it.text.isNullOrEmpty() }
         val cut = texts.filter { it.bounds.left < window.left || it.bounds.right > window.right }.distinctBy { it.key }
         val shown = texts.distinctBy { it.key }.size
         assertTrue("$name: " + cut.size + " of its " + shown + " texts are cut at the window's edge: " + cut.joinToString { it.resourceName ?: "a text" }, cut.isEmpty())
+        val laid = walked.layout.flatten().filter { (it.control || it.text) && it.width > 0f && it.height > 0f }.groupBy { it.id }.values
+        val unshown = laid.filter { !shownWhole(it) }
+        assertTrue(
+            "$name: " + unshown.size + " of its " + laid.size + " controls and texts are never shown whole by scrolling: " +
+                unshown.joinToString { described(it.first()) + ", shown " + it.mapNotNull { node -> node.shown }.joinToString("; ").ifEmpty { "nowhere" } },
+            unshown.isEmpty(),
+        )
+        val overflowing = laid.filter { it.any { node -> node.overflow } }
+        assertTrue("$name: " + overflowing.size + " of its texts overflow their box: " + overflowing.joinToString { described(it.first()) }, overflowing.isEmpty())
+        val scale = onMain { activity.resources.configuration.fontScale }
         probe(
             "$name: " + controls.size + " controls of 48 dp or more (" + target + " px at density " + density + "), " + shown +
-                " texts inside the window, over " + reads.size + " position(s) of its column",
+                " texts inside the window, over " + reads.size + " position(s) of its column; in Compose's layout " + laid.size +
+                " controls and texts each shown whole by scrolling, none overflowing (font scale " + scale + ")",
         )
     }
+
+    /**
+     * Whether a node, read at each position of its screen's column (seen, Layout.read's reads of it), is shown
+     * whole by scrolling: its shown parts, each its whole width, cover it from its top to its bottom with no gap
+     * (within Layout.EDGE_PX), so every line of a text taller than the column is in view at one position at least.
+     */
+    private fun shownWhole(seen: List<Layout.Node>): Boolean {
+        val parts = seen.mapNotNull { node -> node.shown?.let { node to it } }
+        if (parts.isEmpty()) return false
+        if (parts.any { (node, part) -> part.left > node.left + Layout.EDGE_PX || part.right < node.left + node.width - Layout.EDGE_PX }) return false
+        var reached = 0f
+        for ((top, bottom) in parts.map { (node, part) -> (part.top - node.top) to (part.bottom - node.top) }.sortedBy { it.first }) {
+            if (top > reached + Layout.EDGE_PX) return false
+            reached = maxOf(reached, bottom)
+        }
+        return reached >= seen.first().height - Layout.EDGE_PX
+    }
+
+    /**
+     * For a failure's probe line, what a control the reads saw (seen) is: its window, its chain of nodes up to the
+     * window's root, each as its class's simple name, its id, whether it takes a click and is visible, and its
+     * bounds now; and at each position of layout, the Compose nodes whose whole bounds hold the centre it was first
+     * read at, each with its id, tag, size, corner and shown part. Classes, ids, flags and sizes only, never a text.
+     */
+    private fun controlFacts(seen: List<Capture.NodeFacts>, layout: List<List<Layout.Node>>): String {
+        val node = seen.first().key
+        val chain = generateSequence(node) { it.parent }.take(12).joinToString(" < ") {
+            (it.className?.toString()?.substringAfterLast('.') ?: "?") + "(" + (it.viewIdResourceName ?: "-") + ", click " + it.isClickable +
+                ", visible " + it.isVisibleToUser + ", " + Rect().also(it::getBoundsInScreen).toShortString() + ")"
+        }
+        val x = seen.first().bounds.exactCenterX()
+        val y = seen.first().bounds.exactCenterY()
+        val under = layout.mapIndexed { i, at ->
+            "position " + i + ": " + at.filter { it.left <= x && x <= it.left + it.width && it.top <= y && y <= it.top + it.height }
+                .joinToString(" ") { "#" + it.id + " " + described(it) + " at " + it.left.toInt() + "," + it.top.toInt() + " shown " + it.shown }
+        }
+        return "window " + node.windowId + " (" + node.window?.title + "); " + chain + "; Compose at its centre: " + under.joinToString(" || ")
+    }
+
+    /** A control as the accessibility reads saw it, for a line: its id (or "a key"), its largest size and its bounds at each read. Never its text. */
+    private fun sized(seen: List<Capture.NodeFacts>): String =
+        (seen.first().resourceName ?: "a key") + " " + seen.maxOf { it.bounds.width() } + "x" + seen.maxOf { it.bounds.height() } + " px (read at " +
+            seen.joinToString("; ") { it.bounds.toShortString() } + ")"
+
+    /** A node of Layout.read for a failure line: its tag (or what it is) and its whole size. Never its text. */
+    private fun described(node: Layout.Node): String =
+        (node.tag ?: if (node.control) "a control" else "a text") + " " + node.width.toInt() + "x" + node.height.toInt() + " px"
 
     /** Each node of reads once, as its first read has it: for the checks of what a node is or says, not where it lies. */
     private fun joined(reads: List<List<Capture.NodeFacts>>): List<Capture.NodeFacts> = reads.flatten().distinctBy { it.key }
@@ -1354,6 +1483,12 @@ class CaptureTest {
         /** The smallest touch target a control may have, each way (Material's and Android's accessibility minimum). */
         const val MIN_TARGET_DP = 48
 
+        /** What a layout walk proves of every screen (assertLaidOut), for its pass line. */
+        const val LAID_OUT = "controls of 48 dp or more, each reached by scrolling, texts inside the window, none cut by its parent or overflowing its box"
+
+        /** The system's largest font scale, which the layout walk is also run at (Q78, M5-84 (d)). */
+        const val FONT_SCALE = 2.0f
+
         /** A 412 dp phone, as wm sets it: 1080 px across at density 420 (Stage U's U3h-b). */
         const val PHONE_SIZE = "1080x2424"
         const val PHONE_DENSITY = "420"
@@ -1381,6 +1516,9 @@ class CaptureTest {
 
         /** The permission the scan screen asks for. */
         const val CAMERA = "android.permission.CAMERA"
+
+        /** A permission's flags in dumpsys package that keep the user's answer (forgetTheCameraAnswer). */
+        val ANSWER_KEPT = Regex("\\bUSER_(SET|FIXED)\\b")
 
         /** How long after the gate the cover test's reading comes: before the 30 s cover the gate would bring. */
         const val READ_AFTER_MS = 20_000L

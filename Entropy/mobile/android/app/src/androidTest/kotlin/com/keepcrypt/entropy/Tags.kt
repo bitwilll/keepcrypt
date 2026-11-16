@@ -47,12 +47,14 @@ internal object Tags {
      * The test tags of the activity's Compose view, read in-process from its semantics (unmerged), in tree
      * order. Main thread only.
      */
-    fun of(activity: Activity): List<String> {
-        val root = composeRoot(activity.window.decorView) ?: throw AssertionError("no Compose view in the activity")
-        return root.semanticsOwner.getAllSemanticsNodes(mergingEnabled = false, skipDeactivatedNodes = true)
+    fun of(activity: Activity): List<String> =
+        root(activity).semanticsOwner.getAllSemanticsNodes(mergingEnabled = false, skipDeactivatedNodes = true)
             .filter { SemanticsProperties.TestTag in it.config }
             .map { it.config[SemanticsProperties.TestTag] }
-    }
+
+    /** The activity's Compose view (its screens' one), whose semantics the tests read in-process (Layout too). Main thread only. */
+    fun root(activity: Activity): ViewRootForTest =
+        composeRoot(activity.window.decorView) ?: throw AssertionError("no Compose view in the activity")
 
     private fun composeRoot(view: View): ViewRootForTest? {
         if (view is ViewRootForTest) return view

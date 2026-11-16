@@ -11204,7 +11204,8 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   jobs: the journeys jobs 20 minutes again without JourneyTest, the two ui jobs measured at 30; from run 41203734694,
   M5-76 (h): registry 18 and 19, journeys 20 and 19, ui 30 until a run measures it whole; API 36's ui 27 from run
   41207540199's 1284 s, API 31's ui 26 from run 41211393696's 1241 s; from U3n, M5-84 (c), API 34's four jobs take
-  API 31's place, each at the 90-minute ceiling until a run measures it whole);
+  API 31's place, each at the 90-minute ceiling until a run measures it whole; from U3i-b, M5-84 (d), API 36's
+  capture job is measured at 40 with CaptureTest's third walk, at font scale 2.0);
   system images, the emulator package and the Gradle distribution are cached with actions/cache keyed on their
   revisions. An emulator boot failure may be re-run once, and the re-run is logged under Review; a test
   failure is never re-run. Past any budget, the lead stops and re-plans.
@@ -17856,8 +17857,26 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
       ("back on, Home says why"), ScanRefusedTest, IdleClockTest (API 36's; not made at 37), KillTest's four,
       CrashTest; capture (the gates drawn anew) ControlTest 3, CaptureTest 9 in both APKs (disableSecureWindows not made
       on the user build; the 412 dp walk green), PhoneMotionTest, DoubleTapTest 4, NativeTest. The gate clean, 418 files, its --selftest 1639 passed.
-    - [ ] U3i-b (Q78): the capture walk's layout check at font scale 2.0 on both levels (M5-84 (d)): every control
+    - [x] U3i-b (Q78): the capture walk's layout check at font scale 2.0 on both levels (M5-84 (d)): every control
       reachable by scrolling, no text cut, every control 48 dp or more.
+      Proof (M5 commit U3i-b, Stage U-6, partial: local; CI at the next push): CaptureTest's
+      everyScreenIsLaidOutAtFontScale2 puts system font_scale 2.0 (back to what it was in a finally) and walks every
+      screen and detour at CI's window, each judged once its activity has the scale; the layout check (assertLaidOut,
+      at 1.0, on the 412 dp phone and at 2.0) now also reads Compose's own layout in-process at each position of the
+      column (androidTest Layout.kt): every control 48 dp or more by its node's whole size, every control and text
+      shown whole by scrolling (its shown parts, inside its parents' clips, the window and the bars, cover it), no
+      text overflowing its box. Found and fixed in the tests, nothing in the app: TextLayoutResult.hasVisualOverflow
+      from the semantics flags any short line in a wider column (the title, 302x75 px at 1.0), so overflow is judged
+      against the node's box; a third Don't allow in one run fixed CAMERA's denial and the capture walk met no
+      prompt, so each layout walk clears CAMERA's user-set and user-fixed flags after it; the accessibility cache
+      kept a row of code-entry keys 3 px short of whole after showWhole's 3 px scroll (test-registry, 2.0, 4 runs of
+      5), so Capture.nodes reads each node fresh from the app (refresh). Locally (android-local.sh --part capture,
+      exit 0, 20 min 55 s with its build): ControlTest 3, CaptureTest 10 in both APKs (disableSecureWindows not made on
+      the user build), "every screen laid out at font scale 2.0 at CI's window" and on the 412 dp phone in both,
+      PhoneMotionTest, DoubleTapTest 4, NativeTest, the camera client's four checks (the decode not met, as before).
+      Gradle (strict): the five APKs, no warning; JVM tasks up to date, 269 results, 0 failures. API 36's capture job
+      measured at 40 minutes (M5-30). The gate clean, 419 files, its --selftest 1639 passed; --workflows clean;
+      android-emulator --selftest 64 passed.
     - Verification: each commit's Kotlin built and its classes run on kc37 (android-local.sh --part), the gate, every
       changed script's selftest, three reviews at U-6's head, their fixes, the suite, CI read once per push.
 - Budget: the Android job's 44 minutes (M5-57) cannot hold U1-U2's emulator tests on two API legs. Stage U measures them and the

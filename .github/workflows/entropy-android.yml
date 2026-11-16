@@ -680,6 +680,8 @@ jobs:
     # U3n (Q84, M5-84 (c)): minSdk 34 retires API 31; API 34's default image, the lowest level the app
     # installs on, takes its four jobs, each measured at the 90-minute ceiling (M5-30) until a run
     # measures it whole; the 16 KB leg stays on API 36's ps16k image, after API 34's capture part.
+    # U3i-b (Q78, M5-84 (d)) adds CaptureTest's third walk, the layout at font scale 2.0 (on both APKs): API 36's
+    # capture job is measured at 40 (API 34's stays at the ceiling).
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       # Every leg job runs to its end: a red leg never cancels another job or hides its evidence.
@@ -707,7 +709,7 @@ jobs:
           - api: '36'
             part: capture
             legs: API 36, capture
-            timeout: 30
+            timeout: 40
           - api: '36'
             part: journeys
             legs: API 36, journeys
