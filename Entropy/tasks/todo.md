@@ -16098,6 +16098,16 @@ app's window; every screencap, takeScreenshot, recents and saved-state check in 
 attempt passed with no Android change. The cause is not known. 13b (9491fdd) makes the checker print each lit frame's
 pixel count, box and brightest colour. Until the cause is found and fixed, a repeat is a defect to diagnose from those
 lines, never a rerun to green, and the M5 gate report names this item.
+Repeat (2026-11-16): the Android run 43771972846 (at ce8c807a), API 36's capture job, step 6's test-registry cold
+launch: "lit frame 5 of the stream: 202628 pixel(s) in the app's window, columns 1-358, rows 25-590, brightest
+#d8d9e4", 1 of 17 frames; the shipping app's recording just before it was black, and API 34's job on the same commit
+passed both. 202628 is every pixel of the 358x566 window, so the whole window was lit, in a light grey that is neither
+the app's theme (black window, splash background and status bar; secure-ui themes.xml) nor anything it draws. The
+cause is still not known; the leading guess, not yet shown, is the system's backdrop behind a cross-task launch
+animation (the curtain's task to the app's). The check is not relaxed, the environment not changed. android-frames.py
+now prints, for each lit frame, its three most frequent colours in the window with their counts, how many distinct
+colours it holds, and how many pixels outside the window (the system bars) are lit (lit_source; its selftest 53): a
+fill and drawn content then read differently. The next repeat is diagnosed from those lines.
 
 **Open item (2026-10-21): intermittent recents failures on API 36.** The Android run 39556542012 (at 8c9eca8, which
 changed only the workflow's timeout and todo.md) failed on API 36 while the same tests passed at 89cf334: ControlTest's

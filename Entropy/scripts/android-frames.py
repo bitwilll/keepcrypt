@@ -147,6 +147,32 @@ def lit_detail(frame, fmt, width, region):
     return count, box, brightest
 
 
+def lit_source(frame, fmt, width, height, region):
+    """What a lit frame holds, to tell a fill from drawn content (open item 2026-10-21, the lit raw frame):
+    the COMMON most frequent colours inside region with their counts, how many distinct colours it holds,
+    and how many pixels outside region (the system bars) are lit, of how many. One colour over the whole
+    region with the bars lit too reads as something the system drew over the screen; many colours, as
+    content. Facts only: the check's verdict is lit_pixels' alone."""
+    left, top, right, bottom = region
+    colours = {}
+    outside = lit_out = 0
+    for y in range(height):
+        reds, greens, blues = channels(frame, fmt, width, y, 0, width)
+        for x, p in enumerate(zip(reds, greens, blues)):
+            if left <= x < right and top <= y < bottom:
+                colours[p] = colours.get(p, 0) + 1
+            else:
+                outside += 1
+                if max(p) > BLACK_MAX:
+                    lit_out += 1
+    common = sorted(colours.items(), key=lambda item: (-item[1], item[0]))[:COMMON]
+    return common, len(colours), lit_out, outside
+
+
+# How many of a lit frame's most frequent colours lit_source names.
+COMMON = 3
+
+
 def known_pixels(frame, fmt, width, height):
     """How many pixels have the known colour, and the sum of their rows."""
     count = rows = 0
@@ -266,8 +292,13 @@ def record(args, recorder=None, should_stop=None, grace=STOP_GRACE):
                 state["lit_frames"] += 1
                 if state["lit_frames"] <= 5:
                     count, box, rgb = lit_detail(frame, args.format, width, region)
+                    common, distinct, lit_out, outside = lit_source(frame, args.format, width, height, region)
                     say("lit frame %d of the stream: %d pixel(s) in the app's window, columns %d-%d, rows %d-%d, "
                         "brightest #%02x%02x%02x" % ((index, count, box[0], box[2], box[1], box[3]) + tuple(rgb)))
+                    say("lit frame %d of the stream: its most frequent colours in the app's window %s, of %d "
+                        "distinct; %d of the %d pixels outside it lit" % (
+                            index, ", ".join("#%02x%02x%02x (%d)" % (c + (n,)) for c, n in common), distinct,
+                            lit_out, outside))
         else:
             count, rows = known_pixels(frame, args.format, width, height)
             if count > state["best"]:
@@ -434,6 +465,15 @@ def selftest():
         count, box, rgb = lit_detail(two, fmt, w, region)
         check("%s a lit frame's detail: its count, box and brightest pixel inside the region" % fmt,
               (count, box) == (2, (2, 1, 5, 3)) and max(rgb) > 128 and rgb[2] == max(rgb))
+        common, distinct, lit_out, outside = lit_source(two, fmt, w, h, region)
+        check("%s a lit frame's source facts: its most frequent colours inside the region, how many distinct, "
+              "and the lit pixels outside it" % fmt,
+              common[0][1] == 22 and max(common[0][0]) <= BLACK_MAX and len(common) == 3 and distinct == 3
+              and (lit_out, outside) == (1, w * h - 24))
+        filled = frame_of(fmt, w, h, {(x, y): (216, 217, 228) for x in range(w) for y in range(h)})
+        common, distinct, lit_out, outside = lit_source(filled, fmt, w, h, region)
+        check("%s a frame filled with one colour: one colour over the region, every pixel outside lit" % fmt,
+              common[0][1] == 24 and distinct == 1 and lit_out == outside == w * h - 24)
         for name, colour in (("green", (0, 40, 0)), ("blue", (0, 0, 40))):
             only = frame_of(fmt, w, h, {(3, 2): colour})
             check("%s a pixel lit in %s alone counts" % (fmt, name), lit_pixels(only, fmt, w, region) == 1)
