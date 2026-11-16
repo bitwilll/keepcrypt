@@ -1822,9 +1822,11 @@ class CeremonyModel(
     }
 
     /**
-     * A file the open-document picker gave, while Home shows (a late answer, after a discard say, does
-     * nothing): none, and Home stays; a file refused unless its name ends in suffix (any letter case, as
-     * the Pi lists its stick's) and its provider reports a size within limit, both on the main thread
+     * A file the open-document picker gave, while Home shows (on any other screen it does nothing: Go
+     * offline, say, after the phone went online while the picker was up; on Home it is the answer to
+     * Home's own request, since a picker answers once and only Home opens this one): none, and Home
+     * stays; a file refused unless its name ends in suffix (any letter case, as the Pi lists its stick's)
+     * and its provider reports a size within limit, both on the main thread
      * before any byte is read (notNamed or tooLarge, and an unknown size), then read on the worker behind
      * "Working..." (a long call: a slow provider or a full-size snapshot never holds the main thread,
      * lead decision M5-70 (g)), which stops one byte past limit (a provider that sized it wrongly is

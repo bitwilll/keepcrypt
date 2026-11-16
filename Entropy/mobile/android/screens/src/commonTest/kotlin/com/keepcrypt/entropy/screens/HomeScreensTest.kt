@@ -245,8 +245,13 @@ class HomeScreensTest {
         assertTrue(Core.collisionReport() is Reply.Done)
     }
 
+    /**
+     * A discard during the load lands on Home (the phone offline, Q81) with its notice, the bytes read zeroed; a
+     * file given off Home does nothing: Go offline, once the phone went online, takes none. On Home a file is Home's
+     * own (picked: a picker answers once, and only Home opens the open-document picker).
+     */
     @Test
-    fun aDiscardDuringTheLoadReturnsToTheStartScreenAndALateFileDoesNothing() {
+    fun aDiscardDuringTheLoadReturnsToTheStartScreenAndAFileOffHomeDoesNothing() {
         val rig = Rig().toHome()
         rig.model.appReturned()
         val file = kcrFile(WITH_DICE_50)
@@ -264,7 +269,7 @@ class HomeScreensTest {
         assertEquals(Screen.GoOffline, rig.screen, "going online on Home, nothing held")
         val late = kcrFile(WITH_DICE_50)
         rig.model.snapshotPicked(late)
-        assertEquals(Screen.GoOffline, rig.screen, "a file after Home has gone does nothing")
+        assertEquals(Screen.GoOffline, rig.screen, "a file on Go offline does nothing")
         assertEquals(0, late.reads)
     }
 
