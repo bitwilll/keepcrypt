@@ -14076,9 +14076,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   android-frames 53, android-age-check 18, android-instrument 50, android-handoff 20, android-local 47, --selftest-apk
   89, android-emulator 64, all passed, 0 failed; android-deps-review --selftest exits 2 here ("gpg is not on PATH",
   this Mac has no gpg; CI's build job runs it with gpg), so its line says it needs gpg.
-- [ ] The owner's P0-P5 are issued with the run ID, commit and both APKs' SHA-256 of the final head's Android run, and
+- [x] The owner's P0-P5 are issued with the run ID, commit and both APKs' SHA-256 of the final head's Android run, and
   the Seal IDs from `p4-seal-ids.txt`.
   Proof: the checklist block filled in.
+  Proof (M5 commit 23, Stage F, 2026-11-17): P0's block names Entropy Android 43950082932 at 62396383, the artifact,
+  every file's SHA-256 from the build job's SHA256SUMS, the two Seal IDs from its `cat p4-seal-ids.txt`, the signing
+  certificate and verify.py's SHA-256 at 62396383; `git diff --name-only 62396383 HEAD` lists only CLAUDE.md,
+  tasks/lessons.md and tasks/todo.md, so the APKs are the final head's.
 
 **20. Review**
 - [ ] "M5: local proof", the CI runs, the probe facts, "M5: device records", the gate status, numbered lead decisions,
@@ -14287,6 +14291,21 @@ IDs are public vectors. The one exception, as in H4: Sparrow and Bitcoin Core re
 never-funded throwaway seed.
 
 **P0. Setup**
+Issued 2026-11-17 (M5 commit 23) from Entropy Android 43950082932 at 62396383 (the final head's code; every job
+green): artifact `android-apks` (26,261,858 bytes; kept until 2026-11-30), its SHA256SUMS:
+```text
+2b40a98a5c385d80f85b0d58c9349459e3baa09fe9bf9cb8e84865f3df4e19fa  app-shipping-release.apk
+6543671cfa3e80ca8684fcb3845bdb959f285b9abb116b75ebcceac6c6fdcb0c  app-withTestRegistry-release-NOT-FOR-RELEASE.apk
+8c34451770841639262bf6b6d36815d9c834596ea268d6b1dac146d2ba922797  goahead-clear-empty-bucket.png
+3dc26b8f577ed7d2890418fea68b44de34c8d3874b399362428a1b22213a4777  goahead-collision-dice-50.png
+282ef4229a78b8a8773a9d983993aadeec85623133417210c4e2a0f87f7ebceb  stale-day-31.kcr
+bb7500efb3790bf4f26001d35910ea12072823730d02bc34f6fde0fd29dd1806  with-dice-50.kcr
+4d24a2931831e50e29b6cff2e36151c95892a2d3ebfa12c8f7bf7618c7116a9b  p4-seal-ids.txt
+```
+`p4-seal-ids.txt`: dice-50-words12 `YVM9CPP3`, dice-99-words12 `9FHYMCQA`. Both APKs are signed by that run's
+throwaway key (certificate SHA-256 1f2454eaef9237039b716ba143dcd2732ff7530169ffb6b71d46d9bca1dcfd3c), so install the
+shipping APK and the test-registry APK one at a time, as P4 says. The offline verifier: `tools/verify/verify.py` at
+62396383, SHA-256 0ba842e2b139e4d6971d19a5f7c7f906cca81e8d29c765cf0fe67010c1850645.
 - [ ] An Android 14+ phone (Q56; Q84), charged. The M4 computer with Sparrow 2.5.5, Bitcoin Core 31.1 and the C920, and
   an offline computer with Python 3.9+ and verify.py from the final head's commit (the lead gives its SHA-256). Paper
   and pen.
@@ -16196,6 +16215,8 @@ defect of the app. Fixed (2026-11-16, the test harness and the leg script alone)
   Locally: banned-api-check clean (419 files), --workflows clean, canaries.sh all 94 checks, android-emulator
   --selftest 64 passed; kc34 journeys exit 0, BackupTest's probe naming the field as core's suggested name.
 - BackupTest removes its .txt copy once refused (its backup stays: the age -d hand-off reads it).
+With all three in (012aa5e7's tree, the class-named field), kc37's whole run passed 22 of 22 runs: "every check made
+on kc37 passed (each check not made or not met is named above)".
 
 **Open item (2026-10-21): intermittent recents failures on API 36.** The Android run 39556542012 (at 8c9eca8, which
 changed only the workflow's timeout and todo.md) failed on API 36 while the same tests passed at 89cf334: ControlTest's
