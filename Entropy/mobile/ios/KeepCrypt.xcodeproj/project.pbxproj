@@ -450,6 +450,7 @@
 				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/KeepCryptCore";
 				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.tests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_WITH_TEST_REGISTRY;
 			};
 			name = WithTestRegistry;
 		};
