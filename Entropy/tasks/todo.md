@@ -18815,6 +18815,54 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   WithTestRegistry` on its simulator app clean; the marker on 1 line of the TestHooks app's binary, 0 in the
   Shipping, WithTestRegistry and device binaries; the TestHooks app given to `--ios-app Shipping` 3 hits (its id,
   its summary, the marker); `--selftest-ios-app` 33 passed, 0 failed. Not run here: any simulator test (CI).
+  As built (M6 commit C5b, the capture layers): KeepCrypt/CaptureShield.swift wraps the whole scene once
+  (KeepCryptApp's WindowGroup), before any Protected screen: while SwiftUI's isSceneCaptured or the window's own
+  sceneCaptureState reads active (a UIView in the window reads `window.traitCollection.sceneCaptureState` when it
+  joins the window and on every change of UITraitSceneCaptureState, registerForTraitChanges, iOS 17) the capture
+  cover replaces the content, and while scenePhase is not .active the privacy cover does (capture first). The
+  content is replaced, not overlaid, so nothing of it is drawn or left in the accessibility tree; its state lives in
+  the model, and the start-up self-test runs from the shield's root once. UIApplication.userDidTakeScreenshotNotification
+  goes to CeremonyModel.discardAfterScreenshot: Core's discard (Core.shared.discard, op 15) on every screen, the
+  self-test's and a Public one with no secret held too; a done reply puts up the fixed notice ("The session was
+  wiped: a screenshot was taken. ..."), a halted one the stop screen with its reason, a refusal or discarded (a
+  broken contract) the stop screen as internal; a stopped app discards nothing more. Ceremony.swift gains the model
+  (CeremonyModel, @MainActor, ObservableObject; Core reached through two injected calls, the self-test and the
+  discard, Core's own by default), Stage C's Screen (self-test, stopped, passed) and Notice. KeepCrypt/SecureLayer.swift
+  (Q88): SecureLayer { content }, a UIViewRepresentable whose view holds a UITextField with `field.isSecureTextEntry
+  = true`, no user interaction, not an accessibility element and never made first responder, and the content's
+  UIHostingController view inside the field's own drawing view (its first subview); with no such view nothing is
+  shown (fail closed). Not yet used by any screen (Stage D's words). TestHooks.swift's panel (drawn over the scene,
+  covers included): Capture (forces the capture state on), Inactive (forces the scene inactive) and Screenshot
+  (posts the system's notification, as iOS posts it). Unit tests (KeepCryptTests, which now also compile
+  CaptureShield.swift and SecureLayer.swift): CeremonyModelTests (6: the screenshot discard during the self-test and
+  after it, each counted and noticed; a halted discard stops the app and nothing more is discarded; refused and
+  discarded replies stop it as internal; a failed self-test stops it and a screenshot then discards nothing; the
+  self-test runs once; the notice line fixed) and CaptureLayerTests (2: the cover for each state; the secure layer's
+  field secure, without interaction, not first responder, not an accessibility element, and the content's host view
+  inside the field's drawing view). UI tests (KeepCryptUITests/CaptureUITests.swift, under KC_TEST_HOOKS, so only in
+  the TestHooks scheme): the capture cover replaces the screen and goes; the privacy cover likewise, capture taking
+  precedence; a screenshot gives the discard's notice with the app still on its screen, not stopped. canaries.sh's
+  ios-swift-rules reads the real SecureLayer.swift (no longer planted; checked present).
+  Proof (M6 commit C5b, partial: local, Xcode 27.2; CI at the next push, where the simulator runs the unit and UI
+  tests and I1 the real capture on the owner's iPhone): build-for-testing "TEST BUILD SUCCEEDED" for all three
+  schemes (generic simulator; no Swift warning) and the Shipping device build "BUILD SUCCEEDED"; `--ios-app Shipping`
+  on the simulator and device apps and `--ios-app WithTestRegistry` on its simulator app clean (23 system libraries:
+  UIKit now linked); the hooks marker on 1 line of the TestHooks binary, 0 in the other three. The macOS XCTest
+  stand-in (C3's way: Core, Wire and Ceremony.swift with CoreTests, WireTests, Vectors and CeremonyModelTests, the
+  host's release libkeepcrypt_capi.a, `xcrun xctest`): "Executed 13 tests, with 0 failures" (CeremonyModelTests 6,
+  CoreTests 1, WireTests 6); with the screenshot's discard call replaced by the notice alone in a copy of
+  Ceremony.swift, 7 failures in 3 tests (the discards counted 0, the halted and refused replies not stopping the app),
+  restored. CaptureLayerTests and the UI tests need UIKit and the simulator (CI). The gate clean (453 files),
+  `--workflows` clean, `--selftest` 4 x "486 passed, 0 failed", `sh scripts/banned-api-faults.sh` "708 runs (3 ways):
+  708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102 checks ran", `--selftest-ios-app` 33 passed,
+  `cargo fmt --all --check` clean.
+  For the lead: (1) the secure layer takes the field's first subview as its drawing view right after the field is
+  made; CaptureLayerTests fails on the simulator if iOS 26.5 or 18.6 builds none then, and then nothing is shown
+  (fail closed), which I1 and Stage D must settle; whether VoiceOver reads content inside the field (the field set
+  not an accessibility element) is unproven until Stage D's words use it. (2) Core's lock makes a screenshot's
+  discard during the start-up self-test wait for it on the main thread (Stage D's long calls: C3's open note on a
+  second reply buffer for DISCARD). (3) If a runner's simulator reports isSceneCaptured or sceneCaptureState active
+  with nothing recording, every UI test meets the capture cover; the first CI run shows it.
 
 ### Verification (each maps to a gate item; refined with the plan)
 - [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest

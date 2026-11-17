@@ -42,8 +42,10 @@
 		AC0000000000000000000112 /* Exceptions for "KeepCrypt" folder in "KeepCryptTests" target */ = {
 			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
 			membershipExceptions = (
+				CaptureShield.swift,
 				Ceremony.swift,
 				Core.swift,
+				SecureLayer.swift,
 				Wire.swift,
 			);
 			target = AC0000000000000000000302 /* KeepCryptTests */;

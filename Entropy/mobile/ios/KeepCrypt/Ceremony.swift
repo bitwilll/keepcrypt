@@ -1,7 +1,9 @@
-// The Swift CeremonyModel's file (tasks/todo.md, M6 items A2 and C3; lead decision M6-6). In Stage C it
-// holds the one way the app ends itself, Ceremony.halt, and the start-up self-test's outcome; the
-// ceremony's screens and their model come in Stage D.
+// The Swift CeremonyModel's file (tasks/todo.md, M6 items A2, C3 and C5; lead decision M6-6). In Stage C
+// it holds the one way the app ends itself, Ceremony.halt, the start-up self-test's outcome, and the
+// model of Stage C's screens with the rule that acts on every screen, the screenshot discard. The
+// ceremony's screens and the rest of the model come in Stage D.
 
+import Combine
 import Foundation
 
 /// The app's end (rule 3, fail closed; docs/mobile-apps.md, "When something fails"): every error the
@@ -61,5 +63,91 @@ func stopLine(_ reason: HaltReason) -> String {
     case .exportSelfCheck: return "The watch-only export failed its self-check."
     case .panic: return "The app's core stopped unexpectedly."
     case .internal: return "An internal check failed."
+    }
+}
+
+/// Stage C's screens (docs/mobile-apps.md, step 2; Android's Screen, whose list Stage D's shared table
+/// brings in full).
+enum Screen: Equatable {
+    /// The start-up self-test, running.
+    case selfTest
+    /// The stop screen: the self-test did not pass, or the slot halted.
+    case stopped(HaltReason)
+    /// The self-test passed.
+    case passed
+}
+
+/// Why the session went, said on the screen the app returns to (Android's Notice).
+enum Notice: Equatable {
+    /// A screenshot was taken (docs/mobile-apps.md, "Screen capture protection: iPhone").
+    case screenshot
+}
+
+/// The notice's line: fixed text, built from no data.
+func noticeLine(_ notice: Notice) -> String {
+    switch notice {
+    case .screenshot:
+        return "The session was wiped: a screenshot was taken. A screenshot can keep what the screen showed, so nothing it may have held is used again."
+    }
+}
+
+/// The model of Stage C's screens. It owns the session's app-wide screenshot rule: a screenshot
+/// discards whatever session exists, on every screen (docs/mobile-apps.md: the screenshot response).
+/// Core is reached through the two calls the model is given, so its tests can watch them; the app
+/// gives Core's own.
+@MainActor
+final class CeremonyModel: ObservableObject {
+    @Published private(set) var screen: Screen = .selfTest
+    @Published private(set) var notice: Notice?
+    /// Whether the start-up self-test has passed.
+    private(set) var started = false
+
+    private var begun = false
+    private let selfTest: () async -> StartScreen
+    private let discardCall: () -> Reply<Void>
+
+    init(
+        selfTest: @escaping () async -> StartScreen = { await StartScreen.afterSelfTest() },
+        discard: @escaping () -> Reply<Void> = { Core.shared.discard() }
+    ) {
+        self.selfTest = selfTest
+        discardCall = discard
+    }
+
+    /// The start-up self-test, once (the capture layers' root runs it when the scene appears): then
+    /// its passed screen, or the stop screen with the slot's reason.
+    func startUp() async {
+        guard !begun else { return }
+        begun = true
+        let outcome = await selfTest()
+        if case .stopped = screen { return }
+        switch outcome {
+        case .passed:
+            started = true
+            if screen == .selfTest { screen = .passed }
+        case .stopped(let reason):
+            screen = .stopped(reason)
+        }
+    }
+
+    /// The screenshot response (docs/mobile-apps.md, "Screen capture protection: iPhone"): a screenshot
+    /// can keep whatever the screen showed, so on every screen, a secret held or not, Core's discard
+    /// drops whatever session exists, and the screen says why. A stopped app has nothing to discard.
+    func discardAfterScreenshot() {
+        if case .stopped = screen { return }
+        discard(.screenshot)
+    }
+
+    /// Core's discard, and the screen it leaves: the notice, or the stop screen if the slot halted or
+    /// broke the bridge's contract (a discard is never refused).
+    private func discard(_ why: Notice) {
+        switch discardCall() {
+        case .done:
+            notice = why
+        case .halted(let reason):
+            screen = .stopped(reason)
+        case .refused, .discarded:
+            screen = .stopped(.internal)
+        }
     }
 }

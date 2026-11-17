@@ -1,27 +1,26 @@
-// The iPhone app (tasks/todo.md, M6 items C2 and C3; Q86): in Stage C a shell that runs the start-up
-// self-test (docs/mobile-apps.md, step 2) and shows its outcome, "Self-test passed" or the stop screen.
-// The ceremony's screens come in Stage D, the capture layers and the offline check in C5; the TestHooks
-// build (C5, M6-5) draws the UI tests' hook panel under every screen.
+// The iPhone app (tasks/todo.md, M6 items C2, C3 and C5; Q86): in Stage C a shell of the start-up
+// self-test (docs/mobile-apps.md, step 2) inside the capture layers (CaptureShield.swift). The
+// ceremony's screens come in Stage D. The TestHooks build (C5, M6-5) draws the UI tests' hook panel
+// over every screen.
 
 import SwiftUI
 
 @main
 struct KeepCryptApp: App {
+    @StateObject private var model = CeremonyModel()
+
     var body: some Scene {
         WindowGroup {
-            #if KC_TEST_HOOKS
-            StartView()
-                .safeAreaInset(edge: .bottom) { TestHookPanel() }
-            #else
-            StartView()
-            #endif
+            CaptureShield(model: model) {
+                StartView(model: model)
+            }
         }
     }
 }
 
-/// The start-up self-test and its outcome, in fixed text only.
+/// Stage C's screens, in fixed text only.
 struct StartView: View {
-    @State private var screen: StartScreen?
+    @ObservedObject var model: CeremonyModel
 
     var body: some View {
         VStack(spacing: 0) {
@@ -29,24 +28,26 @@ struct StartView: View {
             TestRegistryStrip()
             #endif
             Spacer()
-            switch screen {
-            case nil:
+            switch model.screen {
+            case .selfTest:
                 Text("Running the self-test")
                     .accessibilityIdentifier("self_test_running")
+            case .stopped(let reason):
+                StopScreen(reason: reason)
             case .passed:
                 Text("Self-test passed")
                     .font(.title2)
                     .accessibilityIdentifier("self_test_passed")
-            case .stopped(let reason):
-                StopScreen(reason: reason)
+            }
+            if let notice = model.notice {
+                Text(noticeLine(notice))
+                    .padding(.top, 24)
+                    .accessibilityIdentifier("notice_screenshot")
             }
             Spacer()
         }
         .padding()
         .textSelection(.disabled)
-        .task {
-            screen = await StartScreen.afterSelfTest()
-        }
     }
 }
 
