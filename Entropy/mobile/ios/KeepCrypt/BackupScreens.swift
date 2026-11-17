@@ -1,8 +1,10 @@
 // The encrypted backup (tasks/todo.md, M6 item D6; Android's BackupScreens.kt; docs/mobile-apps.md,
 // "Encrypted backup only" and step 13): the offer after the wallet summary, the 8-word passphrase two pages
 // of four and its confirm, two questions answered on D3's letter pad (Protected), the save through the
-// system's exporter (DocumentPicker.swift), its read-back and "Backup verified", in Android's words, order
-// and identifiers. Check a backup's screens are D7's. Each hands its presses to the ceremony model, which
+// system's exporter (DocumentPicker.swift), its read-back and "Backup verified"; and (D7) Home's Check a
+// backup: the passphrase's entry on the letter pad (Protected), "Backup OK" with the fingerprint and the Seal
+// ID, and the re-check QR (Public); in Android's words, order and identifiers. A checked backup's words show
+// on the words' own screens (WordsScreens.swift), through the privacy gate. Each hands its presses to the ceremony model, which
 // ignores a press its screen no longer shows. The secret text (the passphrase's words, the confirm's
 // choices and the letters typed) is read from the Secrets the state holds and the pad's entry as each body
 // draws, into a String that lives only for that drawing (Q58; Swift's strings and SwiftUI's drawn text are
@@ -192,6 +194,90 @@ struct BackupVerifiedScreen: View {
             KitText(BackupTexts.verified, style: .small)
         } actions: {
             KitButton(WordsTexts.next, id: "backup_next", action: onNext)
+        }
+    }
+}
+
+/// Check a backup's passphrase entry (docs/mobile-apps.md, "Checking a backup"; the Pi's backup-check-entry,
+/// Q32 (b)), a Protected screen behind the privacy gate: word page + 1 of 8, each its first four letters on
+/// the letter pad, or a whole three-letter word; after the eighth core opens the file. Delete on word N > 1's
+/// empty pad reopens word N - 1 (the model's padDelete). A refusal shows core's text with the instruction
+/// under it, the entry emptied from word 1; Back goes Home, wiping the file read and the letters typed.
+struct BackupCheckEntryScreen: View {
+    let state: UiState
+    @ObservedObject var letters: PadEntry
+    let testRegistry: Bool
+    let passGate: () -> Void
+    let onKey: (Character) -> Void
+    let onDelete: () -> Void
+    let onDone: () -> Void
+    let onBack: () -> Void
+
+    var body: some View {
+        Protected(state: state, testRegistry: testRegistry, passGate: passGate) {
+            KitScreen(Screen.backupCheckEntry.id, testRegistry: testRegistry) {
+                Heading(Screen.backupCheckEntry.title)
+                KitText(entryWordText(state.page), style: .small, id: "entry_word")
+                if let refusal = state.entryRefusal {
+                    KitText(backupRefusalText(refusal) ?? "", style: .warning, id: "entry_refusal", live: true)
+                }
+                KitText(CheckBackupTexts.firstFours, style: .small)
+            } actions: {
+                LetterEntry(
+                    letters: letters, done: "entry_done", onKey: onKey, onDelete: onDelete, onDone: onDone,
+                    canDelete: letters.length > 0 || state.page > 0)
+                KitButton(CheckTexts.back, id: "back", action: onBack)
+            }
+        }
+    }
+}
+
+/// Check a backup's result (docs/mobile-apps.md, "Checking a backup"; the Pi's backup-check-result), a Public
+/// screen: "Backup OK", the backup's fingerprint and its Seal ID; "Show the words" (through the privacy gate,
+/// on the words' screens), "Re-check QR" and Done, which wipes the backup's words in core and returns Home.
+struct BackupCheckResultScreen: View {
+    let state: UiState
+    let testRegistry: Bool
+    let onShowWords: () -> Void
+    let onRecheck: () -> Void
+    let onDone: () -> Void
+
+    var body: some View {
+        if let opened = state.opened {
+            KitScreen(Screen.backupCheckResult.id, testRegistry: testRegistry) {
+                Heading(CheckBackupTexts.backupOk)
+                KitText(WordsTexts.fingerprint, style: .small)
+                KitText(fingerprintHex(opened.fingerprint), style: .hex, id: "backup_fingerprint")
+                KitText(CheckBackupTexts.sealId, style: .small)
+                KitText(opened.seal.sealId, style: .hex, id: "backup_seal_id")
+                KitText(CheckBackupTexts.okNote, style: .small)
+            } actions: {
+                KitButton(CheckBackupTexts.showWords, id: "show_backup_words", action: onShowWords)
+                KitButton(CheckBackupTexts.recheck, id: "recheck", action: onRecheck)
+                KitButton(StartTexts.done, id: "backup_done", action: onDone)
+            }
+        }
+    }
+}
+
+/// The re-check QR (the Pi's backup-check-recheck-qr), a Public screen: the seal's T alone, drawn as the
+/// check QR is; Back returns to the result.
+struct BackupRecheckScreen: View {
+    let state: UiState
+    let testRegistry: Bool
+    let onBack: () -> Void
+
+    var body: some View {
+        if let opened = state.opened {
+            KitScreen(Screen.backupRecheck.id, testRegistry: testRegistry) {
+                Heading(Screen.backupRecheck.title)
+                QrCodeView(matrix: opened.recheck, kind: .recheck)
+                    .frame(maxWidth: .infinity)
+                Gap(8)
+                KitText(CheckBackupTexts.recheckNote, style: .small)
+            } actions: {
+                KitButton(CheckTexts.back, id: "back", action: onBack)
+            }
         }
     }
 }

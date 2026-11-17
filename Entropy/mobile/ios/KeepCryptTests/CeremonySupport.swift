@@ -13,6 +13,7 @@
 // first (assertLiveSlot), so a run in another order fails by name instead of by a stray halt.
 
 import Foundation
+import CoreImage
 import XCTest
 
 /// The slot answers: CoreTests' halt (or any other) has not latched it yet.
@@ -708,4 +709,32 @@ final class StandInCore: CeremonyCore {
     func revealDeviceLeg() -> Reply<Secret> { pass { core.revealDeviceLeg() } }
     func loadSnapshot(today: UInt32, file: Secret) -> Reply<RegistryHeader> { pass { core.loadSnapshot(today: today, file: file) } }
     func openBackup(entries: [Secret], file: Secret) -> Reply<OpenedBackup> { pass { core.openBackup(entries: entries, file: file) } }
+}
+
+/// matrix's text, read back with Core Image's QR detector from a picture of its modules, 8 pixels a
+/// module inside the four-module quiet zone, as Android's Checker reads one with ZXing (D6, D7). The matrix
+/// is left whole; its text is compared, never printed.
+func qrText(_ matrix: QrMatrix) throws -> String {
+    let scale = 8
+    let size = (matrix.side + 8) * scale
+    var pixels = [UInt8](repeating: 0xFF, count: size * size)
+    for y in 0..<matrix.side {
+        for x in 0..<matrix.side where matrix.isDark(x: x, y: y) {
+            for dy in 0..<scale {
+                for dx in 0..<scale {
+                    pixels[((y + 4) * scale + dy) * size + (x + 4) * scale + dx] = 0
+                }
+            }
+        }
+    }
+    let provider = try XCTUnwrap(CGDataProvider(data: Data(pixels) as CFData))
+    let image = try XCTUnwrap(
+        CGImage(
+            width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: size,
+            space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGBitmapInfo(rawValue: 0), provider: provider,
+            decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+    let detector = try XCTUnwrap(
+        CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
+    let feature = try XCTUnwrap(detector.features(in: CIImage(cgImage: image)).first as? CIQRCodeFeature, "no QR code read")
+    return try XCTUnwrap(feature.messageString, "a QR code with no text")
 }

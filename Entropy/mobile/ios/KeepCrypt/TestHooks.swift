@@ -12,9 +12,11 @@
 // The hooks stand in for what a simulator cannot do on its own: a recording or mirroring of the
 // screen (the capture state forced on), the app switcher (the scene forced inactive), a hardware
 // screenshot (the system's notification posted, as iOS posts it), the network coming and going
-// (the offline check's state forced) and a QR code before the camera (D4: the scanner's found callback
-// handed the UI test's text, the camera's own path into the model; the simulator has no camera). Each acts
-// on the same inputs the real events reach.
+// (the offline check's state forced), a QR code before the camera (D4: the scanner's found callback
+// handed the UI test's text, the camera's own path into the model; the simulator has no camera) and a file
+// from the open picker (D7: Check a backup's picker answered with the UI test's file, through the model's
+// backupPicked, the importer's own path in; the system's document browser is not the app's to drive). Each
+// acts on the same inputs the real events reach.
 
 #if KC_TEST_HOOKS
 import SwiftUI
@@ -41,6 +43,79 @@ final class TestHooks: ObservableObject {
     /// The text the UI test's launch environment gives the Scan hook (KC_HOOK_SCAN_TEXT), if any.
     nonisolated static var scanText: String? {
         ProcessInfo.processInfo.environment["KC_HOOK_SCAN_TEXT"]
+    }
+
+    /// The model's entry for Check a backup's picked file, the importer's own (Screens.swift).
+    var backupPicked: ((PickedFile?) -> Void)?
+    /// Check a backup's picker is waiting for the Backup file hook.
+    var backupWaiting = false
+
+    /// The file the UI test's launch environment gives the Backup file hook: its name (KC_HOOK_BACKUP_NAME)
+    /// and its bytes in hex (KC_HOOK_BACKUP_HEX), a public backup.json vector's; nil without both.
+    nonisolated static var backupFile: (name: String, bytes: [UInt8])? {
+        let environment = ProcessInfo.processInfo.environment
+        guard let name = environment["KC_HOOK_BACKUP_NAME"], let hex = environment["KC_HOOK_BACKUP_HEX"] else { return nil }
+        let digits = Array(hex.utf8)
+        guard digits.count % 2 == 0 else { return nil }
+        var bytes: [UInt8] = []
+        for at in stride(from: 0, to: digits.count, by: 2) {
+            guard let byte = UInt8(String(decoding: digits[at...at + 1], as: UTF8.self), radix: 16) else { return nil }
+            bytes.append(byte)
+        }
+        return (name, bytes)
+    }
+
+    /// The Backup file hook: the launch environment's file to the model's backupPicked, once, as the open
+    /// picker's answer would come, while Check a backup's picker waits.
+    func pickBackup() {
+        guard backupWaiting, let file = TestHooks.backupFile else { return }
+        backupWaiting = false
+        backupPicked?(HookedFile(name: file.name, bytes: file.bytes))
+    }
+}
+
+/// The pickers in the TestHooks build: with a backup file in the launch environment, Check a backup's
+/// picker waits for the Backup file hook instead of opening the system's; everything else, and every
+/// picker without one, is the app's own.
+final class HookedPickers: DocumentPickers {
+    private let screen: ScreenPickers
+
+    init(screen: ScreenPickers) {
+        self.screen = screen
+    }
+
+    func create(name: String, bytes: Secret) {
+        screen.create(name: name, bytes: bytes)
+    }
+
+    func openBackup() {
+        guard TestHooks.backupFile != nil else {
+            screen.openBackup()
+            return
+        }
+        MainActor.assumeIsolated { TestHooks.shared.backupWaiting = true }
+    }
+
+    func openSnapshot() {
+        screen.openSnapshot()
+    }
+}
+
+/// The Backup file hook's file: its name, its size as its bytes' count, and its bytes, read as a picked
+/// file's are (at most limit + 1, into a Secret).
+final class HookedFile: PickedFile {
+    let name: String?
+    let size: Int64?
+    private let bytes: [UInt8]
+
+    init(name: String, bytes: [UInt8]) {
+        self.name = name
+        size = Int64(bytes.count)
+        self.bytes = bytes
+    }
+
+    func read(limit: Int) -> Secret? {
+        Secret(taking: Array(bytes.prefix(limit + 1)))
     }
 }
 
@@ -102,6 +177,8 @@ struct TestHookPanel: View {
                     .accessibilityIdentifier("hook_path_none")
                 Button("Scan") { hooks.scanner?.scan() }
                     .accessibilityIdentifier("hook_scan")
+                Button("Backup file") { hooks.pickBackup() }
+                    .accessibilityIdentifier("hook_backup_file")
             }
         }
         .font(.caption)

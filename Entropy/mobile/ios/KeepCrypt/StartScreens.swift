@@ -3,7 +3,7 @@
 // offline, Home, Length, Device entropy, Commitment and Dice, each Public, drawn with the kit in Android's
 // wording (Texts.swift), order and identifiers, and each handing its presses to the ceremony model, which
 // ignores a press its screen no longer shows. Each screen's heading is its title (Screen.swift) where
-// Android's is.
+// Android's is. D7 adds Home's About (Android's HomeScreens.kt).
 
 import SwiftUI
 
@@ -70,14 +70,15 @@ struct GoOfflineScreen: View {
 
 /// Home (docs/mobile-apps.md, step 4): New seed, Dice-only seed, Check a backup, Load registry snapshot and
 /// About (lead decision M5-48); why a file Check a backup or Load registry snapshot was given was not
-/// opened, when it was not; and the registry snapshot loaded, or that none is. Check a backup and About are
-/// drawn disabled until their screens come (D7; D3's plan, (2)); Load registry snapshot came with D4.
+/// opened, when it was not; and the registry snapshot loaded, or that none is.
 struct HomeScreen: View {
     let state: UiState
     let testRegistry: Bool
     let onNewSeed: () -> Void
     let onDiceOnly: () -> Void
+    let onCheckBackup: () -> Void
     let onLoadSnapshot: () -> Void
+    let onAbout: () -> Void
 
     var body: some View {
         KitScreen(Screen.home.id, testRegistry: testRegistry) {
@@ -91,9 +92,34 @@ struct HomeScreen: View {
         } actions: {
             KitButton(StartTexts.newSeed, id: "new_seed", action: onNewSeed)
             KitButton(StartTexts.diceOnlySeed, id: "dice_only_seed", action: onDiceOnly)
-            KitButton(StartTexts.checkBackup, id: "check_backup", enabled: false) {}
+            KitButton(StartTexts.checkBackup, id: "check_backup", action: onCheckBackup)
             KitButton(StartTexts.loadSnapshot, id: "load_snapshot", action: onLoadSnapshot)
-            KitButton(StartTexts.about, id: "show_about", enabled: false) {}
+            KitButton(StartTexts.about, id: "show_about", action: onAbout)
+        }
+    }
+}
+
+/// About (docs/mobile-apps.md, step 4; the Pi's About; Android's HomeScreens.kt), a Public screen: the app's
+/// version, that it is a development build, this build's flavour and its registry key, the source address,
+/// the licence and the security address, all plain text (no link: the app opens nothing); Back returns Home.
+struct AboutScreen: View {
+    let testRegistry: Bool
+    let onBack: () -> Void
+
+    var body: some View {
+        KitScreen(Screen.about.id, testRegistry: testRegistry) {
+            Heading(Screen.about.title)
+            Title(AboutTexts.name)
+            Gap(8)
+            KitText(versionText(), id: "about_version")
+            KitText(developmentBuild, style: .warning)
+            KitText(flavourText(testRegistry), style: .small, id: "about_flavour")
+            KitText(AboutTexts.sourceCode, style: .small)
+            KitText(AboutTexts.sourceAddress, id: "about_source")
+            KitText(AboutTexts.licence, style: .small)
+            KitText(securityText(), style: .small)
+        } actions: {
+            KitButton(CheckTexts.back, id: "back", action: onBack)
         }
     }
 }

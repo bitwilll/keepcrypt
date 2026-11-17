@@ -13,7 +13,6 @@
 // texts are BackupScreens.kt's. Each test leaves the slot at home.
 
 import CommonCrypto
-import CoreImage
 import XCTest
 
 final class CeremonyExportsTests: XCTestCase {
@@ -33,33 +32,6 @@ final class CeremonyExportsTests: XCTestCase {
     private let dice50 = "dice-50-words12"
 
     // MARK: - Reading what the screens draw
-
-    /// matrix's text, read back with Core Image's QR detector from a picture of its modules, 8 pixels a
-    /// module inside the four-module quiet zone. The matrix is left whole.
-    private func qrText(_ matrix: QrMatrix) throws -> String {
-        let scale = 8
-        let size = (matrix.side + 8) * scale
-        var pixels = [UInt8](repeating: 0xFF, count: size * size)
-        for y in 0..<matrix.side {
-            for x in 0..<matrix.side where matrix.isDark(x: x, y: y) {
-                for dy in 0..<scale {
-                    for dx in 0..<scale {
-                        pixels[((y + 4) * scale + dy) * size + (x + 4) * scale + dx] = 0
-                    }
-                }
-            }
-        }
-        let provider = try XCTUnwrap(CGDataProvider(data: Data(pixels) as CFData))
-        let image = try XCTUnwrap(
-            CGImage(
-                width: size, height: size, bitsPerComponent: 8, bitsPerPixel: 8, bytesPerRow: size,
-                space: CGColorSpaceCreateDeviceGray(), bitmapInfo: CGBitmapInfo(rawValue: 0), provider: provider,
-                decode: nil, shouldInterpolate: false, intent: .defaultIntent))
-        let detector = try XCTUnwrap(
-            CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
-        let feature = try XCTUnwrap(detector.features(in: CIImage(cgImage: image)).first as? CIQRCodeFeature, "no QR code read")
-        return try XCTUnwrap(feature.messageString, "a QR code with no text")
-    }
 
     /// Whether two matrices hold the same modules.
     private func sameModules(_ a: QrMatrix, _ b: QrMatrix) -> Bool {

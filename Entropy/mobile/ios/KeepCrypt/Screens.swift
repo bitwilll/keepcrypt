@@ -7,8 +7,8 @@
 // removes them, and while either is up the screen under it is hidden from VoiceOver (Q80 (a)). Each state's
 // pane title (paneTitle(of:), fixed text) is posted to VoiceOver as it opens (U3g). The scan screen's scanner
 // and the document pickers are the platform's seams (GoAheadScanner.swift, DocumentPicker.swift: the
-// snapshot's importer and the backup's exporter). Check a backup's screens draw their title alone until D7
-// draws them.
+// open picker, shared by Check a backup and Load registry snapshot, and the backup's exporter). D7 draws the
+// last of them: Check a backup's, About.
 
 import SwiftUI
 import UIKit
@@ -19,6 +19,9 @@ struct Screens: View {
     let pressGuard: PressGuard
     let scanner: QrScanner
     @ObservedObject var pickers: ScreenPickers
+    /// The pickers the model's entry points open: pickers itself, or in the TestHooks build its hooked
+    /// stand-in for Check a backup (TestHooks.swift).
+    let documents: DocumentPickers
 
     var body: some View {
         let state = model.state
@@ -38,20 +41,28 @@ struct Screens: View {
         .background(KitColors.background.ignoresSafeArea())
         .background(TouchGuard(model: model, pressGuard: pressGuard))
         .fileImporter(
-            isPresented: $pickers.snapshotOpen, allowedContentTypes: [.data], allowsMultipleSelection: false,
+            isPresented: $pickers.importerUp, allowedContentTypes: [.data], allowsMultipleSelection: false,
             onCompletion: { result in
                 switch result {
                 case .success(let urls):
-                    model.snapshotPicked(urls.first.map(PickedURLFile.init))
+                    picked(urls.first.map(PickedURLFile.init))
                 case .failure:
-                    model.snapshotPicked(nil)
+                    picked(nil)
                 }
             },
-            onCancellation: { model.snapshotPicked(nil) })
+            onCancellation: { picked(nil) })
         .modifier(BackupExporter(pickers: pickers, placed: model.backupPlaced))
         .onChange(of: shownView(state), initial: true) { _, view in
             pressGuard.composed(view, uptimeMillis())
             UIAccessibility.post(notification: .screenChanged, argument: paneTitle(of: model.state))
+        }
+    }
+
+    /// The open picker's answer, to the model's entry for what it was opened for.
+    private func picked(_ file: PickedFile?) {
+        switch pickers.opening {
+        case .backup: model.backupPicked(file)
+        case .snapshot: model.snapshotPicked(file)
         }
     }
 
@@ -68,7 +79,8 @@ struct Screens: View {
             HomeScreen(
                 state: state, testRegistry: registry,
                 onNewSeed: { model.chooseMode(.mixed) }, onDiceOnly: { model.chooseMode(.diceOnly) },
-                onLoadSnapshot: { model.loadSnapshot(pickers) })
+                onCheckBackup: { model.checkBackup(documents) }, onLoadSnapshot: { model.loadSnapshot(documents) },
+                onAbout: model.about)
         case .length:
             LengthScreen(testRegistry: registry, onWords: model.chooseLength)
         case .deviceEntropy:
@@ -158,7 +170,7 @@ struct Screens: View {
                 onDelete: { model.padDelete(screen: .backupConfirm, page: state.page) }, onDone: model.confirmTyped)
         case .backupSave:
             BackupSaveScreen(
-                state: state, testRegistry: registry, onSave: { model.saveBackup(pickers) }, onSkip: model.skipBackup)
+                state: state, testRegistry: registry, onSave: { model.saveBackup(documents) }, onSkip: model.skipBackup)
         case .backupVerified:
             BackupVerifiedScreen(testRegistry: registry, onNext: model.backupVerifiedDone)
         case .watchOffer:
@@ -190,16 +202,26 @@ struct Screens: View {
             RevealDScreen(state: state, testRegistry: registry, passGate: model.passGate, onNext: model.deviceLegDone)
         case .checklist:
             ChecklistScreen(state: state, testRegistry: registry, onFinish: model.finishCeremony)
+        case .backupCheckEntry:
+            BackupCheckEntryScreen(
+                state: state, letters: model.backupLetters, testRegistry: registry, passGate: model.passGate,
+                onKey: { model.padKey(screen: .backupCheckEntry, page: state.page, key: $0) },
+                onDelete: { model.padDelete(screen: .backupCheckEntry, page: state.page) }, onDone: model.entryTyped,
+                onBack: model.back)
+        case .backupCheckResult:
+            BackupCheckResultScreen(
+                state: state, testRegistry: registry, onShowWords: model.showBackupWords, onRecheck: model.showRecheck,
+                onDone: model.closeBackup)
+        case .backupRecheck:
+            BackupRecheckScreen(state: state, testRegistry: registry, onBack: model.back)
+        case .about:
+            AboutScreen(testRegistry: registry, onBack: model.back)
         case .snapshot:
             SnapshotScreen(state: state, testRegistry: registry, onDone: model.snapshotDone)
         case .working:
             WorkingScreen(testRegistry: registry)
         case .stop:
             StopScreen(state: state, testRegistry: registry)
-        default:
-            KitScreen(state.screen.id, testRegistry: registry) {
-                Heading(state.screen.title)
-            }
         }
     }
 }

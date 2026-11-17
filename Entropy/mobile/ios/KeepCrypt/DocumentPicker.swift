@@ -4,7 +4,7 @@
 // fileImporter (Screens.swift) offers any data file (the model refuses a name not ending in .kcr, and a size
 // past core's limit, before any byte is read, as Android's), and the file it gives is read here, once, on
 // the model's worker, into memory alone: nothing is copied, cached or kept, and no access to the place is
-// kept past the read.
+// kept past the read. D7's Check a backup opens the same importer for an .age file, read the same way.
 //
 // In D6, the backup's save (docs/mobile-apps.md, Saving steps 3-4): SwiftUI's .fileExporter with an
 // in-memory document, BackupDocument, whose bytes are the model's own Secret of core's age file
@@ -19,10 +19,20 @@ import Foundation
 import SwiftUI
 import UniformTypeIdentifiers
 
+/// What the one open picker is up for: Check a backup's .age file or Load registry snapshot's .kcr file.
+enum Opening {
+    case backup, snapshot
+}
+
 /// The pickers the model's entry points open (Android's DocumentPickers): each sets what Screens presents.
+/// Check a backup and Load registry snapshot share one fileImporter (Screens.swift), which answers the
+/// model's entry for what it was opened for.
 final class ScreenPickers: ObservableObject, DocumentPickers {
-    /// Load registry snapshot's open picker is up.
-    @Published var snapshotOpen = false
+    /// The open picker is up.
+    @Published var importerUp = false
+
+    /// What it is up for; set before it is presented, read when it answers.
+    private(set) var opening = Opening.snapshot
 
     /// The backup's exporter is up.
     @Published var backupOpen = false
@@ -39,11 +49,16 @@ final class ScreenPickers: ObservableObject, DocumentPickers {
         backupOpen = true
     }
 
-    /// Check a backup's open picker: D7's.
-    func openBackup() {}
+    /// Check a backup's open picker (D7): any data file; the model refuses a name not ending in .age, in
+    /// any letter case, and a size past core's limit, before any byte is read.
+    func openBackup() {
+        opening = .backup
+        importerUp = true
+    }
 
     func openSnapshot() {
-        snapshotOpen = true
+        opening = .snapshot
+        importerUp = true
     }
 
     /// The exporter answered: its document goes, the bytes it held kept for the place to name.

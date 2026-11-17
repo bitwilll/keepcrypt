@@ -19423,6 +19423,45 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   333 ms)" and the same for a wipe.
 - [ ] D7. Check a backup (the `.age` file through the picker, the passphrase on the letter pad, the result, the words only
   if asked, the re-check), About, Working and the stop screen.
+  As built (plan, 2026-11-18): the views over D2's model (its backupPicked, entryTyped, showBackupWords,
+  showRecheck, closeBackup and about are unchanged), in Android's BackupScreens.kt and HomeScreens.kt words,
+  order and tags. (1) The file: Check a backup and Load registry snapshot share D4's one fileImporter
+  (ScreenPickers' importerUp and opening; two importers on one view are not reliably both presented), its file
+  read once by readAtMost on the model's worker; the model refuses a name not ending in .age in any letter
+  case, and a size past Core.backupMaxBytes, before any byte is read. (2) The entry on D6's LetterEntry (Delete
+  on an empty pad reopens the word before); the letters typed inside SecureLayer; the result and the re-check
+  QR Public, as Android's (the re-check QR drawn as the check QR is, no SecureLayer); the words on D5's screens,
+  through the gate, their last insert's Done back to the result. (3) Home's Check a backup and About enabled;
+  About in StartScreens.swift beside Home. (4) Working and the stop screen are D3's, unchanged: the stop screen
+  shows one fixed line per HaltReason, as Android's stopLine (pinned since D3). Android has no line for an End:
+  its crash handler ends the process with no screen, and Ceremony.halt's ends (closed, bridge and D4's camera)
+  do the same (exit, no message), so no stop line is added for them. (5) The UI test: the system's document
+  browser is not the app's to drive, so the TestHooks build's Backup file hook (TestHooks.swift, under the
+  hooks marker) answers Check a backup's picker with the launch environment's file through the model's
+  backupPicked, the importer's own path in (HookedPickers, HookedFile; readAtMost is the one step it skips).
+  As built (M6 commit D7a): BackupScreens.swift's BackupCheckEntryScreen, BackupCheckResultScreen and
+  BackupRecheckScreen; StartScreens.swift's AboutScreen and Home's two buttons enabled; Texts.swift's
+  CheckBackupTexts, AboutTexts, entryWordText, versionText, securityText and flavourText; DocumentPicker.swift's
+  shared importer (Opening); Screens.swift's routing (every screen now drawn; the placeholder case gone) and its
+  documents seam; the hook (TestHooks.swift's Backup file hook, HookedPickers, HookedFile; KeepCryptApp's
+  wiring). Tests: CeremonyCheckBackupTests (4: every age file of backup.json through Check a backup, the eight
+  KeepCrypt backups opened to their plaintexts' fingerprints with their words only through the gate (zoo-24's
+  on two devices), another file's passphrase refused WrongPassphrase, the C2SP files and the 4096-byte chunk
+  refused with BackupScreens.kt's texts; a wrong name and an oversized size refused unread; the abandon
+  backup's re-check QR kcr.json's check text for vector-1's T and its Seal ID vector-1's; the lines),
+  ScreenTextsTests' pins grown by the D7 texts and forms, the QR reader moved to CeremonySupport.swift.
+  CheckBackupUITests (TestHooks): backup.json's abandon-12 through the hook, the gate, the 8 words' first fours
+  on the letter pad, Backup OK with its fingerprint and Seal ID, Show the words, the gate (nothing of the words
+  behind it), insert 1; about 40-60 s on a simulator by WordsUITests' measure (75 s for 50 rolls and 12 pages),
+  so the job's 1442 s goes to about 1500 s of 1860.
+  Proof (M6 commit D7a, partial: local; CI at the next push): the macOS stand-in "Executed 123 tests, with 0
+  failures" over the host's release archive (conditions: none) and over its test-registry archive
+  (KC_WITH_TEST_REGISTRY); with three lines mutated in a copy (the entry's word number, the shipping flavour
+  line, the .age match made case-sensitive), CeremonyCheckBackupTests and ScreenTextsTests fail 6 times. Local
+  builds: all three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app`
+  clean on the three shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere, and KC_HOOK_BACKUP in the
+  TestHooks app alone; `--selftest-ios-app` 33 passed; the gate clean (505 files), `cargo fmt --all --check`
+  clean.
 - [ ] D8. VoiceOver: each screen's title read as it opens, headings, live lines, every QR named by its kind and never its
   data, each Protected pad key reading its letter; reading counts as input for the idle rule (Q80 (b)'s answer on
   Android). iOS has no accessibility-data-sensitive mark, so VoiceOver reads the words as any screen reader would:

@@ -608,3 +608,51 @@ func bip39Shown(_ letters: PadEntry) -> String {
 func deviceLegText(_ d: Secret) -> String {
     hexGroups(d)
 }
+
+/// Check a backup's texts (Android's BackupScreens.kt; the Pi's wording).
+enum CheckBackupTexts {
+    /// The entry's instruction, under any refusal (the Pi's FIRST_FOURS).
+    static let firstFours = "Type the first four letters of each word, or a whole three-letter word."
+    static let backupOk = "Backup OK"
+    static let sealId = "Seal ID"
+    /// The result's note (MA:162): the words only on request.
+    static let okNote = "Its words show only if you ask, on a private screen. Done wipes them."
+    static let showWords = "Show the words"
+    static let recheck = "Re-check QR"
+    /// The re-check QR's note (the Pi's backup-check-recheck-qr): the seal's T, with no nonce.
+    static let recheckNote =
+        "T only, no nonce: scan it with the registry website or the offline checker app to check this seal again."
+}
+
+/// The entry's word line: "Backup passphrase, word 1 of 8".
+func entryWordText(_ page: Int) -> String {
+    "Backup passphrase, word " + String(page + 1) + " of " + String(passphraseWords)
+}
+
+/// About's texts (Android's HomeScreens.kt; the Pi's About).
+enum AboutTexts {
+    static let name = "KeepCrypt-Entropy"
+    static let sourceCode = "Source code"
+    /// Where the source is (docs/pi-firmware.md, "Build, flash and verify"), shown as plain text: no link opens anything.
+    static let sourceAddress = "https://github.com/bitwilll/keepcrypt"
+    static let licence = "Licence: MIT OR Apache-2.0"
+    /// The security address (SECURITY.md), as the Pi's About shows it.
+    static let securityAddress = "admin@keepcrypt.com"
+}
+
+/// About's version line: "Version 0.0.0".
+func versionText() -> String {
+    "Version " + appVersion
+}
+
+/// About's security line: "Security reports: admin@keepcrypt.com".
+func securityText() -> String {
+    "Security reports: " + AboutTexts.securityAddress
+}
+
+/// About's line for this build's flavour (Q60: the test-registry app is built only in CI and never released).
+func flavourText(_ testRegistry: Bool) -> String {
+    testRegistry
+        ? "This build: the TEST REGISTRY app, built only in CI and never released. Registry key: the test key."
+        : "This build: the shipping app. Registry key: none pinned in this build yet."
+}

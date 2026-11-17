@@ -66,6 +66,9 @@ final class ScreenTextsTests: XCTestCase {
             ExportTexts.treatPrivate, ExportTexts.passphraseWallet, ExportTexts.sparrowHow, ExportTexts.coreHow,
             ExportTexts.nextDescriptor, ExportTexts.registerOnce, ExportTexts.registerHow, ExportTexts.showRegistration,
             ExportTexts.registerQrHeading, ExportTexts.revealD, ExportTexts.verifyPrompt, ExportTexts.dNote, ExportTexts.showD,
+            CheckBackupTexts.firstFours, CheckBackupTexts.backupOk, CheckBackupTexts.sealId, CheckBackupTexts.okNote,
+            CheckBackupTexts.showWords, CheckBackupTexts.recheck, CheckBackupTexts.recheckNote, AboutTexts.name,
+            AboutTexts.sourceCode, AboutTexts.licence, flavourText(false), flavourText(true),
         ] + ChecklistTexts.items + HaltReason.allCases.map(stopLine) + QrKind.allCases.map(\.spoken)
     }
 
@@ -108,6 +111,10 @@ final class ScreenTextsTests: XCTestCase {
             "\"Backup not saved: the file read back does not verify (\" +", "?.let { backupRefusalText(it) }.orEmpty() + \").\"",
             "\"Keys, page \" + (keys + 1) + \" of \" + ASCII_PAGES", "private const val SPACE_SHOWN = '\u{00B7}'",
             "fun deviceLegText(d: Secret): String = hexGroupsOf(d.size) { d[it] }",
+            "\"Backup passphrase, word \" + (state.page + 1) + \" of \" + PASSPHRASE_WORDS",
+            "KitText(\"Version \" + APP_VERSION", "KitText(\"Security reports: \" + SECURITY_ADDRESS",
+            "const val SOURCE_ADDRESS = \"" + AboutTexts.sourceAddress + "\"",
+            "const val SECURITY_ADDRESS = \"" + AboutTexts.securityAddress + "\"",
         ] {
             XCTAssertTrue(source.contains(form), "Android's form: " + form)
         }

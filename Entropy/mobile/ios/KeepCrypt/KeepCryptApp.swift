@@ -11,7 +11,8 @@ struct KeepCryptApp: App {
     private let offlineCheck: OfflineCheck
     private let pressGuard = PressGuard()
     private let scanner: QrScanner
-    @StateObject private var pickers = ScreenPickers()
+    @StateObject private var pickers: ScreenPickers
+    private let documents: DocumentPickers
 
     init() {
         #if KC_WITH_TEST_REGISTRY
@@ -23,6 +24,8 @@ struct KeepCryptApp: App {
             core: Core.shared, worker: QueueWorker(), clock: SystemClock(), date: SystemDate(),
             motion: CoreMotionSource(), testRegistry: registry)
         _model = StateObject(wrappedValue: model)
+        let pickers = ScreenPickers()
+        _pickers = StateObject(wrappedValue: pickers)
         offlineCheck = OfflineCheck { offline in
             model.pathReported(offline: offline)
         }
@@ -32,15 +35,18 @@ struct KeepCryptApp: App {
         let hooked = HookedScanner(camera: GoAheadScanner())
         TestHooks.shared.scanner = hooked
         scanner = hooked
+        TestHooks.shared.backupPicked = { model.backupPicked($0) }
+        documents = HookedPickers(screen: pickers)
         #else
         scanner = GoAheadScanner()
+        documents = pickers
         #endif
     }
 
     var body: some Scene {
         WindowGroup {
             CaptureShield(model: model) {
-                Screens(model: model, pressGuard: pressGuard, scanner: scanner, pickers: pickers)
+                Screens(model: model, pressGuard: pressGuard, scanner: scanner, pickers: pickers, documents: documents)
             }
         }
     }
