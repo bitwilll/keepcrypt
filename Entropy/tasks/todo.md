@@ -14384,6 +14384,12 @@ SHA-256 8983977bd0fb4fb6ac125cfc3bc99112ea9451b4f47f715386113471dea5a328, goahea
 - [ ] On the dice screen, a words page and the backup passphrase: a hardware screenshot is blocked or black; a Quick
   Settings screen recording is black on those screens; the recents card shows no content. On Android 15+, with a
   recording running, a words page shows its "hidden while recording" cover.
+- [ ] Optional (TalkBack, Q79 and Q80; the owner's approval of 2026-11-17): in a throwaway session (P2's, or one
+  started for this and then left), headphones in, TalkBack on. Each screen's title is spoken as it opens. On a
+  Protected letter pad (the read-back), touching a key speaks its letter. On a words page left untouched for 30 s the
+  cover comes up, and swiping through the screen reads the cover alone, no word. On a words page, moving TalkBack's
+  focus every few seconds for a minute keeps the cover away (reading counts as input). Turn TalkBack off before P2's
+  next step. Send pass or fail per check only, never what was spoken.
 
 **P2. A throwaway ceremony (shipping APK)**
 - [ ] Airplane mode on, Wi-Fi off. New seed, 12 words.
@@ -17740,8 +17746,13 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   Proof (CI, the lead's, 2026-10-31): Entropy Android 41148288082 at a15dc4f, API 31: CaptureTest 7 passed in each
   APK, its walk reading every screen's own pane title in both walks and the six QR codes named by kind, so U3g's
   device check holds on API 31 and 36.
-- [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists them.
+- [x] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists them.
   Proof: CI at each stage's head; local runs reported as local.
+  Proof (M5 commit 25, 2026-11-17): the list is the Review's "M5: what Stage U found (U4's list)", 14 app defects
+  and the test-harness and CI defects, each with its commit, its test and whether its proof shows a failure before
+  the fix; those without one (fixes 5, 9 and 14 and the harness fixes so marked) were accepted by the owner on
+  2026-11-17 ("approve all as recommended"). CI at 62396383 green (Entropy Android 43950082932, Entropy CI
+  43950083336).
 - **Stage U's commit plan** (M5-72 (h); each commit's test fails before its fix, U4):
   - U-1, the base: 21j (the capture walk reads a screen's nodes only once UI Automator shows that screen, and a secret
     node on a Public screen still fails; CI fix), L10, U1a (each API gets three leg jobs, capture, shipping journeys,
@@ -20990,6 +21001,13 @@ in the test-registry APK (U3n).
 9. kc34, the API 34 AVD made 2026-11-16 from the downloaded system-images;android-34;default;arm64-v8a (the owner's
    go-ahead "download sdk emulator if needed"): local only, never a CI step.
 
+Answered 2026-11-17 (the owner): "approve all as recommended". Items 1-9 are accepted as written: the budgets stand
+and a slow runner is re-measured (1); Q84's extra-data residual (2), the Braille row's wording (3), M5-84 (b) read
+with the Back key standing in on images with no gestural bar (4) and reading ending the idle warning (5) are
+accepted; the NDK target stays at API 31 (6); the host-side CAMERA reset stays (7); P1 gains an optional TalkBack
+item (8, added in M5 commit 25); kc34 stays a local tool (9). U4's fixes with no test shown failing before the fix
+(fixes 5, 9 and 14 and the harness fixes marked so) are accepted as they are (U4 ticked in commit 25).
+
 **Ticked in this commit**: Stage F's 19 (CLAUDE.md Commands, commit 22), 19's issue of P0-P5 (commit 23) and
 20 (this Review); Verification's "merged manifest has no INTERNET permission", "Boot path and native libraries",
 Matrix "Symbol and stub-marker scan", Matrix "No-network checks", Matrix "Duplicate-seed drill" (Android part; end to
@@ -21001,10 +21019,8 @@ the same form and stays `[ ]`.
 - The gate's screenshot, backup round trip, snapshot import, Sparrow import, go-ahead and Stop items, and Matrix
   "Screen-capture tests", "Full ceremony with offline verification", "Watch-only import" and "Metal read-back drill":
   the owner's P0b and P1-P4 (P5 optional).
-- U3 (the UX audit): its parts are ticked (U3a-U3n); what TalkBack actually reads and speaks needs a phone session
-  (for the owner's approval, item 8).
-- U4: the list above; fixes 5, 9 and 14 and some harness fixes have no test shown failing before the fix (named
-  above), for the owner's approval.
+- U3 (the UX audit): its parts are ticked (U3a-U3n); what TalkBack actually reads and speaks waits for P1's optional
+  TalkBack item (approved 2026-11-17).
 - Matrix "Reproducible build" (APK): M7.
 - The six named items above, until a run shows their cause or the owner accepts them.
 
