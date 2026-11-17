@@ -18450,7 +18450,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   ffi/capi/src/lib.rs and banned-api-faults.sh's tree lists it. Locally: banned-api-faults.sh 591 runs, 591 passed,
   0 failed (217 s); the gate's --selftest 1655 passed, 0 failed. CLAUDE.md's Commands gain the fault check, so every
   change to the gate runs it (tasks/lessons.md, 2026-10-31: the scripts that read the changed one).
-- [ ] B5. CI: entropy-ci.yml's two iOS cross legs build `-p keepcrypt-capi` as a staticlib (release and
+- [x] B5. CI: entropy-ci.yml's two iOS cross legs build `-p keepcrypt-capi` as a staticlib (release and
   test-registry, as the Android legs build jni) and scan `libkeepcrypt_capi.a` with `--artifact`
   (`_CCRandomGenerateBytes` imported, no other RNG symbol; the test-registry build exactly its marker and the test
   key); the exports check allows exactly `_kc_call` and `_kc_max_out` beside secp256k1-sys's four. The test job runs
@@ -18495,6 +18495,15 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   random-key path survives the probe's dead-strip, the release scan fails on StdRandom, which is to be reported, not
   relaxed. `--workflows ../.github/workflows` clean (no action added; the hardening canary's pinned line 32 unchanged);
   the gate clean; CLAUDE.md's Commands name the selftest and the legs' exports run.
+  Proof (CI, the lead's, 2026-11-17: Entropy CI 44019673293 at 93da802f, all 14 required checks green): both iOS
+  cross legs build libkeepcrypt_capi.a both ways and link ffi/capi/probe/probe.c with the SDK's clang and
+  -dead_strip; the release probe "banned-api-check --artifact aarch64-apple-ios[-sim]: clean, 3 file(s): no marker,
+  no test key, no other RNG symbol, no std random-key path, no stripped file; _CCRandomGenerateBytes imported"; the
+  test-registry probe "2 hit(s) in 1 file(s)", its registry marker and the test key alone; capi-exports on all four
+  archives "ours exactly kc_call and kc_max_out (secp256k1-sys's: 4 of its four)". The test job runs capi's call.rs
+  and header.rs in its three configurations on Linux: the_header_names_exactly_the_librarys_exports and
+  the_comparison_fails_on_a_planted_export_or_prototype ok in each. M6-4's two risks did not arise: std's random-key
+  path did not survive -dead_strip, and the registry marker did.
 
 ### Stage A: the Swift rules (M6 commit 5, before the first Swift file)
 - [ ] A1. The gate's Swift category over `mobile/ios/` (`.swift`, `.h`, `.m`, `.plist`, `.pbxproj`, `.entitlements`):
@@ -18506,6 +18515,41 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   (`TextField`, `SecureField`, `TextEditor`, `UITextField` outside Q88's secure-layer file, `UITextView`), and any
   Swift package (`Package.swift`, `XCRemoteSwiftPackageReference` in the project file).
   Proof: a hit and a clean fixture per rule; --selftest and canaries green.
+
+### Stage C: the app shell and its CI (M6 commits C1-C5, after Stage A)
+- [ ] C1. `scripts/ios-rust.sh FLAVOUR` (shipping or withTestRegistry): plain `cargo build --release --locked` of
+  keepcrypt-capi for aarch64-apple-ios and aarch64-apple-ios-sim (the test-registry flavour with
+  `-p keepcrypt-core --features keepcrypt-core/test-registry`, its own target dir), copying each `.a` to
+  `mobile/ios/build/rust/FLAVOUR/TARGET/` and printing each SHA-256; no Xcode call inside it. `--selftest` on a
+  stand-in cargo (as android-rust.sh's). Proof: the selftest count; a local run's hashes.
+- [ ] C2. `mobile/ios/KeepCrypt.xcodeproj`, written by hand: one app target and two test targets (XCTest unit, XCUITest),
+  Xcode's synchronized folders (objectVersion 77, Xcode 16 and later), deployment target iOS 17.0, no Swift package,
+  no Run Script phase that fetches anything. Two configurations per flavour: `Shipping` (bundle id
+  com.keepcrypt.entropy) and `WithTestRegistry` (com.keepcrypt.entropy.testregistry, its "TEST REGISTRY" strip), each
+  linking its flavour's prebuilt `.a` by path. The C header through a module map (`mobile/ios/KeepCryptCore/`), so
+  Swift imports `KeepCryptCore` and calls `kc_call` and `kc_max_out` alone. Info.plist: the camera usage string (asked
+  only at the scan), no `NSAppTransportSecurity`, no background modes, no URL schemes, no document types beyond
+  `.age` and `.kcr` import; `PrivacyInfo.xcprivacy` declaring no data collected and no tracking.
+- [ ] C3. `Core.swift`: the one wrapper over `kc_call`, a reply buffer of `kc_max_out()` bytes allocated once, wiped
+  with `memset_s` after each call is read, -1 a halt; `Wire.swift`: keepcrypt-ffi's wire protocol (wire.rs), its
+  status byte and every op's encoding, its decoders over `Data` copies that are wiped (`resetBytes`) when dropped.
+  XCTest over vectors/: the self-test, a dice-only 50-roll ceremony to its words (dice-50-words12), every refusal and
+  halt status, and the start-up self-test failing closed.
+- [ ] C4. `.github/workflows/entropy-ios.yml` (Q91): non-required, legs on macos-26 (Xcode 26.6, iOS 26.5 simulator)
+  and macos-15 (Xcode 16.4, iOS 18.6), the three approved actions pinned by SHA, read-only token, no secret: the
+  Rust libraries (C1), `xcodebuild build-for-testing` and `test-without-building` for both configurations on the
+  simulator, then the app scan: a new gate mode, `--ios-app APP`, over the built `.app` (its Mach-O: the
+  `CCRandomGenerateBytes` import and no other RNG symbol, no networking symbol or framework (`URLSession`,
+  `NWConnection`, `CFNetwork`, `Network.framework` but the offline check's `NWPathMonitor`), no `UIPasteboard`, no
+  marker or test key in the shipping app, exactly its two in the test-registry app; its Info.plist and privacy
+  manifest against `mobile/ios/expected/`) with `--selftest-ios-app` fixtures. Proof: the run ID, both legs' lines.
+- [ ] C5. The capture layers and the offline check, before any Protected screen exists: a cover over the whole scene
+  while `isSceneCaptured` (SwiftUI) or `sceneCaptureState` (UIKit) reads active, and while `scenePhase` is not
+  `.active` (the app-switcher snapshot); `userDidTakeScreenshotNotification` discarding the session with its
+  explanation; Q88's secure-text-field layer for the word views; the offline check, `NWPathMonitor` reporting no
+  usable path, re-read on every change, going online wiping a session as on Android. XCTest and XCUITest through test
+  hooks that the shipping configuration compiles out (`#if KC_TEST_HOOKS`, set only in the test targets), and the
+  gate refusing the hook flag in the shipping configuration.
 
 ### Verification (each maps to a gate item; refined with the plan)
 - [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest
