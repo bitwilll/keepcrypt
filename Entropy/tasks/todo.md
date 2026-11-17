@@ -19084,7 +19084,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17 iOS 26.5), the UI tests passing in all three schemes; the jobs took
   1036 s and 1117 s, so entropy-ios.yml's budget is 24 minutes (1117 s x 1.25 = 1397 s, M5-30's rule). Entropy CI
   run 44091376237 green (14 jobs), Entropy Android 44085800147 and Entropy Pi image 44085800177 green at 964154d1.
-- [ ] D3. The kit and the start: SwiftUI's fixed text, headings and pane titles; the pads (dice 1-6 with undo, letters
+- [x] D3. The kit and the start: SwiftUI's fixed text, headings and pane titles; the pads (dice 1-6 with undo, letters
   for the first four letters, the go-ahead code, the BIP39 passphrase) as buttons only, never the system keyboard;
   First launch, Self-test, Go offline, Home, Length, Device entropy (Core Motion's accelerometer and gyroscope and
   touch timing as zero-credit extras, M5's encoding), Commitment, Dice.
@@ -19163,6 +19163,17 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   For CI (not provable here): the views, the press guard's recognizer (that a refused touch reaches no SwiftUI
   button and an admitted one does) and the UI tests' new identifiers run only on the simulators; Core Motion's
   samples only on a phone (the simulator has no motion hardware), I3's to watch.
+  CI proof (2026-11-17): Entropy iPhone run 44101856909 at 7b6eff87 green: "Executed 99 tests, with 0 failures" in
+  Shipping and WithTestRegistry on macos-15 (Xcode 16.4, iPhone 16 iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17
+  iOS 26.5), the UI tests (Android's tags, the 500 ms wait past a new screen) passing in all three schemes; the jobs
+  took 1060 s and 1382 s, so entropy-ios.yml's budget is 29 minutes (1382 s x 1.25 = 1728 s, M5-30's rule). Entropy CI
+  run 44101856914 green (14 jobs). Entropy Android run 44101857057 failed in its dependency review, not in the app:
+  Maven Central reset the connections mid-fetch (curl (56) and (55)), and the loop, which judged only the HTTP code,
+  stopped at "cannot move ...pom.asc.part" (a 200 header, then no file). Fail-closed held, but the message hid the
+  cause and a transient reset was not retried: android-deps-review.sh now records each transfer's own curl exit code
+  (%{exitcode}) and fails a non-zero one by name before its HTTP code, and retries any error (--retry-all-errors,
+  still 3 tries; whatever is kept is still checked against its hash and signature by the review). Local check (curl
+  8.7.1): a 200, a 404 and a refused connection report "0 200", "0 404" and, after 3 retries, "7 000".
 - [ ] D4. The collision check: the prompt, Skip's confirm, the seal card and its check QR, the scan screen (AVFoundation's
   QR reader, the camera asked for only there), the code entry, Match found's and Cannot check's confirms, the
   collision result, its report QR, the result before the words; Load registry snapshot through the document picker

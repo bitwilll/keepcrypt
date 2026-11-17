@@ -95,8 +95,10 @@ jobs:
     # item C5 adds a third scheme's build and UI tests: run 44064121639 at b870ecd5 took 578 s on
     # macos-26 and 874 s on macos-15, so 874 s x 1.25 is 1093 s, 19 minutes. M6 items D1-D2 grow each
     # scheme's unit bundle from 18 to 76 tests: run 44091376732 at ac11013e took 1117 s on macos-26 and
-    # 1036 s on macos-15, so 1117 s x 1.25 is 1397 s, 24 minutes.
-    timeout-minutes: 24
+    # 1036 s on macos-15, so 1117 s x 1.25 is 1397 s, 24 minutes. M6 item D3 adds the start screens and
+    # 23 unit tests (99 per scheme): run 44101856909 at 7b6eff87 took 1382 s on macos-26 and 1060 s on
+    # macos-15, so 1382 s x 1.25 is 1728 s, 29 minutes.
+    timeout-minutes: 29
     strategy:
       fail-fast: false
       matrix:
