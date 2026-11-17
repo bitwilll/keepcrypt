@@ -18688,6 +18688,43 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   `NWConnection`, `CFNetwork`, `Network.framework` but the offline check's `NWPathMonitor`), no `UIPasteboard`, no
   marker or test key in the shipping app, exactly its two in the test-registry app; its Info.plist and privacy
   manifest against `mobile/ios/expected/`) with `--selftest-ios-app` fixtures. Proof: the run ID, both legs' lines.
+  As built (M6 commit C4a, the gate's half): `scripts/banned-api-check.sh --ios-app CONFIG APP EXPECTED_DIR` (CONFIG
+  Shipping or WithTestRegistry; the header's "iPhone app mode" holds every rule), on macOS with python3's plistlib
+  (binary plists read as XML ones) and the pinned toolchain's llvm-nm and llvm-objdump (llvm-tools-preview, the copy
+  --artifact uses). IosPlist: bundle id per CONFIG, MinimumOSVersion 17.0, a camera string, none of 15 keys (ATS,
+  background modes, URL types, document types, exported types, query schemes, Bonjour, local network, activities,
+  file sharing, open in place, document browser, iCloud containers, background tasks, tracking), imported types
+  exactly .age and .kcr conforming to public.data, then the summary (every key but DT*, BuildMachineOSBuild and
+  CFBundleSupportedPlatforms, sorted JSON) equal to `mobile/ios/expected/CONFIG-Info.json`. IosPrivacy: the manifest
+  present, no tracking, domains or collected data, its summary equal to `CONFIG-PrivacyInfo.json`. IosBundle: no
+  entry but Info.plist, PkgInfo, PrivacyInfo.xcprivacy, the executable, _CodeSignature/CodeResources and
+  embedded.mobileprovision, no link. The executable under artifact_file's rules (aarch64-apple-ios's: OSImport
+  `_CCRandomGenerateBytes`), KC_TEST_HOOKS_DO_NOT_SHIP a Marker hit (M6-5), the registry marker and test key required
+  in WithTestRegistry (IosApp when missing) and hits in Shipping. Network: undefined symbols of URL loading, Network's
+  connections and nw_ API, CFNetwork, CF sockets and streams, WebKit, Safari, Multipeer, Bluetooth and BSD sockets;
+  the Network framework's symbols (llvm-nm -m's "from Network") only `_$s7Network13NWPathMonitorC*` and
+  `_$s7Network6NWPathV*`, measured from a stand-in offline check built with NWPathMonitor alone for the simulator (its
+  path handler setter, start(queue:), cancel, init, type metadata and descriptor, NWPath's status and
+  availableInterfaces, NWPath.Status's case, metadata and Equatable conformance: 11 symbols, every one under those two
+  prefixes); 11 denied frameworks. Clipboard: UIPasteboard, NSItemProvider. IosLink: a library outside
+  /System/Library/Frameworks and /usr/lib. `--selftest-ios-app`, a mode of its own because the gates job's Linux
+  runner has no SDK: stand-in apps built with the SDK's clang (a C main importing CCRandomGenerateBytes) and swiftc.
+  `mobile/ios/expected/`: the four summaries, written from the local builds (the device build's Info.plist summary
+  equals the simulator's).
+  Proof (M6 commit C4a, partial: local, Xcode 27.2; CI at C4b's run): `sh scripts/banned-api-check.sh
+  --selftest-ios-app` "33 passed, 0 failed" (8 s): clean shipping, test-registry and path-monitor apps and a stamped
+  key changed; each other case its named hits (the registry marker and key in Shipping, 2; the test-registry app
+  without its key, 1, or its marker, 2; the hooks and source markers; no OS import; arc4random; CFNetwork, 2;
+  UIPasteboard; an @rpath library; an NWConnection; an embedded framework, 3; PlugIns; a link; ATS, background modes,
+  URL types, no camera string, another imported type, iOS 16.0, 2 each; the shipping id in WithTestRegistry, 4;
+  tracking, 2; no privacy manifest); four refusals exit 2; the committed summaries in their own form and keeping every
+  hard rule. On the locally built apps (generic simulator and device builds, CODE_SIGNING_ALLOWED=NO): `--ios-app
+  Shipping` on the simulator and the device app and `--ios-app WithTestRegistry` on its simulator app each exit 0,
+  "clean: ... _CCRandomGenerateBytes imported, no network, clipboard or denied framework, 22 system libraries"; the
+  test-registry app as Shipping exit 1 (its id, the summary, its marker and key) and the shipping app as
+  WithTestRegistry 4 hits. The gate clean (446 files), `--workflows` clean, `--selftest` 1931 passed, 0 failed,
+  `sh scripts/banned-api-faults.sh` 696 passed, 0 failed (--ios-app, like --apk and --image, is not faulted there:
+  its input is a built app on macOS), `scripts/canaries.sh` all 102 checks ran, `cargo fmt --all --check` clean.
 - [ ] C5. The capture layers and the offline check, before any Protected screen exists: a cover over the whole scene
   while `isSceneCaptured` (SwiftUI) or `sceneCaptureState` (UIKit) reads active, and while `scenePhase` is not
   `.active` (the app-switcher snapshot); `userDidTakeScreenshotNotification` discarding the session with its

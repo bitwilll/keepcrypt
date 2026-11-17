@@ -36,6 +36,14 @@
 #   scripts/banned-api-check.sh --selftest-apk
 #                                           the APK check's refusals and rules on stub tools and stub
 #                                           APKs, with no Android SDK (see "APK selftest mode" below)
+#   scripts/banned-api-check.sh --ios-app CONFIG APP EXPECTED_DIR
+#                                           check and scan a built iPhone app of CONFIG (Shipping or
+#                                           WithTestRegistry) against the reviewed summaries in
+#                                           EXPECTED_DIR (mobile/ios/expected; see "iPhone app mode")
+#   scripts/banned-api-check.sh --selftest-ios-app
+#                                           --ios-app's rules on stand-in apps built with the SDK's
+#                                           clang and swiftc, macOS with Xcode only (see "iPhone app
+#                                           selftest mode" below)
 #   scripts/banned-api-check.sh --selftest  every fixture in scripts/testdata/banned-api/ must trip the
 #                                           gate for its category; every clean-* fixture must pass; the
 #                                           Kotlin hit fixtures whose rule a scope skips must pass
@@ -421,6 +429,58 @@
 # expected file, report or APK, no aapt2 on PATH, a malformed native-libs.txt line, one listing
 # libkeepcrypt.so by a SHA-256 or not for every ABI, a missing scanned copy and no com.keepcrypt
 # class. Prints PASS or FAIL per case and a count; exit 0 all passed, 1 not.
+#
+# iPhone app mode (tasks/todo.md, M6 item C4; Q91; rules 1, 5, 8, 9 and 10; lead decision M6-5): --ios-app
+# CONFIG APP EXPECTED_DIR on a built .app (CONFIG Shipping or WithTestRegistry, its Xcode configuration;
+# EXPECTED_DIR mobile/ios/expected), on macOS with python3 and the pinned toolchain's llvm-nm and
+# llvm-objdump (llvm-tools-preview). A device build's binary property lists read as XML ones (python3's
+# plistlib). Categories:
+#   IosPlist   the Info.plist's hard rules, whatever the expected summary says: CFBundleIdentifier
+#              com.keepcrypt.entropy (Shipping) or com.keepcrypt.entropy.testregistry, MinimumOSVersion
+#              17.0, an NSCameraUsageDescription, none of NSAppTransportSecurity, UIBackgroundModes,
+#              CFBundleURLTypes, CFBundleDocumentTypes, UTExportedTypeDeclarations,
+#              LSApplicationQueriesSchemes, NSBonjourServices, NSLocalNetworkUsageDescription,
+#              NSUserActivityTypes, UIFileSharingEnabled, LSSupportsOpeningDocumentsInPlace,
+#              UISupportsDocumentBrowser, NSUbiquitousContainers, BGTaskSchedulerPermittedIdentifiers or
+#              NSUserTrackingUsageDescription, imported types exactly .age and .kcr (each conforming to
+#              public.data alone) and a CFBundleExecutable that is a file name; and its summary (every
+#              key but the stamped DT*, BuildMachineOSBuild and CFBundleSupportedPlatforms, as sorted
+#              JSON) equal to CONFIG-Info.json.
+#   IosPrivacy PrivacyInfo.xcprivacy present, NSPrivacyTracking false, no tracking domains, no
+#              collected data types, NSPrivacyAccessedAPITypes a list; its summary equal to
+#              CONFIG-PrivacyInfo.json.
+#   IosBundle  any entry of the bundle but Info.plist, PkgInfo, PrivacyInfo.xcprivacy, the executable,
+#              _CodeSignature/CodeResources and embedded.mobileprovision (an embedded framework, library,
+#              plug-in or resource bundle: a Swift package's or an SDK's), and any link.
+#   the main executable under the artifact rules (Marker, TestKey, Symbol, StdRandom, Format and
+#              OSImport, the iOS targets' rules: _CCRandomGenerateBytes imported), KC_TEST_HOOKS_DO_NOT_SHIP
+#              a Marker hit too; in WithTestRegistry the registry marker and the test key required
+#              (IosApp, "not the test-registry build") and no hit; in Shipping both hits as everywhere.
+#   Network    an undefined symbol of URL loading, the Network framework's connections and C API,
+#              CFNetwork, Core Foundation's sockets and streams, WebKit, Safari, Multipeer, Bluetooth or the
+#              BSD socket calls ($ios_net); a symbol taken from the Network framework that is not
+#              NWPathMonitor's or NWPath's (the offline check's monitor, C5); a denied framework linked
+#              ($ios_denied_frameworks: CFNetwork, NetworkExtension, WebKit, SafariServices,
+#              AuthenticationServices, MultipeerConnectivity, CoreBluetooth, CloudKit, AdSupport,
+#              AppTrackingTransparency, MetricKit).
+#   Clipboard  an undefined UIPasteboard or NSItemProvider symbol.
+#   IosLink    a linked library outside /System/Library/Frameworks/ and /usr/lib/ (an @rpath or
+#              @executable_path one, embedded).
+# Exit 0 clean, 1 hits, 2 usage, a missing expected summary or tool, an unreadable plist, or no main
+# executable.
+#
+# iPhone app selftest mode (M6 item C4): --selftest-ios-app, on macOS with Xcode only (entropy-ios.yml
+# runs it; the gates job's Linux runner has no SDK). Stand-in apps built here for the simulator with the
+# SDK's clang (a C main importing CCRandomGenerateBytes) and swiftc (NWPathMonitor alone, and an
+# NWConnection), against summaries made from the stand-in Info.plist and privacy manifest: a clean
+# shipping and test-registry app and the path monitor pass, and a stamped key changed is left out;
+# each other case gives its hits: the registry marker and test key in Shipping, the test-registry app
+# without its key or its marker, the hooks and source markers, no OS import, arc4random, CFNetwork,
+# UIPasteboard, an @rpath library, a connection, an embedded framework, a PlugIns directory, a link,
+# ATS, background modes, URL types, no camera string, another imported type, another deployment target,
+# the shipping id in WithTestRegistry, tracking and no privacy manifest; another CONFIG, a bundle that is
+# no .app, a missing expected summary and no executable exit 2; and the committed mobile/ios/expected
+# summaries are in their own form and keep every hard rule.
 #
 # Categories (main patterns; the full lists are in the check functions below; comments count
 # everywhere but where a rule says otherwise):
@@ -1165,7 +1225,7 @@ usage: scripts/banned-api-check.sh [--selftest [--shard K/N] | DIR | --artifact 
                                    --image-lists IMG KCONFIG | --image IMG EXPECTED_DIR KCONFIG BIN_SHA256 |
                                    --selftest-image IMG KCONFIG | --os-config OS_DIR |
                                    --apk VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256 JNILIBS_DIR |
-                                   --selftest-apk]
+                                   --selftest-apk | --ios-app CONFIG APP EXPECTED_DIR | --selftest-ios-app]
   (none)      scan the repo this script lives in
   DIR         scan DIR as if it were the repo root
   --artifact  scan release artifacts built for TARGET: test markers, the test registry key, RNG
@@ -1209,6 +1269,17 @@ usage: scripts/banned-api-check.sh [--selftest [--shard K/N] | DIR | --artifact 
               NDK's llvm-nm and llvm-readobj on PATH)
   --selftest-apk
               the APK check's refusals and rules on stub tools and stub APKs (sh and python3 only)
+  --ios-app   check and scan a built iPhone app APP of CONFIG (Shipping or WithTestRegistry): its
+              Info.plist and privacy manifest summaries equal EXPECTED_DIR's (mobile/ios/expected) and keep
+              the hard rules (bundle id, iOS 17.0, a camera string, no ATS, background mode, URL type or
+              document type, imports .age and .kcr alone, no tracking or collected data), the app's own
+              files alone, and its executable under the artifact rules with no hooks marker, the registry
+              marker and test key in WithTestRegistry alone, no network, clipboard or denied framework,
+              the Network framework for NWPathMonitor alone, the system's libraries alone (macOS, python3,
+              the pinned toolchain)
+  --selftest-ios-app
+              --ios-app's refusals and rules on stand-in apps built with the SDK's clang and swiftc
+              (macOS with Xcode only)
   --selftest  run the fixtures in scripts/testdata/banned-api/, scripts/testdata/artifact/,
               scripts/testdata/workflows/ and scripts/testdata/os-config/, the image lists' built-in
               cases and the image scan's, on a stub image; with --shard K/N (K and N from 1 to 9999,
@@ -9757,6 +9828,684 @@ STUB
   exit 0
 }
 
+# --- iPhone app mode -----------------------------------------------------------------------------
+
+# iosfail MESSAGE: --ios-app or --selftest-ios-app cannot run (exit 2).
+iosfail() {
+  printf 'banned-api-check: --ios-app: %s\n' "$1" >&2
+  exit 2
+}
+
+# ios_py MODE ARG...: the iPhone app mode's property-list reader (python3's plistlib, no other
+# module), so a binary plist (a device build's) reads as an XML one. Modes:
+#   info PLIST BUNDLE_ID SUMMARY EXEC   the app's Info.plist: its summary (every key but the ones
+#                                       the toolchain stamps: DT*, BuildMachineOSBuild and
+#                                       CFBundleSupportedPlatforms, the last the simulator's or the
+#                                       device's) as sorted JSON into SUMMARY, CFBundleExecutable into
+#                                       EXEC, and each hard rule's hit as a line on stdout
+#   privacy PLIST SUMMARY               the privacy manifest: its summary (every key) into SUMMARY,
+#                                       and each hard rule's hit on stdout
+#   check-info JSON BUNDLE_ID           the hard rules on a committed summary (the selftest's)
+#   check-privacy JSON                  the same for a committed privacy summary
+# A file that does not read as its format, or a value JSON cannot hold, is exit 2.
+ios_py() {
+  python3 -I - "$@" <<'IOS_PY'
+import json
+import plistlib
+import sys
+
+# Keys the build stamps (Xcode's and the SDK's versions, the build machine, the platform built
+# for), left out of the summary so a simulator and a device build, and two Xcode versions, give the
+# same one.
+STAMPED = ("BuildMachineOSBuild", "CFBundleSupportedPlatforms")
+# Keys that would open the app to the network, other apps or the system's storage (rules 8 and 9;
+# tasks/todo.md, M6 item C2): never in the app's Info.plist.
+FORBIDDEN = (
+    "NSAppTransportSecurity", "UIBackgroundModes", "CFBundleURLTypes", "CFBundleDocumentTypes",
+    "UTExportedTypeDeclarations", "LSApplicationQueriesSchemes", "NSBonjourServices",
+    "NSLocalNetworkUsageDescription", "NSUserActivityTypes", "UIFileSharingEnabled",
+    "LSSupportsOpeningDocumentsInPlace", "UISupportsDocumentBrowser", "NSUbiquitousContainers",
+    "BGTaskSchedulerPermittedIdentifiers", "NSUserTrackingUsageDescription",
+)
+# The two files the app may import (rule 8): an age backup and a registry snapshot.
+IMPORTS = [["age"], ["kcr"]]
+
+
+def info_hits(d, bundle_id):
+    hits = []
+    if d.get("CFBundleIdentifier") != bundle_id:
+        hits.append("CFBundleIdentifier is %s, not %s" % (json.dumps(d.get("CFBundleIdentifier")), bundle_id))
+    if d.get("MinimumOSVersion") != "17.0":
+        hits.append("MinimumOSVersion is %s, not 17.0" % json.dumps(d.get("MinimumOSVersion")))
+    camera = d.get("NSCameraUsageDescription")
+    if not isinstance(camera, str) or not camera.strip():
+        hits.append("no NSCameraUsageDescription (the camera is asked for at the scan alone)")
+    for key in FORBIDDEN:
+        if key in d:
+            hits.append("holds %s" % key)
+    types = d.get("UTImportedTypeDeclarations")
+    tags = []
+    if isinstance(types, list):
+        for t in types:
+            spec = t.get("UTTypeTagSpecification", {}) if isinstance(t, dict) else {}
+            ext = spec.get("public.filename-extension") if isinstance(spec, dict) else None
+            conforms = t.get("UTTypeConformsTo") if isinstance(t, dict) else None
+            if conforms != ["public.data"]:
+                hits.append("an imported type that does not conform to public.data alone: %s" % json.dumps(ext))
+            tags.append(ext)
+    if sorted(tags, key=json.dumps) != IMPORTS:
+        hits.append("imported types %s, not .age and .kcr alone" % json.dumps(tags))
+    exe = d.get("CFBundleExecutable")
+    if not isinstance(exe, str) or not exe or "/" in exe or exe.startswith("."):
+        hits.append("CFBundleExecutable is %s, not a file name" % json.dumps(exe))
+    return hits
+
+
+def privacy_hits(d):
+    hits = []
+    if d.get("NSPrivacyTracking") is not False:
+        hits.append("NSPrivacyTracking is not false")
+    for key in ("NSPrivacyTrackingDomains", "NSPrivacyCollectedDataTypes"):
+        if d.get(key) != []:
+            hits.append("%s is not an empty list" % key)
+    if not isinstance(d.get("NSPrivacyAccessedAPITypes"), list):
+        hits.append("NSPrivacyAccessedAPITypes is not a list")
+    return hits
+
+
+def load_plist(path):
+    try:
+        with open(path, "rb") as f:
+            d = plistlib.load(f)
+    except Exception as e:  # any reading failure is the gate's error, exit 2
+        sys.stderr.write("banned-api-check: --ios-app: %s does not read as a property list: %s\n" % (path, type(e).__name__))
+        sys.exit(2)
+    if not isinstance(d, dict):
+        sys.stderr.write("banned-api-check: --ios-app: %s is not a dictionary\n" % path)
+        sys.exit(2)
+    return d
+
+
+def load_json(path):
+    try:
+        with open(path, "rb") as f:
+            text = f.read().decode("utf-8")
+        d = json.loads(text)
+    except Exception as e:
+        sys.stderr.write("banned-api-check: --ios-app: %s does not read as JSON: %s\n" % (path, type(e).__name__))
+        sys.exit(2)
+    if not isinstance(d, dict):
+        sys.stderr.write("banned-api-check: --ios-app: %s is not a JSON object\n" % path)
+        sys.exit(2)
+    if text != summary(d):
+        print("not in the summary's own form (sorted keys, two-space indent, a final newline)")
+    return d
+
+
+def summary(d):
+    try:
+        return json.dumps(d, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
+    except (TypeError, ValueError):
+        sys.stderr.write("banned-api-check: --ios-app: a value JSON cannot hold (a date or data)\n")
+        sys.exit(2)
+
+
+def write(path, text):
+    with open(path, "w", encoding="ascii") as f:
+        f.write(text)
+
+
+mode = sys.argv[1]
+if mode == "info":
+    d = load_plist(sys.argv[2])
+    kept = {k: v for k, v in d.items() if not k.startswith("DT") and k not in STAMPED}
+    write(sys.argv[4], summary(kept))
+    hits = info_hits(d, sys.argv[3])
+    exe = d.get("CFBundleExecutable")
+    write(sys.argv[5], exe + "\n" if isinstance(exe, str) and exe and "/" not in exe and not exe.startswith(".") else "")
+elif mode == "privacy":
+    d = load_plist(sys.argv[2])
+    write(sys.argv[3], summary(d))
+    hits = privacy_hits(d)
+elif mode == "check-info":
+    hits = info_hits(load_json(sys.argv[2]), sys.argv[3])
+elif mode == "check-privacy":
+    hits = privacy_hits(load_json(sys.argv[2]))
+else:
+    sys.stderr.write("banned-api-check: --ios-app: no ios_py mode %s\n" % mode)
+    sys.exit(2)
+for hit in hits:
+    print(hit)
+IOS_PY
+}
+
+# The app's networking, seen in its main Mach-O (rule 9): an undefined symbol of Foundation's URL
+# loading (NSURLSession, NSURLConnection, NSURLRequest and NSURLProtocol, and Swift's URLSession and
+# URLRequest), the Network framework's connections (NWConnection, NWListener, NWBrowser, NWEndpoint,
+# NWParameters, NWProtocol*, iOS 26's NetworkConnection, NetworkListener and NetworkBrowser) and its
+# C API (nw_*), CFNetwork's (CFNetwork*, CFHTTP*, CFHost*) and Core Foundation's sockets and streams
+# (CFSocket*, CFStream*, CFReadStream*, CFWriteStream*), WebKit's and Safari's views, Multipeer and
+# Bluetooth, and the BSD calls socket, connect, bind, listen, accept, sendto, recvfrom, getaddrinfo,
+# getnameinfo and gethostbyname*; and UIPasteboard (rule 5) and NSItemProvider (drag and drop).
+ios_net='NSURLSession|NSURLConnection|NSURLRequest|NSMutableURLRequest|NSURLProtocol|URLSession|URLRequest|NWConnection|NWListener|NWBrowser|NWEndpoint|NWParameters|NWProtocol|NetworkConnection|NetworkListener|NetworkBrowser|CFNetwork|CFHTTP|CFHost|CFSocket|CFStream|CFReadStream|CFWriteStream|WKWebView|SFSafariViewController|ASWebAuthenticationSession|MCSession|MCNearbyService|CBCentralManager|CBPeripheralManager|^_nw_|^_(socket|connect|bind|listen|accept|sendto|recvfrom|getaddrinfo|getnameinfo|gethostbyname[a-z0-9_]*)$'
+ios_clip='UIPasteboard|NSItemProvider'
+# Frameworks the app never links (rules 8 and 9): the network's, the web's, other devices' and
+# iCloud's, advertising, tracking and diagnostics. The Network framework is allowed only for the
+# offline check's monitor (C5): every symbol the app takes from it must be NWPathMonitor's or
+# NWPath's (its mangled names start so; the monitor's path handler, start, cancel, its path's
+# status and interfaces, and their type metadata, as a stand-in offline check built with
+# NWPathMonitor alone takes them).
+ios_denied_frameworks='CFNetwork|NetworkExtension|WebKit|SafariServices|AuthenticationServices|MultipeerConnectivity|CoreBluetooth|CloudKit|AdSupport|AppTrackingTransparency|MetricKit'
+ios_network_allowed='^_[$]s7Network(13NWPathMonitorC|6NWPathV)'
+ios_hooks_marker=KC_TEST_HOOKS_DO_NOT_SHIP
+
+# ios_app_scan CONFIG APP EXPECTED_DIR: the iPhone app mode (see "iPhone app mode" in the header).
+ios_app_scan() {
+  fail_closed
+  iconfig=$1
+  app=${2%/}
+  exp=${3%/}
+  case $iconfig in
+    Shipping) ibid=com.keepcrypt.entropy ;;
+    WithTestRegistry) ibid=com.keepcrypt.entropy.testregistry ;;
+    *) iosfail "CONFIG is Shipping or WithTestRegistry, not $iconfig" ;;
+  esac
+  case $app in
+    *.app) ;;
+    *) iosfail "APP is an .app bundle, not $2" ;;
+  esac
+  [ -d "$app" ] && [ ! -L "$app" ] || iosfail "APP $2 is not a directory"
+  [ -d "$exp" ] || iosfail "EXPECTED_DIR $3 is not a directory"
+  readable "$exp/$iconfig-Info.json" --ios-app
+  readable "$exp/$iconfig-PrivacyInfo.json" --ios-app
+  command -v python3 >/dev/null 2>&1 || iosfail 'no python3 on PATH'
+  toolchain_bin
+  [ -x "$bin/llvm-objdump" ] || iosfail "no llvm-objdump in $bin (rust-toolchain.toml lists llvm-tools-preview)"
+  on="the iPhone app scan's temporary directory"
+  atmp=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-ios-app.XXXXXX") || exit 2
+  trap 'artifact_cleanup' EXIT
+  trap 'exit 2' HUP INT TERM
+  artifact_rules aarch64-apple-ios
+  hits=0
+  linked=0
+  archives=0
+  echo "== banned-api-check --ios-app $iconfig $app"
+  # 1. The Info.plist: its hard rules, then its summary against the reviewed one.
+  readable "$app/Info.plist" --ios-app
+  ios_py info "$app/Info.plist" "$ibid" "$atmp/info.json" "$atmp/exec" >"$atmp/py" || exit 2
+  ios_hits IosPlist "$app/Info.plist" "$atmp/py"
+  echo "== Info.plist summary"
+  cat "$atmp/info.json" || exit 2
+  echo "=="
+  if ! cmp -s "$atmp/info.json" "$exp/$iconfig-Info.json"; then
+    ahit IosPlist "$exp/$iconfig-Info.json" "differs from the app's Info.plist summary (the diff is on stderr)"
+    show_diff "$exp/$iconfig-Info.json" "$atmp/info.json"
+  fi
+  # 2. The privacy manifest, the same way.
+  if [ -f "$app/PrivacyInfo.xcprivacy" ]; then
+    ios_py privacy "$app/PrivacyInfo.xcprivacy" "$atmp/privacy.json" >"$atmp/py" || exit 2
+    ios_hits IosPrivacy "$app/PrivacyInfo.xcprivacy" "$atmp/py"
+    echo "== privacy manifest summary"
+    cat "$atmp/privacy.json" || exit 2
+    echo "=="
+    if ! cmp -s "$atmp/privacy.json" "$exp/$iconfig-PrivacyInfo.json"; then
+      ahit IosPrivacy "$exp/$iconfig-PrivacyInfo.json" "differs from the app's privacy manifest summary (the diff is on stderr)"
+      show_diff "$exp/$iconfig-PrivacyInfo.json" "$atmp/privacy.json"
+    fi
+  else
+    ahit IosPrivacy "$app" 'no PrivacyInfo.xcprivacy, the privacy manifest'
+  fi
+  # 3. The bundle holds the app's own files alone: no embedded framework, library, plug-in or
+  # bundle (a Swift package's or an SDK's), no link.
+  exe=
+  IFS= read -r exe <"$atmp/exec" || :
+  (cd "$app" && find . -print) >"$atmp/entries" || exit 2
+  sort "$atmp/entries" >"$atmp/sorted" || exit 2
+  while IFS= read -r e; do
+    if [ -L "$app/$e" ]; then
+      ahit IosBundle "$app/${e#./}" 'a link'
+      continue
+    fi
+    case $e in
+      . | ./Info.plist | ./PkgInfo | ./PrivacyInfo.xcprivacy | ./_CodeSignature | ./_CodeSignature/CodeResources | \
+        ./embedded.mobileprovision) ;;
+      *)
+        [ -n "$exe" ] && [ "$e" = "./$exe" ] ||
+          ahit IosBundle "$app/${e#./}" "not one of the app's own files (no embedded framework, library, plug-in or bundle)"
+        ;;
+    esac
+  done <"$atmp/sorted"
+  if [ -z "$exe" ] || [ ! -f "$app/$exe" ]; then
+    trap - EXIT
+    artifact_cleanup
+    echo "banned-api-check --ios-app $iconfig $app: no main executable (CFBundleExecutable), so its binary cannot be checked; $hits hit(s)" >&2
+    exit 2
+  fi
+  # 4. The main Mach-O under the artifact rules (markers, the test key, RNG symbols, std's
+  # random-key path, a stripped file, the CCRandomGenerateBytes import), the registry marker and
+  # the test key required in the test-registry app and nowhere else, and the test hooks' marker
+  # (lead decision M6-5) in neither.
+  mo=$app/$exe
+  isym=yes
+  artifact_file "$mo" >"$atmp/afile" || isym=no
+  reg="Marker: $mo: KC_TEST_REGISTRY_DO_NOT_SHIP"
+  key="TestKey: $mo: the test registry public key $testkey"
+  if [ "$iconfig" = WithTestRegistry ]; then
+    if grep -q -x -F -e "$reg" "$atmp/afile"; then
+      hits=$((hits - 1))
+    else
+      ahit IosApp "$mo" 'no KC_TEST_REGISTRY_DO_NOT_SHIP: not the test-registry build'
+    fi
+    if grep -q -x -F -e "$key" "$atmp/afile"; then
+      hits=$((hits - 1))
+    else
+      ahit IosApp "$mo" 'no test registry public key: not the test-registry build'
+    fi
+    grep -v -x -F -e "$reg" -e "$key" "$atmp/afile" >"$atmp/kept"
+    [ $? -le 1 ] || exit 2
+  else
+    cp "$atmp/afile" "$atmp/kept" || exit 2
+  fi
+  cat "$atmp/kept" || exit 2
+  if bytes_found "$(hexbytes "$ios_hooks_marker")"; then
+    ahit Marker "$mo" "$ios_hooks_marker"
+  fi
+  if [ "$isym" = yes ]; then
+    grep -E -e "$ios_net" "$atmp/undefined" >"$atmp/hits"
+    [ $? -le 1 ] || exit 2
+    from_list Network "$mo" 'undefined ' "$atmp/hits"
+    grep -E -e "$ios_clip" "$atmp/undefined" >"$atmp/hits"
+    [ $? -le 1 ] || exit 2
+    from_list Clipboard "$mo" 'undefined ' "$atmp/hits"
+    # The symbols taken from the Network framework (llvm-nm -m names each one's library).
+    if ! "$bin/llvm-nm" -m -u "$mo" >"$atmp/nm-m" 2>"$atmp/nm-err"; then
+      printf 'banned-api-check: llvm-nm cannot read %s:\n' "$mo" >&2
+      indented "$atmp/nm-err"
+      exit 2
+    fi
+    awk '$NF == "Network)" && $(NF - 1) == "(from" { print $(NF - 2) }' "$atmp/nm-m" >"$atmp/from-network" || exit 2
+    grep -v -E -e "$ios_network_allowed" "$atmp/from-network" >"$atmp/hits"
+    [ $? -le 1 ] || exit 2
+    from_list Network "$mo" "from the Network framework, not NWPathMonitor's or NWPath's: " "$atmp/hits"
+  fi
+  # The libraries it links: the system's alone, and none of the denied frameworks.
+  if ! "$bin/llvm-objdump" --macho --dylibs-used "$mo" >"$atmp/dylibs" 2>"$atmp/objdump-err"; then
+    printf 'banned-api-check: llvm-objdump cannot read %s:\n' "$mo" >&2
+    indented "$atmp/objdump-err"
+    exit 2
+  fi
+  awk 'NR > 1 { sub(/^[[:space:]]+/, ""); sub(/ \(compatibility version .*$/, ""); print }' "$atmp/dylibs" >"$atmp/libs" || exit 2
+  nlibs=0
+  while IFS= read -r lib; do
+    nlibs=$((nlibs + 1))
+    case $lib in
+      /System/Library/Frameworks/*.framework/* | /usr/lib/*) ;;
+      *) ahit IosLink "$mo" "links $lib, not a library of the system (an embedded framework or library)" ;;
+    esac
+    fw=${lib#/System/Library/Frameworks/}
+    [ "$fw" != "$lib" ] || continue
+    fw=${fw%%.framework/*}
+    if printf '%s\n' "$fw" | grep -q -x -E -e "$ios_denied_frameworks"; then
+      ahit Network "$mo" "links $fw.framework"
+    fi
+  done <"$atmp/libs"
+  [ "$nlibs" -gt 0 ] || iosfail "llvm-objdump listed no library for $mo"
+  trap - EXIT
+  artifact_cleanup
+  if [ "$hits" -ne 0 ]; then
+    echo "banned-api-check --ios-app $iconfig $app: $hits hit(s)"
+    exit 1
+  fi
+  case $iconfig in
+    Shipping) which='no registry marker or test key' ;;
+    *) which='its registry marker and the test key alone' ;;
+  esac
+  echo "banned-api-check --ios-app $iconfig $app: clean: Info.plist and the privacy manifest as $exp, the app's own files alone, $exe: $which, no other marker, no other RNG symbol, _CCRandomGenerateBytes imported, no network, clipboard or denied framework, $nlibs system libraries"
+  exit 0
+}
+
+# ios_hits CATEGORY NAME FILE: one hit per line of FILE.
+ios_hits() {
+  while IFS= read -r line; do
+    [ -n "$line" ] && ahit "$1" "$2" "$line"
+  done <"$3"
+}
+
+# --- iPhone app selftest mode --------------------------------------------------------------------
+
+# ios_selftest: --ios-app's refusals and rules on stand-in apps built here with the SDK's clang and
+# swiftc for the simulator (macOS with Xcode only; see "iPhone app selftest mode" in the header).
+ios_selftest() {
+  command -v xcrun >/dev/null 2>&1 || iosfail '--selftest-ios-app needs macOS with Xcode (xcrun)'
+  command -v python3 >/dev/null 2>&1 || iosfail 'no python3 on PATH'
+  st=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-selftest-ios.XXXXXX") || exit 2
+  trap 'rm -rf "$st"' EXIT
+  trap 'exit 2' HUP INT TERM
+  committed=$here/../mobile/ios/expected
+  pass=0
+  fail=0
+  iexp=
+  # The test key's bytes as a C initializer.
+  ckey=
+  kx=$testkey
+  while [ -n "$kx" ]; do
+    ckey="$ckey${ckey:+,}0x${kx%"${kx#??}"}"
+    kx=${kx#??}
+  done
+  cat >"$st/main.c" <<'EOF'
+#include <stddef.h>
+#include <stdint.h>
+extern int CCRandomGenerateBytes(void *bytes, size_t count);
+#ifdef KC_ARC4
+extern uint32_t arc4random(void);
+#endif
+#ifdef KC_CFNET
+extern const void *CFNetworkCopySystemProxySettings(void);
+#endif
+#ifdef KC_PASTE
+extern char OBJC_CLASS_$_UIPasteboard;
+#endif
+#ifdef KC_LIB
+extern int kc_lib(void);
+#endif
+#ifdef KC_KEY
+static const unsigned char kc_key[] = { KC_KEY };
+#endif
+static const char kc_text[] = KC_TEXT;
+int main(void) {
+  unsigned char b[1] = { 0 };
+  volatile int r = kc_text[0] + b[0];
+#ifndef KC_NO_IMPORT
+  r += CCRandomGenerateBytes(b, 1);
+#endif
+#ifdef KC_ARC4
+  r += (int)arc4random();
+#endif
+#ifdef KC_CFNET
+  r += CFNetworkCopySystemProxySettings() != 0;
+#endif
+#ifdef KC_PASTE
+  r += (int)(uintptr_t)&OBJC_CLASS_$_UIPasteboard;
+#endif
+#ifdef KC_LIB
+  r += kc_lib();
+#endif
+#ifdef KC_KEY
+  r += kc_key[0];
+#endif
+  return r;
+}
+EOF
+  printf '%s\n' 'int kc_lib(void) { return 1; }' >"$st/lib.c" || exit 2
+  # The offline check's stand-in (NWPathMonitor alone) and a connection, each with the OS import.
+  cat >"$st/monitor.swift" <<'EOF'
+import CommonCrypto
+import Foundation
+import Network
+@main struct Main {
+  static func main() {
+    var b = [UInt8](repeating: 0, count: 1)
+    let r = CCRandomGenerateBytes(&b, 1)
+    let monitor = NWPathMonitor()
+    monitor.pathUpdateHandler = { path in _ = path.status != .unsatisfied || !path.availableInterfaces.isEmpty }
+    monitor.start(queue: .main)
+    monitor.cancel()
+    exit(Int32(r))
+  }
+}
+EOF
+  cat >"$st/connection.swift" <<'EOF'
+import CommonCrypto
+import Foundation
+import Network
+@main struct Main {
+  static func main() {
+    var b = [UInt8](repeating: 0, count: 1)
+    let r = CCRandomGenerateBytes(&b, 1)
+    let c = NWConnection(host: "example.invalid", port: 9, using: .tcp)
+    c.start(queue: .main)
+    exit(Int32(r))
+  }
+}
+EOF
+  sdk=iphonesimulator
+  triple=arm64-apple-ios17.0-simulator
+  # cbuild OUT FLAG...: main.c linked for the simulator with FLAGs.
+  cbuild() {
+    cout=$1
+    shift
+    xcrun --sdk "$sdk" clang -target "$triple" -Wall -Werror "$@" "$st/main.c" -o "$cout" 2>"$st/cc-err" || {
+      indented "$st/cc-err"
+      iosfail "the SDK's clang cannot build a stand-in app"
+    }
+  }
+  sbuild() {
+    xcrun --sdk "$sdk" swiftc -target "$triple" -parse-as-library -O "$2" -o "$1" 2>"$st/cc-err" || {
+      indented "$st/cc-err"
+      iosfail "the SDK's swiftc cannot build a stand-in app"
+    }
+  }
+  xcrun --sdk "$sdk" clang -target "$triple" -dynamiclib -install_name @rpath/libkc.dylib "$st/lib.c" -o "$st/libkc.dylib" \
+    2>"$st/cc-err" || { indented "$st/cc-err"; iosfail "the SDK's clang cannot build a stand-in library"; }
+  text='"kc stand-in"'
+  reg='"KC_TEST_REGISTRY_DO_NOT_SHIP"'
+  cbuild "$st/clean" -DKC_TEXT="$text"
+  cbuild "$st/registry" -DKC_TEXT="$reg" -DKC_KEY="$ckey"
+  cbuild "$st/registry-no-key" -DKC_TEXT="$reg"
+  cbuild "$st/hooks" -DKC_TEXT='"KC_TEST_HOOKS_DO_NOT_SHIP"'
+  cbuild "$st/source" -DKC_TEXT='"KC_TEST_SOURCE_DO_NOT_SHIP"'
+  cbuild "$st/no-import" -DKC_TEXT="$text" -DKC_NO_IMPORT
+  cbuild "$st/arc4" -DKC_TEXT="$text" -DKC_ARC4
+  cbuild "$st/cfnetwork" -DKC_TEXT="$text" -DKC_CFNET -framework CFNetwork
+  cbuild "$st/paste" -DKC_TEXT="$text" -DKC_PASTE -framework UIKit
+  cbuild "$st/rpath" -DKC_TEXT="$text" -DKC_LIB "$st/libkc.dylib"
+  sbuild "$st/monitor" "$st/monitor.swift"
+  sbuild "$st/connection" "$st/connection.swift"
+  # The stand-in Info.plist (as the app's, with a stamped key the summary leaves out) and privacy
+  # manifest.
+  cat >"$st/Info.plist" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>KeepCrypt</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.keepcrypt.entropy</string>
+	<key>DTXcode</key>
+	<string>2720</string>
+	<key>MinimumOSVersion</key>
+	<string>17.0</string>
+	<key>NSCameraUsageDescription</key>
+	<string>The camera reads the go-ahead QR code.</string>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array><string>public.data</string></array>
+			<key>UTTypeIdentifier</key>
+			<string>com.keepcrypt.entropy.age-backup</string>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>age</string></array></dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array><string>public.data</string></array>
+			<key>UTTypeIdentifier</key>
+			<string>com.keepcrypt.entropy.registry-snapshot</string>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>kcr</string></array></dict>
+		</dict>
+	</array>
+</dict>
+</plist>
+EOF
+  cat >"$st/PrivacyInfo.xcprivacy" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+</dict>
+</plist>
+EOF
+  # The expected summaries, from the stand-in files (the test-registry one with its bundle id).
+  mkdir "$st/expected" || exit 2
+  sed 's/<string>com.keepcrypt.entropy<\/string>/<string>com.keepcrypt.entropy.testregistry<\/string>/' "$st/Info.plist" \
+    >"$st/Info-registry.plist" || exit 2
+  ios_py info "$st/Info.plist" com.keepcrypt.entropy "$st/expected/Shipping-Info.json" "$st/x" >/dev/null || exit 2
+  ios_py info "$st/Info-registry.plist" com.keepcrypt.entropy.testregistry "$st/expected/WithTestRegistry-Info.json" "$st/x" \
+    >/dev/null || exit 2
+  ios_py privacy "$st/PrivacyInfo.xcprivacy" "$st/expected/Shipping-PrivacyInfo.json" >/dev/null || exit 2
+  cp "$st/expected/Shipping-PrivacyInfo.json" "$st/expected/WithTestRegistry-PrivacyInfo.json" || exit 2
+  # inew NAME BINARY [PLIST]: a stand-in app $c/KeepCrypt.app, BINARY as its executable, the
+  # stand-in Info.plist (or PLIST) and privacy manifest and a PkgInfo.
+  inew() {
+    c=$st/case-$1
+    a=$c/KeepCrypt.app
+    mkdir -p "$a" || exit 2
+    cp "$2" "$a/KeepCrypt" && cp "${3:-$st/Info.plist}" "$a/Info.plist" && cp "$st/PrivacyInfo.xcprivacy" "$a/" || exit 2
+    printf 'APPL????' >"$a/PkgInfo" || exit 2
+  }
+  # icase NAME CONFIG EXIT TEXT...: --ios-app CONFIG on $c's app against $st/expected exited EXIT and
+  # printed every TEXT.
+  icase() {
+    name=$1
+    cfg=$2
+    want=$3
+    shift 3
+    sh "$self" --ios-app "$cfg" "$a" "${iexp:-$st/expected}" >"$c/out" 2>&1
+    got=$?
+    ok=yes
+    [ "$got" = "$want" ] || ok=no
+    for t in "$@"; do
+      grep -q -F -e "$t" "$c/out" || ok=no
+    done
+    if [ "$ok" = yes ]; then
+      pass=$((pass + 1))
+      echo "PASS $name"
+    else
+      fail=$((fail + 1))
+      echo "FAIL $name (exit $got, wanted $want)"
+      sed 's/^/  | /' "$c/out"
+    fi
+  }
+  mo='KeepCrypt.app/KeepCrypt'
+  inew clean "$st/clean"
+  icase ios-clean-shipping Shipping 0 "--ios-app Shipping $a: clean"
+  inew registry "$st/registry" "$st/Info-registry.plist"
+  icase ios-clean-test-registry WithTestRegistry 0 "--ios-app WithTestRegistry $a: clean"
+  inew registry-in-shipping "$st/registry"
+  icase ios-registry-marker-and-key-in-shipping Shipping 1 "$mo: KC_TEST_REGISTRY_DO_NOT_SHIP" "TestKey: " ": 2 hit(s)"
+  inew registry-without-key "$st/registry-no-key" "$st/Info-registry.plist"
+  icase ios-test-registry-without-its-key WithTestRegistry 1 "IosApp: $a/KeepCrypt: no test registry public key: not the test-registry build" ": 1 hit(s)"
+  inew registry-without-marker "$st/clean" "$st/Info-registry.plist"
+  icase ios-test-registry-without-its-marker WithTestRegistry 1 "no KC_TEST_REGISTRY_DO_NOT_SHIP: not the test-registry build" ": 2 hit(s)"
+  inew hooks "$st/hooks"
+  icase ios-test-hooks-marker Shipping 1 "Marker: $a/KeepCrypt: KC_TEST_HOOKS_DO_NOT_SHIP" ": 1 hit(s)"
+  inew source "$st/source"
+  icase ios-test-source-marker Shipping 1 "Marker: $a/KeepCrypt: KC_TEST_SOURCE_DO_NOT_SHIP" ": 1 hit(s)"
+  inew no-import "$st/no-import"
+  icase ios-no-os-import Shipping 1 "OSImport: $a/KeepCrypt: no undefined _CCRandomGenerateBytes" ": 1 hit(s)"
+  inew arc4 "$st/arc4"
+  icase ios-arc4random-import Shipping 1 "Symbol: $a/KeepCrypt: undefined _arc4random" ": 1 hit(s)"
+  inew cfnetwork "$st/cfnetwork"
+  icase ios-cfnetwork Shipping 1 "Network: $a/KeepCrypt: undefined _CFNetworkCopySystemProxySettings" \
+    "Network: $a/KeepCrypt: links CFNetwork.framework" ": 2 hit(s)"
+  inew paste "$st/paste"
+  icase ios-pasteboard Shipping 1 "Clipboard: $a/KeepCrypt: undefined _OBJC_CLASS_\$_UIPasteboard" ": 1 hit(s)"
+  inew rpath "$st/rpath"
+  icase ios-embedded-library-linked Shipping 1 "IosLink: $a/KeepCrypt: links @rpath/libkc.dylib, not a library of the system" ": 1 hit(s)"
+  inew monitor "$st/monitor"
+  icase ios-clean-path-monitor Shipping 0 "--ios-app Shipping $a: clean"
+  inew connection "$st/connection"
+  icase ios-network-connection Shipping 1 "Network: $a/KeepCrypt: undefined _\$s7Network12NWConnectionC" \
+    "Network: $a/KeepCrypt: from the Network framework, not NWPathMonitor's or NWPath's: _\$s7Network12NWConnectionC"
+  inew framework "$st/clean"
+  mkdir -p "$a/Frameworks/Kit.framework" && echo kc >"$a/Frameworks/Kit.framework/Kit" || exit 2
+  icase ios-embedded-framework Shipping 1 "IosBundle: $a/Frameworks: not one of the app's own files" \
+    "IosBundle: $a/Frameworks/Kit.framework/Kit: " ": 3 hit(s)"
+  inew plugin "$st/clean"
+  mkdir "$a/PlugIns" || exit 2
+  icase ios-plug-ins-directory Shipping 1 "IosBundle: $a/PlugIns: " ": 1 hit(s)"
+  inew link "$st/clean"
+  ln -s Info.plist "$a/Other.plist" || exit 2
+  icase ios-a-link-in-the-bundle Shipping 1 "IosBundle: $a/Other.plist: a link" ": 1 hit(s)"
+  # iplist NAME SED: the stand-in Info.plist with SED applied, as $st/NAME.plist.
+  iplist() {
+    sed -e "$2" "$st/Info.plist" >"$st/$1.plist" || exit 2
+  }
+  iplist ats 's|<key>MinimumOSVersion</key>|<key>NSAppTransportSecurity</key><dict/><key>MinimumOSVersion</key>|'
+  inew ats "$st/clean" "$st/ats.plist"
+  icase ios-plist-app-transport-security Shipping 1 "IosPlist: $a/Info.plist: holds NSAppTransportSecurity" \
+    "IosPlist: $st/expected/Shipping-Info.json: differs from the app's Info.plist summary" ": 2 hit(s)"
+  iplist modes 's|<key>MinimumOSVersion</key>|<key>UIBackgroundModes</key><array><string>audio</string></array><key>MinimumOSVersion</key>|'
+  inew modes "$st/clean" "$st/modes.plist"
+  icase ios-plist-background-modes Shipping 1 "IosPlist: $a/Info.plist: holds UIBackgroundModes" ": 2 hit(s)"
+  iplist urls 's|<key>MinimumOSVersion</key>|<key>CFBundleURLTypes</key><array/><key>MinimumOSVersion</key>|'
+  inew urls "$st/clean" "$st/urls.plist"
+  icase ios-plist-url-types Shipping 1 "IosPlist: $a/Info.plist: holds CFBundleURLTypes" ": 2 hit(s)"
+  iplist camera 's|<key>NSCameraUsageDescription</key>|<key>NSOtherUsageDescription</key>|'
+  inew camera "$st/clean" "$st/camera.plist"
+  icase ios-plist-no-camera-string Shipping 1 "IosPlist: $a/Info.plist: no NSCameraUsageDescription" ": 2 hit(s)"
+  iplist zip 's|<string>kcr</string>|<string>zip</string>|'
+  inew zip "$st/clean" "$st/zip.plist"
+  icase ios-plist-another-imported-type Shipping 1 'imported types [["age"], ["zip"]], not .age and .kcr alone' ": 2 hit(s)"
+  iplist os 's|<string>17.0</string>|<string>16.0</string>|'
+  inew os "$st/clean" "$st/os.plist"
+  icase ios-plist-another-deployment-target Shipping 1 'MinimumOSVersion is "16.0", not 17.0' ": 2 hit(s)"
+  inew wrong-id "$st/clean"
+  icase ios-plist-shipping-id-in-test-registry WithTestRegistry 1 \
+    'CFBundleIdentifier is "com.keepcrypt.entropy", not com.keepcrypt.entropy.testregistry' ": 4 hit(s)"
+  iplist stamped 's|<string>2720</string>|<string>1640</string>|'
+  inew stamped "$st/clean" "$st/stamped.plist"
+  icase ios-plist-stamped-key-left-out Shipping 0 "--ios-app Shipping $a: clean"
+  inew tracking "$st/clean"
+  sed 's|<false/>|<true/>|' "$st/PrivacyInfo.xcprivacy" >"$a/PrivacyInfo.xcprivacy" || exit 2
+  icase ios-privacy-tracking Shipping 1 "IosPrivacy: $a/PrivacyInfo.xcprivacy: NSPrivacyTracking is not false" \
+    "IosPrivacy: $st/expected/Shipping-PrivacyInfo.json: differs" ": 2 hit(s)"
+  inew no-privacy "$st/clean"
+  rm "$a/PrivacyInfo.xcprivacy" || exit 2
+  icase ios-no-privacy-manifest Shipping 1 "IosPrivacy: $a: no PrivacyInfo.xcprivacy" ": 1 hit(s)"
+  # The refusals.
+  inew refusals "$st/clean"
+  icase ios-refuses-another-config Release 2 'CONFIG is Shipping or WithTestRegistry, not Release'
+  a=$c/Not.bundle
+  mkdir "$a" || exit 2
+  icase ios-refuses-a-bundle-that-is-no-app Shipping 2 'APP is an .app bundle'
+  inew no-expected "$st/clean"
+  iexp=$c
+  icase ios-refuses-a-missing-expected-summary Shipping 2 "--ios-app: cannot read $c/Shipping-Info.json"
+  iexp=
+  inew no-executable "$st/clean"
+  rm "$a/KeepCrypt" || exit 2
+  icase ios-refuses-an-app-with-no-executable Shipping 2 'no main executable (CFBundleExecutable)'
+  # The committed summaries: each in the summary's own form and keeping every hard rule.
+  for cfg in Shipping WithTestRegistry; do
+    case $cfg in Shipping) cid=com.keepcrypt.entropy ;; *) cid=com.keepcrypt.entropy.testregistry ;; esac
+    out=$(ios_py check-info "$committed/$cfg-Info.json" "$cid") || exit 2
+    out=$out$(ios_py check-privacy "$committed/$cfg-PrivacyInfo.json") || exit 2
+    if [ -z "$out" ]; then
+      pass=$((pass + 1))
+      echo "PASS ios-committed-$cfg-summaries"
+    else
+      fail=$((fail + 1))
+      echo "FAIL ios-committed-$cfg-summaries"
+      printf '%s\n' "$out" | sed 's/^/  | /'
+    fi
+  done
+  echo "selftest-ios-app: $pass passed, $fail failed"
+  [ "$fail" -eq 0 ] || exit 1
+  exit 0
+}
+
 case ${1-} in
   --artifact) shift; [ $# -ge 1 ] || { usage >&2; exit 2; }; artifact "$@" ;;
   --workflows) shift; [ $# -eq 1 ] || { usage >&2; exit 2; }; workflows "$1" ;;
@@ -9766,6 +10515,8 @@ case ${1-} in
   --os-config) shift; [ $# -eq 1 ] || { usage >&2; exit 2; }; os_config "$1" ;;
   --apk) shift; [ $# -eq 6 ] || { usage >&2; exit 2; }; apk_scan "$1" "$2" "$3" "$4" "$5" "$6" ;;
   --selftest-apk) shift; [ $# -eq 0 ] || { usage >&2; exit 2; }; apk_selftest ;;
+  --ios-app) shift; [ $# -eq 3 ] || { usage >&2; exit 2; }; ios_app_scan "$1" "$2" "$3" ;;
+  --selftest-ios-app) shift; [ $# -eq 0 ] || { usage >&2; exit 2; }; ios_selftest ;;
 esac
 
 case $# in
