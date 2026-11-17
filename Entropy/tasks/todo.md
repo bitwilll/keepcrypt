@@ -19583,6 +19583,37 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
   checks ran" (1014 s in all).
 
+### Stage U: the end-to-end pass (M6 commits U1-U5, after Stage D; refined 2026-11-18)
+- [ ] U5. CI room for the journeys, first: entropy-ios.yml's one job per leg (about 27 of its 34 minutes at 3a13ac60)
+  cannot hold U1-U2's UI-alone journeys. Each leg becomes jobs of its own on the same two images, as Entropy Android's
+  legs are: the unit, capture and scan jobs (the three schemes' builds, scans and today's UI tests) and journeys jobs
+  (TestHooks UI tests by group), the Rust library built once per job from the same pinned toolchain (or cached by
+  actions/cache keyed on Cargo.lock and the toolchain, never by an artifact a later job trusts unchecked). Each job's
+  budget is its measured time plus 25% (M5-30); the hardening (read-only token, pinned actions, no secrets) and
+  `--workflows` hold; Entropy CI's 14 required checks are unchanged and entropy-ios.yml stays non-required (Q38 (b)).
+- [ ] U1. User journeys through the UI alone, one XCUITest per journey from First launch to Finish on both simulators,
+  as M5's U1: mixed and dice-only, 12 and 24 words (24 with the device swap); the check by a typed code, a scanned
+  proof (the Scan hook, M6-7, the camera's own path), a loaded snapshot and Skip; Match found and a scanned collision
+  to Add fresh entropy at 99; Cannot check to Start again; the words, the read-back and the summary; the backup saved
+  and checked; watch-only; register; Reveal D; About; the stop screen. The system's document browser is not the app's
+  to drive: the save and the snapshot's open go through TestHooks hooks at the model's own entries (as M6-13's Backup
+  file hook), the save's bytes kept in memory and read back through the same verify path, so the TestHooks app
+  writes no file (rule 8). Each journey's pass line names its path.
+- [ ] U2. Edge cases where the phone matters (the JVM-ported unit tests of D2 hold the model's): Back and a double tap
+  on every screen; leaving the app at every stage (Public: 59 s kept, 61 s wiped; Protected and Working: at once) by
+  XCUIDevice's home and a re-activation; the app killed at every stage, back at First launch with an empty slot; going
+  online at every stage (the offline hook); the idle warning and wipe once in the UI; the camera refused and absent
+  (Open Settings after a refusal, M6-9); every read-back misread (each mirror pair, a wrong insert); a wrong backup
+  passphrase, a damaged .age and a file that is not one; a stale, future, wrong-key and damaged snapshot; a go-ahead
+  text too long, of another type, in mixed case or from another check; the 99-roll minimum through every restart path;
+  Dynamic Type at its largest accessibility size and the narrowest iPhone the simulators offer (actions scroll, nothing
+  cut, as MA's 360 dp rule).
+- [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
+  do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
+  docs is fixed with a test; a change the docs do not allow becomes a question for the owner.
+- [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
+  them. Proof: CI at each stage's head; local runs reported as local.
+
 ### Verification (each maps to a gate item; refined with the plan)
 - [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest
   with the capture hook on both simulators); I1 on the owner's iPhone (a Control Center recording, AirPlay mirroring,
