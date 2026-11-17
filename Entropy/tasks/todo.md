@@ -19785,6 +19785,9 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   11 secret names in the TestHooks binary alone); `--selftest-ios-app` 36 passed; the stand-in "Executed 126
   tests, with 0 failures" both ways; the groups check passes on the four rows a leg; `--workflows` and the gate
   clean (514 files), `cargo fmt --all --check` clean.
+  Proof (M6 commit U1e, on the final tree, a worktree at U1d): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1025 s in all).
 - [ ] U2. Edge cases where the phone matters (the JVM-ported unit tests of D2 hold the model's): Back and a double tap
   on every screen; leaving the app at every stage (Public: 59 s kept, 61 s wiped; Protected and Working: at once) by
   XCUIDevice's home and a re-activation; the app killed at every stage, back at First launch with an empty slot; going
