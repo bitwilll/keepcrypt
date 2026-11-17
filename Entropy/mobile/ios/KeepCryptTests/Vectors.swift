@@ -1,6 +1,7 @@
 // The test data (rule 12: vectors/ only), copied into this test bundle as resources at build time by
 // the project's TestVectors group: vectors/kcr.json, vectors/braille.json, vectors/backup.json
-// (CeremonyRefusalTablesTests), keepcrypt-ffi's wire.rs,
+// (CeremonyRefusalTablesTests, CeremonyExportsTests), vectors/watchonly.json (CeremonyExportsTests),
+// keepcrypt-ffi's wire.rs,
 // whose tables WireTests pins Wire.swift's copies against, and the shared screen table,
 // mobile/screens.json (ScreenTableTests). Nothing here is a secret: the gate seeds are public test seeds.
 

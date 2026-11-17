@@ -2,7 +2,9 @@
 // Android's :screens sources' own words (Kit.kt, Screens.kt, FirstLaunch.kt, StartScreens.kt, HomeScreens.kt),
 // copied once here, apart from the views, so KeepCryptTests' ScreenTextsTests can pin each against those
 // Kotlin files and the two apps say the same thing screen for screen. The few lines the iPhone says its own
-// way (the offline check's, a screenshot's notice) are marked so. Nothing here is built from a secret.
+// way (the offline check's, a screenshot's notice) are marked so. The functions that lay out a secret (D5's
+// words, D6's backup passphrase, BIP39 passphrase and D) make a String only for the text drawn (Q58), and
+// no fixed text is built from one.
 
 /// The app's version: every M6 build is a development build, as every M5 APK is.
 let appVersion = "0.0.0"
@@ -430,4 +432,179 @@ func overviewLine(_ insert: WordPage) -> String {
     let word = wordText(insert)
     return digits(insert.position, 2) + " " + word + String(repeating: " ", count: max(0, longestWord - word.count)) + " "
         + digits(insert.seedbook, 4)
+}
+
+/// The checklist's texts (Android's WordsScreens.kt: swb's "Before you walk away", in the Pi's lines).
+enum ChecklistTexts {
+    static let items = [
+        "- Every face read back.",
+        "- Inserts reassembled in sequence order, 01 first.",
+        "- Device fastened shut and back in place.",
+        "- Whole phrase test-restored from the metal.",
+        "- Every paper copy destroyed.",
+        "- No photograph of the inserts anywhere.",
+    ]
+    /// A 24-word seed's line (swb: the final checklist says which device holds words 1-12).
+    static let twoDevices = "Device 1 of 2 holds words 1-12; device 2 of 2 holds words 13-24."
+    static let finishWipes = "Finish wipes the session and returns Home."
+    static let finish = "Finish"
+}
+
+/// The encrypted backup's texts (Android's BackupScreens.kt; the Pi's wording).
+enum BackupTexts {
+    /// The offer (the Pi's, for a file the user places): the paper words stay the primary backup (MA:151).
+    static let offer =
+        "Save an encrypted backup file to a place you pick. Its 8-word passphrase is shown once: write it on paper and keep it apart from the file. The words on your metal or paper stay the primary backup."
+    static let make = "Make an encrypted backup"
+    static let passphraseNote = "Backup passphrase: write it on paper and store it apart from the file."
+    static let wrongConfirm = "Not that word. The passphrase is shown again from its first word; the questions stay the same."
+    static let written = "I wrote it down"
+    static let confirmHow = "Type its first four letters from your paper copy, or a whole three-letter word, then Done."
+    static let saveHow =
+        "Save opens the phone's file picker. The backup was encrypted in memory: nothing unencrypted is ever written."
+    /// MA:156's one line for a cloud folder.
+    static let cloudFolder =
+        "A cloud folder is allowed: the passphrase is what protects the file, so keep it on paper, away from the file."
+    static let saveAgainNote =
+        "Save again writes a new copy under the same passphrase. A file left where this one failed may be incomplete: delete it."
+    static let verified =
+        "The saved file was read back and opens under the passphrase. On an offline computer, age -d and the passphrase open it."
+    static let theFile = "The file"
+    static let save = "Save"
+    static let saveAgain = "Save again"
+}
+
+/// The words on one page of the backup passphrase.
+let passphrasePageWords = 4
+
+/// The passphrase page's range (the Pi's): "Words 1-4 of 8".
+func passphrasePageText(_ page: Int) -> String {
+    let first = page * passphrasePageWords + 1
+    return "Words " + String(first) + "-" + String(first + passphrasePageWords - 1) + " of " + String(passphraseWords)
+}
+
+/// The confirm's question line: "Check your copy: question 1 of 2".
+func confirmQuestionText(_ page: Int) -> String {
+    "Check your copy: question " + String(page + 1) + " of 2"
+}
+
+/// The confirm's heading: "Which is word 3?".
+func whichWordText(_ position: Int) -> String {
+    "Which is word " + String(position) + "?"
+}
+
+/// A Secret's bytes from start until end as the text on screen (Q58: a String only for what is drawn).
+private func drawn(_ text: Secret, _ start: Int, _ end: Int) -> String {
+    String(decoding: (start..<end).map { text[$0] }, as: UTF8.self)
+}
+
+/// The passphrase's page on show (core's: its four words one space apart) as the screen's lines, each word
+/// after its number, "1 ostrich" (the Pi's).
+func passphraseLines(_ page: Int, _ text: Secret) -> [String] {
+    var lines: [String] = []
+    var start = 0
+    for index in 0...text.count where index == text.count || text[index] == 0x20 {
+        lines.append(String(page * passphrasePageWords + lines.count + 1) + " " + drawn(text, start, index))
+        start = index + 1
+    }
+    return lines
+}
+
+/// The page on show as the screen draws it: its four lines in one text, one line feed apart (the Pi's one
+/// Protected text).
+func passphraseText(_ page: Int, _ text: Secret) -> String {
+    passphraseLines(page, text).joined(separator: "\n")
+}
+
+/// A confirm choice (a word of core's) as the text on screen.
+func choiceText(_ choice: Secret) -> String {
+    drawn(choice, 0, choice.count)
+}
+
+/// Core's text for a refusal the backup screens show (core/src/error.rs's Display, verbatim, as the Pi and
+/// Android show it): the passphrase does not open the file, the file holds another seed, or the file does
+/// not read; nil for any other refusal, which the backup's calls never give.
+func backupRefusalText(_ refusal: Refusal) -> String? {
+    switch refusal {
+    case .wrongPassphrase: return "the passphrase does not open this backup"
+    case .readbackMismatch: return "the backup does not hold this seed"
+    case .tooLarge: return "backup rejected: file too large"
+    case .armor: return "backup rejected: bad armor"
+    case .header: return "backup rejected: bad header"
+    case .workFactor: return "backup rejected: work factor out of range"
+    case .headerMac: return "backup rejected: header MAC mismatch"
+    case .payload: return "backup rejected: bad payload"
+    case .plaintext: return "backup rejected: bad backup contents"
+    case .unsupportedVersion: return "backup rejected: unsupported backup version"
+    case .passphraseWords: return "backup rejected: the backup passphrase must be 8 words from the BIP39 English list"
+    default: return nil
+    }
+}
+
+/// A failed save's line: the step it failed at, and for verify core's text.
+func saveFailureText(_ failure: SaveFailure) -> String {
+    switch failure.step {
+    case .write: return "Backup not saved: writing the file failed."
+    case .readBack: return "Backup not saved: reading the file back failed."
+    case .verify:
+        return "Backup not saved: the file read back does not verify (" + (failure.refusal.flatMap(backupRefusalText) ?? "")
+            + ")."
+    }
+}
+
+/// The exports' texts (Android's ExportScreens.kt; the Pi's wording; swb, "Watch-only export" and
+/// "Registering a new seal").
+enum ExportTexts {
+    static let watchOffer =
+        "An account QR for Sparrow and a descriptor QR for Bitcoin Core: public keys only, but an xpub shows every address and balance."
+    static let showWatchOnly = "Show watch-only QRs"
+    static let bip39Ask =
+        "Only if you use one: the export is then that passphrase's wallet. The app takes printable ASCII, up to 100 characters."
+    static let noBip39 = "No BIP39 passphrase"
+    static let withBip39 = "I use a passphrase"
+    static let bip39How =
+        "As typed, \u{00B7} for a space; letter case and spaces count. The keys come in three pages: printable ASCII, up to 100 characters."
+    static let previousKeys = "Previous keys"
+    static let nextKeys = "Next keys"
+    static let treatPrivate = "Treat the xpub as private: it shows every address and balance."
+    static let passphraseWallet =
+        "Your BIP39 passphrase's wallet: compare this address in Sparrow or Core, not the wallet summary's."
+    static let sparrowHow =
+        "In Sparrow: New wallet, single signature, native SegWit, Airgapped Hardware Wallet, then scan this QR. Confirm its first receive address before funding."
+    static let coreHow =
+        "The receive and change descriptors, for Bitcoin Core or any descriptor wallet, imported watch-only. Confirm its first receive address before funding."
+    static let nextDescriptor = "Next: the descriptor QR"
+    static let registerOnce =
+        "Register once, and never from a restored seed: a second registration of the same seed looks like a collision."
+    static let registerHow =
+        "Scan it on a second device: the registry's page registers this seal, and only its tag and count are kept."
+    static let showRegistration = "Show registration QR"
+    static let registerQrHeading = "Register once, never from a restore"
+    static let revealD = "For verification runs only: D plus the rolls recreates the seed."
+    static let verifyPrompt = "On the offline computer, type each value into verify.py only after its prompt appears."
+    static let dNote = "Only for verify.py on an offline computer."
+    static let showD = "Show D"
+}
+
+/// The ASCII pad's page line: "Keys, page 1 of 3".
+func keysPageText(_ page: Int) -> String {
+    "Keys, page " + String(page + 1) + " of " + String(asciiPages)
+}
+
+/// The BIP39 passphrase as its entry shows it (the Pi's bip39-entry): as typed, each space a middle dot so
+/// a space shows. A String only for the text on screen (Q58).
+func bip39Shown(_ letters: PadEntry) -> String {
+    var out = ""
+    for index in 0..<letters.length {
+        let key = letters.keyAt(index)
+        out.append(key == " " ? "\u{00B7}" : key)
+    }
+    return out
+}
+
+/// D as its screen shows it, laid out as C (16 groups of 4 lower-case hex digits in four rows, which
+/// verify.py reads typed as groups on one line), read from its Secret one byte at a time. A String only for
+/// the text on screen (Q58).
+func deviceLegText(_ d: Secret) -> String {
+    hexGroups(d)
 }

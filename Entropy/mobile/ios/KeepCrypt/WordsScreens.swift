@@ -1,8 +1,8 @@
 // The words to the wallet summary (tasks/todo.md, M6 item D5; Android's WordsScreens.kt; docs/mobile-apps.md,
 // steps 10-12; docs/seal-watchonly-braille.md, "Braille backup"): the words in insert view and their overview
 // (Protected), the device swap between a 24-word seed's two devices, the read-back entry on D3's letter pad
-// and its mismatch (Protected), the read-back's end and the wallet summary (Public), in Android's words,
-// order and identifiers. Each hands its presses to the ceremony model, which ignores a press its screen no
+// and its mismatch (Protected), the read-back's end, the wallet summary and (D6) the checklist (Public), in
+// Android's words, order and identifiers. Each hands its presses to the ceremony model, which ignores a press its screen no
 // longer shows. Every secret (a word, its SeedBook number and faces, an overview line, the letters typed, a
 // verdict) is read from the WordPage, PadEntry or Mismatch the model holds, as each body draws, into a
 // String that lives only for that drawing (Q58; Swift's strings and SwiftUI's drawn text are MA:17's
@@ -261,6 +261,32 @@ struct WalletSummaryScreen: View {
             } actions: {
                 KitButton(WordsTexts.next, id: "summary_next", action: onNext)
             }
+        }
+    }
+}
+
+/// Finish (docs/mobile-apps.md, step 17; swb's "Before you walk away"; the Pi's checklist), a Public screen:
+/// the SeedBook checklist, which device holds words 1-12 for a 24-word seed, and the SeedBook's safety rules;
+/// Finish ends the session and returns Home.
+struct ChecklistScreen: View {
+    let state: UiState
+    let testRegistry: Bool
+    let onFinish: () -> Void
+
+    var body: some View {
+        KitScreen(Screen.checklist.id, testRegistry: testRegistry) {
+            Heading(Screen.checklist.title)
+            ForEach(ChecklistTexts.items, id: \.self) { item in
+                KitText(item)
+            }
+            if state.twoDevices {
+                KitText(ChecklistTexts.twoDevices, id: "two_devices")
+            }
+            Gap(8)
+            KitText(GateTexts.seedBookRules, style: .small)
+            KitText(ChecklistTexts.finishWipes, style: .small)
+        } actions: {
+            KitButton(ChecklistTexts.finish, id: "finish", action: onFinish)
         }
     }
 }

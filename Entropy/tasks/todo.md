@@ -19329,6 +19329,60 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
 - [ ] D6. The exports: the backup's passphrase, confirm and save (`.fileExporter` in DocumentPicker.swift, the file read
   back and verified, "Backup verified"), the watch-only offer, the BIP39 question and entry, the summary, the account
   and descriptor QRs, the registration offer and QR, Reveal D, the checklist and Finish.
+  As built (plan, 2026-11-17): the views over D2's model, in Android's BackupScreens.kt and ExportScreens.kt
+  words, order and tags (the checklist in WordsScreens.swift, as Android's); no change to the model's flow.
+  (1) Secrets: the backup passphrase's page, the confirm's choices, the letters typed, the BIP39 passphrase
+  typed and D are drawn inside SecureLayer, where Android marks each node secret; the account, descriptor and
+  registration QRs, which Android draws unmarked on Protected screens, go inside SecureLayer as D4's collision
+  report QR does. The summaries' fingerprint and address are Public, as Android's. Each is read from the state's
+  Secret, matrix or the pad's PadEntry as its body draws; no view keeps one in @State. Swift Strings and the text
+  SwiftUI draws are not wiped (MA:17's residual, as D5).
+  (2) The save: `.fileExporter` with an in-memory FileDocument (docs/mobile-apps.md, Saving step 3), the iOS 17
+  overload (iOS 27's WritableDocument, which writes to the destination itself, needs iOS 27). Its document holds
+  the model's own Secret and copies it into one Data only when the exporter asks to write. The seam's create
+  takes the bytes with the name (`create(name:bytes:)`): Android's picker gives a place before the write, the
+  exporter writes as it opens. Its answer is backupPlaced: the place it saved to (write says whether it wrote
+  the model's bytes, by identity; readBack reads the file there once, as a picked file is read), a failure
+  (write fails: "writing the file failed"), or none (cancel: the save screen stays). The Data the exporter gets,
+  and any file SwiftUI stages before the system's picker moves or copies it, are the system's: ciphertext alone
+  (age v1, scrypt log2 N = 18), which the app neither names nor can wipe, and the gate refuses the app's
+  directories outright, so it cannot clean a staged copy either. A lead decision; I2 looks at the app's
+  container (tmp) after a save and after a cancel, and confirms the name keeps its .age and the read-back of the
+  exported URL works (a failed read-back shows "reading the file back failed", never "Backup verified").
+  (3) The BIP39 entry uses the ASCII pad, three pages, as Android's (the task's "letter pad" is the confirm's).
+  (4) Tests: CeremonyExportsTests reads each QR back in-process with Core Image's QR detector (Android's Checker
+  reads with ZXing) and holds it to the vectors: the account QR a crypto-account UR whose CBOR is BCR-2020-015's
+  for the descriptors' xpub and the summary's fingerprint, the descriptors' BIP-380 checksums (the decoders first
+  held to watchonly.json's UR, CRC-32, account and BIP-380 vectors), the registration QR kcr.json's register text
+  for dice-50-words12's seal code, D's SHA-256 under "KCE/v1/commit" against C (CommonCrypto, in the tests only)
+  and its text as verify.py's parse_hex32 reads it, and the saved backup against backup.json's age format, limits
+  and file names, opened by core to the summary's fingerprint. BackupScreens.kt's refusal table case for case,
+  and every fixed text pinned in ScreenTextsTests (ExportScreens.kt and watchonly.json bundled for the tests).
+  (5) No UI test through Save: the exporter's sheet is the system's document browser, which this Mac cannot
+  run (no simulator), and whether XCUITest can drive it on CI's simulators is unproven; the UI job is near 25 of
+  its 29 minutes. Save's journey is left to Stage U and I2.
+  As built (M6 commit D6a, the backup's and the exports' screens): `BackupScreens.swift` (BackupOfferScreen,
+  BackupPassphraseScreen, BackupConfirmScreen, LetterEntry for the confirm and D7's entry, BackupSaveScreen,
+  BackupVerifiedScreen), `ExportScreens.swift` (WatchOfferScreen, Bip39AskScreen, Bip39EntryScreen,
+  WatchSummaryScreen, WatchAccountQrScreen, WatchDescriptorQrScreen, RegisterOfferScreen, RegisterQrScreen,
+  RevealDOfferScreen, RevealDScreen), WordsScreens.swift's ChecklistScreen, Texts.swift's BackupTexts,
+  ExportTexts, ChecklistTexts and the lines (passphraseLines, passphraseText, choiceText, passphrasePageText,
+  confirmQuestionText, whichWordText, backupRefusalText, saveFailureText, keysPageText, bip39Shown,
+  deviceLegText), DocumentPicker.swift's BackupDocument, BackupExporter, ExportedPlace and FailedExport (the
+  read-back shared with the picked file's read), the seam's `create(name:bytes:)`, and the screens and the
+  exporter wired in Screens.swift.
+  Tests: CeremonyExportsTests (8: the decoders against watchonly.json; no passphrase, the QRs core's and the
+  vectors' formats, paging and the wipe; TREZOR on the ASCII pad, its wallet's export; the registration QR's
+  register text; D against C and verify.py's reading; Save's name and bytes through the seam to "Backup
+  verified"; the saved file's age format, opened by core; the passphrase pages and the save-failure lines),
+  ScreenTextsTests' pins grown by the D6 texts and forms, and BackupScreens.kt's refusal table case for case.
+  Proof (M6 commit D6a, partial: local; CI at the next push): the macOS stand-in "Executed 119 tests, with 0
+  failures" over the host's release archive (conditions: none) and the same over its test-registry archive
+  (KC_WITH_TEST_REGISTRY); with four lines mutated in a copy (a refusal's text, the BIP39 dot, the passphrase's
+  numbering, the keys' page), CeremonyExportsTests and ScreenTextsTests fail 7 times. Local builds: all three
+  schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean on the three
+  shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate
+  clean (503 files), `cargo fmt --all --check` clean.
 - [ ] D7. Check a backup (the `.age` file through the picker, the passphrase on the letter pad, the result, the words only
   if asked, the re-check), About, Working and the stop screen.
 - [ ] D8. VoiceOver: each screen's title read as it opens, headings, live lines, every QR named by its kind and never its

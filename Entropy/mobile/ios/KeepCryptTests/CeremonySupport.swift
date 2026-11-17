@@ -429,11 +429,14 @@ final class SavedBackup {
 /// The document pickers' fake: what the model asked of them, nothing opened.
 final class FakePickers: DocumentPickers {
     var created: [String] = []
+    /// The bytes handed with each create: the model's own Secret.
+    var handed: [Secret] = []
     var opens = 0
     var snapshotOpens = 0
 
-    func create(name: String) {
+    func create(name: String, bytes: Secret) {
         created.append(name)
+        handed.append(bytes)
     }
 
     func openBackup() {

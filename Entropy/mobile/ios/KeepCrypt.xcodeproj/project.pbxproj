@@ -12,6 +12,7 @@
 		AC0000000000000000000223 /* wire.rs in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000213 /* wire.rs */; };
 		AC0000000000000000000224 /* screens.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000214 /* screens.json */; };
 		AC0000000000000000000225 /* backup.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000215 /* backup.json */; };
+		AC0000000000000000000226 /* watchonly.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000216 /* watchonly.json */; };
 		AC0000000000000000000251 /* FirstLaunch.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000241 /* FirstLaunch.kt */; };
 		AC0000000000000000000252 /* StartScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000242 /* StartScreens.kt */; };
 		AC0000000000000000000253 /* Screens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000243 /* Screens.kt */; };
@@ -21,6 +22,7 @@
 		AC0000000000000000000257 /* CheckScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000247 /* CheckScreens.kt */; };
 		AC0000000000000000000258 /* Drawing.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000248 /* Drawing.kt */; };
 		AC0000000000000000000259 /* WordsScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000249 /* WordsScreens.kt */; };
+		AC0000000000000000000260 /* ExportScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000250 /* ExportScreens.kt */; };
 		AC0000000000000000000261 /* kcr.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000211 /* kcr.json */; };
 /* End PBXBuildFile section */
 
@@ -43,6 +45,7 @@
 		AC0000000000000000000213 /* wire.rs */ = {isa = PBXFileReference; lastKnownFileType = text; name = wire.rs; path = ../../ffi/src/wire.rs; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000214 /* screens.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = screens.json; path = ../screens.json; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000215 /* backup.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = backup.json; path = ../../vectors/backup.json; sourceTree = SOURCE_ROOT; };
+		AC0000000000000000000216 /* watchonly.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = watchonly.json; path = ../../vectors/watchonly.json; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000241 /* FirstLaunch.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = FirstLaunch.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/FirstLaunch.kt; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000242 /* StartScreens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = StartScreens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/StartScreens.kt; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000243 /* Screens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = Screens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/Screens.kt; sourceTree = SOURCE_ROOT; };
@@ -52,6 +55,7 @@
 		AC0000000000000000000247 /* CheckScreens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = CheckScreens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/CheckScreens.kt; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000248 /* Drawing.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = Drawing.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/Drawing.kt; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000249 /* WordsScreens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = WordsScreens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/WordsScreens.kt; sourceTree = SOURCE_ROOT; };
+		AC0000000000000000000250 /* ExportScreens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = ExportScreens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/ExportScreens.kt; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -158,6 +162,7 @@
 				AC0000000000000000000213 /* wire.rs */,
 				AC0000000000000000000214 /* screens.json */,
 				AC0000000000000000000215 /* backup.json */,
+				AC0000000000000000000216 /* watchonly.json */,
 				AC0000000000000000000241 /* FirstLaunch.kt */,
 				AC0000000000000000000242 /* StartScreens.kt */,
 				AC0000000000000000000243 /* Screens.kt */,
@@ -167,6 +172,7 @@
 				AC0000000000000000000247 /* CheckScreens.kt */,
 				AC0000000000000000000248 /* Drawing.kt */,
 				AC0000000000000000000249 /* WordsScreens.kt */,
+				AC0000000000000000000250 /* ExportScreens.kt */,
 			);
 			name = TestVectors;
 			sourceTree = "<group>";
@@ -283,6 +289,7 @@
 				AC0000000000000000000223 /* wire.rs in Resources */,
 				AC0000000000000000000224 /* screens.json in Resources */,
 				AC0000000000000000000225 /* backup.json in Resources */,
+				AC0000000000000000000226 /* watchonly.json in Resources */,
 				AC0000000000000000000251 /* FirstLaunch.kt in Resources */,
 				AC0000000000000000000252 /* StartScreens.kt in Resources */,
 				AC0000000000000000000253 /* Screens.kt in Resources */,
@@ -292,6 +299,7 @@
 				AC0000000000000000000257 /* CheckScreens.kt in Resources */,
 				AC0000000000000000000258 /* Drawing.kt in Resources */,
 				AC0000000000000000000259 /* WordsScreens.kt in Resources */,
+				AC0000000000000000000260 /* ExportScreens.kt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

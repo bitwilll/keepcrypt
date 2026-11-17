@@ -1070,10 +1070,11 @@ final class CeremonyModel: ObservableObject {
     }
 
     /// The save screen's Save (or Save again): the system's create-document picker, its suggested name
-    /// core's; the place it gives comes to backupPlaced.
+    /// core's, with the encrypted file's bytes (the iPhone's exporter writes them); the place it gives comes
+    /// to backupPlaced.
     func saveBackup(_ pickers: DocumentPickers) {
         guard let file = backupFile else { return }
-        openPicker(.backupSave) { pickers.create(name: file.name) }
+        openPicker(.backupSave) { pickers.create(name: file.name, bytes: file.bytes) }
     }
 
     /// The create-document picker's answer, while the save screen shows (a late answer does nothing):

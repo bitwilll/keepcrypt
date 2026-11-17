@@ -2,7 +2,7 @@
 // overlays, notices and stop screen show (Texts.swift, Ceremony.swift's noticeLine and stopLine) is pinned
 // against :screens' own Kotlin sources, bundled as file references (FirstLaunch.kt, StartScreens.kt,
 // Screens.kt, HomeScreens.kt, Kit.kt, BackupScreens.kt, and from D4 CheckScreens.kt, Drawing.kt and
-// WordsScreens.kt), as WireTests pins Wire.swift against wire.rs: each
+// WordsScreens.kt, and from D6 ExportScreens.kt), as WireTests pins Wire.swift against wire.rs: each
 // text is a string literal there, once Kotlin's "a " + "b" splits over lines are joined. So a wording
 // change on either side fails here until both agree. The iPhone's own lines (the offline check's, a
 // screenshot's notice) are named and checked to be no Kotlin literal. Also the laid-out values: the dice
@@ -14,7 +14,7 @@ final class ScreenTextsTests: XCTestCase {
     /// The bundled Kotlin sources, each with its string literals' line splits joined.
     private func kotlin() throws -> String {
         var joined = ""
-        for name in ["FirstLaunch", "StartScreens", "Screens", "HomeScreens", "Kit", "BackupScreens", "CheckScreens", "Drawing", "WordsScreens"] {
+        for name in ["FirstLaunch", "StartScreens", "Screens", "HomeScreens", "Kit", "BackupScreens", "CheckScreens", "Drawing", "WordsScreens", "ExportScreens"] {
             let text = try XCTUnwrap(String(data: Vectors.resource(name, "kt"), encoding: .utf8), "\(name).kt")
             joined += text + "\n"
         }
@@ -56,7 +56,17 @@ final class ScreenTextsTests: XCTestCase {
             WordsTexts.insertView, WordsTexts.overviewNote, WordsTexts.readAgain, WordsTexts.showInsert,
             WordsTexts.fingerprint, WordsTexts.firstAddress, faceLabel(blank: true, mirror: false),
             faceLabel(blank: false, mirror: true),
-        ] + HaltReason.allCases.map(stopLine) + QrKind.allCases.map(\.spoken)
+            ChecklistTexts.twoDevices, ChecklistTexts.finishWipes, ChecklistTexts.finish,
+            BackupTexts.offer, BackupTexts.make, BackupTexts.passphraseNote, BackupTexts.wrongConfirm, BackupTexts.written,
+            BackupTexts.confirmHow, BackupTexts.saveHow, BackupTexts.cloudFolder, BackupTexts.saveAgainNote,
+            BackupTexts.verified, BackupTexts.theFile, BackupTexts.save, BackupTexts.saveAgain,
+            saveFailureText(SaveFailure(step: .write)), saveFailureText(SaveFailure(step: .readBack)),
+            ExportTexts.watchOffer, ExportTexts.showWatchOnly, ExportTexts.bip39Ask, ExportTexts.noBip39,
+            ExportTexts.withBip39, ExportTexts.bip39How, ExportTexts.previousKeys, ExportTexts.nextKeys,
+            ExportTexts.treatPrivate, ExportTexts.passphraseWallet, ExportTexts.sparrowHow, ExportTexts.coreHow,
+            ExportTexts.nextDescriptor, ExportTexts.registerOnce, ExportTexts.registerHow, ExportTexts.showRegistration,
+            ExportTexts.registerQrHeading, ExportTexts.revealD, ExportTexts.verifyPrompt, ExportTexts.dNote, ExportTexts.showD,
+        ] + ChecklistTexts.items + HaltReason.allCases.map(stopLine) + QrKind.allCases.map(\.spoken)
     }
 
     func testEveryTextIsAndroidsLiteral() throws {
@@ -89,9 +99,47 @@ final class ScreenTextsTests: XCTestCase {
         for verdict in ["\"ok\"", "\"mirror misread\"", "\"should be blank\"", "\"should have a letter\"", "\"wrong letter: missing\"", "\", extra\"", "\" none\""] {
             XCTAssertTrue(source.contains(verdict), "WordsScreens.kt's verdict text " + verdict)
         }
+        // The backup's and the exports' laid-out lines, as BackupScreens.kt and ExportScreens.kt build them.
+        for form in [
+            "\"Words \" + first + \"-\" + (first + PASSPHRASE_PAGE_WORDS - 1) + \" of \" + PASSPHRASE_WORDS",
+            "const val PASSPHRASE_WORDS = 8", "const val PASSPHRASE_PAGE_WORDS = 4",
+            "(page * PASSPHRASE_PAGE_WORDS + lines.size + 1).toString() + \" \" + drawn(text, start, index)",
+            "\"Check your copy: question \" + (state.page + 1) + \" of 2\"", "Heading(\"Which is word \" + question.position + \"?\")",
+            "\"Backup not saved: the file read back does not verify (\" +", "?.let { backupRefusalText(it) }.orEmpty() + \").\"",
+            "\"Keys, page \" + (keys + 1) + \" of \" + ASCII_PAGES", "private const val SPACE_SHOWN = '\u{00B7}'",
+            "fun deviceLegText(d: Secret): String = hexGroupsOf(d.size) { d[it] }",
+        ] {
+            XCTAssertTrue(source.contains(form), "Android's form: " + form)
+        }
+        XCTAssertEqual(passphraseWords, 8)
+        XCTAssertEqual(passphrasePageWords, 4)
+        XCTAssertEqual(asciiPages, 3)
         for (refusal, tail) in [(Refusal.badSignature, "bad signature"), (.proofCount, "more bucket entries than the snapshot holds")] {
             XCTAssertEqual(snapshotRefusalText(refusal), CheckTexts.snapshotRejected + tail)
             XCTAssertTrue(source.contains("SNAPSHOT_REJECTED + \"" + tail + "\""))
+        }
+    }
+
+    /// BackupScreens.kt's backupRefusalText, case for case (Android's BackupScreensTest pins it to
+    /// core/src/error.rs's Display): each Refusal's text is the Kotlin table's, nil where it has none, and
+    /// isBackupRefusal names exactly the refusals with a text.
+    func testTheBackupRefusalTableIsAndroids() throws {
+        let source = try kotlin()
+        let row = try NSRegularExpression(pattern: "Refusal\\.([A-Za-z]+) -> \"([^\"]*)\"")
+        let table = try XCTUnwrap(source.range(of: "fun backupRefusalText(refusal: Refusal): String? = when (refusal) {"))
+        let end = try XCTUnwrap(source.range(of: "else -> null", range: table.upperBound..<source.endIndex))
+        let body = String(source[table.upperBound..<end.lowerBound])
+        var kotlin: [String: String] = [:]
+        for match in row.matches(in: body, range: NSRange(body.startIndex..., in: body)) {
+            guard let name = Range(match.range(at: 1), in: body), let text = Range(match.range(at: 2), in: body) else { continue }
+            kotlin[String(body[name])] = String(body[text])
+        }
+        XCTAssertEqual(kotlin.count, 11, "BackupScreens.kt's table")
+        for refusal in Refusal.allCases {
+            let name = String(describing: refusal)
+            let upper = name.prefix(1).uppercased() + name.dropFirst()
+            XCTAssertEqual(backupRefusalText(refusal), kotlin[upper], name)
+            XCTAssertEqual(isBackupRefusal(refusal), kotlin[upper] != nil, name)
         }
     }
 

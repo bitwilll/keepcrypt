@@ -99,16 +99,20 @@ enum ScanStop: Equatable {
 /// loadSnapshot): create offers the backup's place with core's suggested name, and its answer goes to
 /// the model's backupPlaced; openBackup offers a file of any type (the model checks the name itself), whose
 /// answer goes to backupPicked; openSnapshot the same for Load registry snapshot, to snapshotPicked.
-/// None keeps a place or a file.
+/// None keeps a place or a file. create also takes the backup's bytes, the model's own Secret (ciphertext,
+/// never copied here): the iPhone's file exporter writes them as it opens (docs/mobile-apps.md, Saving
+/// step 3), where Android's create-document picker gives a place first (D6's one difference from Android's
+/// seam).
 protocol DocumentPickers: AnyObject {
-    func create(name: String)
+    func create(name: String, bytes: Secret)
     func openBackup()
     func openSnapshot()
 }
 
 /// The place the backup's picker gave: one write there, then the file there read back.
 protocol DocumentPlace: AnyObject {
-    /// Writes bytes there in one write, the file truncated first: false when the write failed.
+    /// Writes bytes there in one write, the file truncated first: false when the write failed. On the
+    /// iPhone the exporter has written them by then, and this says whether it wrote these bytes.
     func write(_ bytes: Secret) -> Bool
     /// The file there read back, at most limit + 1 bytes (one past limit says it is larger), or nil
     /// when it could not be read.

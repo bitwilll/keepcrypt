@@ -6,8 +6,9 @@
 // touch before any control gets it. The cover and the warning lie over the screen and take the tap that
 // removes them, and while either is up the screen under it is hidden from VoiceOver (Q80 (a)). Each state's
 // pane title (paneTitle(of:), fixed text) is posted to VoiceOver as it opens (U3g). The scan screen's scanner
-// and the document pickers are the platform's seams (GoAheadScanner.swift, DocumentPicker.swift). Screens
-// past the wallet summary draw their title alone until D6 and D7 draw them.
+// and the document pickers are the platform's seams (GoAheadScanner.swift, DocumentPicker.swift: the
+// snapshot's importer and the backup's exporter). Check a backup's screens draw their title alone until D7
+// draws them.
 
 import SwiftUI
 import UIKit
@@ -47,6 +48,7 @@ struct Screens: View {
                 }
             },
             onCancellation: { model.snapshotPicked(nil) })
+        .modifier(BackupExporter(pickers: pickers, placed: model.backupPlaced))
         .onChange(of: shownView(state), initial: true) { _, view in
             pressGuard.composed(view, uptimeMillis())
             UIAccessibility.post(notification: .screenChanged, argument: paneTitle(of: model.state))
@@ -143,6 +145,51 @@ struct Screens: View {
             ReadbackDoneScreen(testRegistry: registry, onNext: model.showSummary)
         case .wallet:
             WalletSummaryScreen(state: state, testRegistry: registry, onNext: model.summaryDone)
+        case .backupOffer:
+            BackupOfferScreen(testRegistry: registry, onMake: model.makeBackup, onSkip: model.skipBackup)
+        case .backupPassphrase:
+            BackupPassphraseScreen(
+                state: state, testRegistry: registry, passGate: model.passGate, onPrevious: model.previousPage,
+                onNext: model.nextPage, onConfirm: model.passphraseWritten)
+        case .backupConfirm:
+            BackupConfirmScreen(
+                state: state, letters: model.backupLetters, testRegistry: registry, passGate: model.passGate,
+                onKey: { model.padKey(screen: .backupConfirm, page: state.page, key: $0) },
+                onDelete: { model.padDelete(screen: .backupConfirm, page: state.page) }, onDone: model.confirmTyped)
+        case .backupSave:
+            BackupSaveScreen(
+                state: state, testRegistry: registry, onSave: { model.saveBackup(pickers) }, onSkip: model.skipBackup)
+        case .backupVerified:
+            BackupVerifiedScreen(testRegistry: registry, onNext: model.backupVerifiedDone)
+        case .watchOffer:
+            WatchOfferScreen(testRegistry: registry, onShow: model.showWatchOnly, onSkip: model.skipWatchOnly)
+        case .bip39Ask:
+            Bip39AskScreen(testRegistry: registry, onNone: model.noBip39Passphrase, onPassphrase: model.withBip39Passphrase)
+        case .bip39Entry:
+            Bip39EntryScreen(
+                state: state, letters: model.bip39Letters, testRegistry: registry, passGate: model.passGate,
+                onKey: { model.padKey(screen: .bip39Entry, page: state.page, key: $0) },
+                onPreviousKeys: model.previousPage, onNextKeys: model.nextPage,
+                onDelete: { model.padDelete(screen: .bip39Entry, page: state.page) }, onDone: model.bip39Typed,
+                onBack: model.back)
+        case .watchSummary:
+            WatchSummaryScreen(state: state, testRegistry: registry, onNext: model.watchSummaryDone)
+        case .watchAccountQr:
+            WatchAccountQrScreen(state: state, testRegistry: registry, passGate: model.passGate, onNext: model.nextPage)
+        case .watchDescriptorQr:
+            WatchDescriptorQrScreen(
+                state: state, testRegistry: registry, passGate: model.passGate, onPrevious: model.previousPage,
+                onDone: model.watchDone)
+        case .registerOffer:
+            RegisterOfferScreen(testRegistry: registry, onShow: model.showRegistration, onSkip: model.skipRegistration)
+        case .registerQr:
+            RegisterQrScreen(state: state, testRegistry: registry, passGate: model.passGate, onNext: model.registrationDone)
+        case .revealDOffer:
+            RevealDOfferScreen(testRegistry: registry, onShow: model.showDeviceLeg, onSkip: model.skipDeviceLeg)
+        case .revealD:
+            RevealDScreen(state: state, testRegistry: registry, passGate: model.passGate, onNext: model.deviceLegDone)
+        case .checklist:
+            ChecklistScreen(state: state, testRegistry: registry, onFinish: model.finishCeremony)
         case .snapshot:
             SnapshotScreen(state: state, testRegistry: registry, onDone: model.snapshotDone)
         case .working:
