@@ -14365,6 +14365,11 @@ shipping APK and the test-registry APK one at a time, as P4 says. The offline ve
   log; copy `with-dice-50.kcr` to the phone's Downloads; install the shipping APK (allow "Install unknown apps" for your
   file manager only while installing).
 
+  Proof, in part (the lead's, 2026-11-17, at the owner's request): `gh run download 43950082932 -n android-apks` into
+  the owner's `Entropy-Keep Crypt/p0-62396383/`; `shasum -a 256 -c` passes all 7 files against the artifact's
+  SHA256SUMS and against the values above from the build job's log; apksigner: both APKs signed by certificate
+  1f2454ea...; aapt2: com.keepcrypt.entropy and com.keepcrypt.entropy.testregistry. Copying with-dice-50.kcr to the
+  phone and the install are the owner's (unticked until P1's report).
 **P0b. Scanner smoke test (early, from commit 18's run; about 10 minutes)**
 Issued 2026-10-22 from run 39744137391 at 1a63e0f: artifact android-apks (kept until 2026-11-05), the test-registry APK
 SHA-256 8983977bd0fb4fb6ac125cfc3bc99112ea9451b4f47f715386113471dea5a328, goahead-collision-dice-50.png
