@@ -1,0 +1,194 @@
+# KeepCrypt-Entropy iPhone (Entropy/tasks/todo.md, M6 item C4; Q90, Q91): the iPhone app,
+# Entropy/mobile/ios, built and tested on two macOS runners side by side, one leg each: macos-26 with
+# Xcode 26.6 and an iOS 26.5 simulator, and macos-15 with Xcode 16.4 and an iOS 18.6 simulator. The
+# deployment target stays iOS 17.0 (docs/build-plan.md's iOS row); no runner image has an iOS 17
+# simulator, so iOS 17 itself is untested here and named in the gate report.
+#
+# Each leg: the runner's facts and its Xcode, chosen by DEVELOPER_DIR for every step (xcode-select is
+# never changed); the pinned toolchain; the Rust library for both configurations from
+# scripts/ios-rust.sh (keepcrypt-capi's libkeepcrypt_capi.a for aarch64-apple-ios and
+# aarch64-apple-ios-sim with plain cargo, as entropy-ci.yml's iOS cross legs build it, copied into
+# mobile/ios/build/rust/); the iPhone app scan's selftest (scripts/banned-api-check.sh
+# --selftest-ios-app, stand-in apps built with the SDK's clang and swiftc); a simulator of the leg's
+# device and runtime, found by name in simctl's list and booted; then, for each scheme (KeepCrypt-Shipping
+# in its Shipping configuration, KeepCrypt-WithTestRegistry in WithTestRegistry), xcodebuild
+# build-for-testing and test-without-building on that simulator (the unit tests over the real kc_call
+# and vectors/, and the UI test of the start-up self-test), and the app scan of the built simulator
+# app (scripts/banned-api-check.sh --ios-app against mobile/ios/expected/); and a device build of
+# Shipping (generic iOS, unsigned), scanned the same way. Every build passes CODE_SIGNING_ALLOWED=NO:
+# nothing is signed here, no certificate or profile exists, and nothing is uploaded. Xcode resolves no
+# Swift package (the project has none, and the gate refuses one).
+#
+# Not one of the 14 required checks (Q91), so path filters are safe, as in entropy-android.yml: a
+# skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that touches
+# these paths merges without a green run of this workflow on its final head. They name every input of
+# the app: the project and its Swift, the Rust library's crates, manifests and toolchain, the vectors
+# the tests read, the scripts it runs and this file.
+#
+# Hardening, as in entropy-ci.yml, whose gates job checks this file too (banned-api-check.sh
+# --workflows): read-only token and no secret; only actions/checkout and actions/cache, pinned by
+# commit SHA; no event data inside run scripts (it reaches them through env, as the matrix values do).
+# Every job checks out a PR's head commit, never GitHub's merge commit, or the pushed, scheduled or
+# dispatched commit, and prints the commit it checked out.
+
+name: Entropy iPhone
+
+on:
+  pull_request:
+    paths:
+      - 'Entropy/mobile/ios/**'
+      - 'Entropy/ffi/**'
+      - 'Entropy/core/**'
+      - 'Entropy/Cargo.toml'
+      - 'Entropy/Cargo.lock'
+      - 'Entropy/rust-toolchain.toml'
+      - 'Entropy/vectors/**'
+      - 'Entropy/scripts/banned-api-check.sh'
+      - 'Entropy/scripts/ios-rust.sh'
+      - '.github/workflows/entropy-ios.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Entropy/mobile/ios/**'
+      - 'Entropy/ffi/**'
+      - 'Entropy/core/**'
+      - 'Entropy/Cargo.toml'
+      - 'Entropy/Cargo.lock'
+      - 'Entropy/rust-toolchain.toml'
+      - 'Entropy/vectors/**'
+      - 'Entropy/scripts/banned-api-check.sh'
+      - 'Entropy/scripts/ios-rust.sh'
+      - '.github/workflows/entropy-ios.yml'
+  schedule:
+    # Weekly (Mondays, 06:17 UTC): main still builds and passes on the runners' current images.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer PR run cancels the older one; any other run always finishes, as in entropy-ci.yml.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    # Explicit bash runs with -eo pipefail: any failing command fails the step.
+    shell: bash
+    working-directory: Entropy
+
+jobs:
+  app:
+    name: iphone (${{ matrix.os }}, Xcode ${{ matrix.xcode }}, ${{ matrix.device }} iOS ${{ matrix.ios }})
+    runs-on: ${{ matrix.os }}
+    # Budget (lead decision M5-30's rule): 60 minutes until the first green run is measured; then the
+    # measured time plus 25%, recorded in tasks/todo.md.
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            xcode: '26.6'
+            ios: '26.5'
+            device: iPhone 17
+          - os: macos-15
+            xcode: '16.4'
+            ios: '18.6'
+            device: iPhone 16
+    env:
+      KC_XCODE: ${{ matrix.xcode }}
+      KC_IOS: ${{ matrix.ios }}
+      KC_DEVICE: ${{ matrix.device }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      # The leg's Xcode by DEVELOPER_DIR, for this and every later step; a missing one fails here.
+      - name: Runner facts and Xcode
+        run: |
+          fail() { echo "FAIL: runner facts: $1" >&2; exit 1; }
+          echo "commit: $(git rev-parse HEAD)"
+          echo "ImageOS: ${ImageOS:-}"
+          echo "ImageVersion: ${ImageVersion:-}"
+          sw_vers
+          df -h /
+          echo "== the image's Xcodes"
+          ls -d /Applications/Xcode*.app
+          dev=/Applications/Xcode_$KC_XCODE.app/Contents/Developer
+          [ -d "$dev" ] || fail "no Xcode $KC_XCODE ($dev)"
+          echo "DEVELOPER_DIR=$dev" >> "$GITHUB_ENV"
+          export DEVELOPER_DIR=$dev
+          xcodebuild -version
+          xcodebuild -version | grep -q -x "Xcode $KC_XCODE" || fail "$dev is not Xcode $KC_XCODE"
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphonesimulator --show-sdk-version
+      - name: Install the pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+      - name: The crate registry from the cache (keyed on the toolchain and Cargo.lock)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+          key: ${{ runner.os }}-${{ runner.arch }}-ios-rust-${{ hashFiles('Entropy/rust-toolchain.toml', 'Entropy/Cargo.lock') }}
+      # M6 item C1: both configurations' libkeepcrypt_capi.a for the device and the simulator, each
+      # SHA-256 printed, copied into mobile/ios/build/rust/, from which the project links them.
+      - name: Rust libraries (scripts/ios-rust.sh, both configurations)
+        run: |
+          sh scripts/ios-rust.sh shipping
+          sh scripts/ios-rust.sh withTestRegistry
+      # The app scan's own cases, on stand-in apps built with this Xcode's SDK.
+      - name: iPhone app scan selftest (banned-api-check.sh --selftest-ios-app)
+        run: sh scripts/banned-api-check.sh --selftest-ios-app
+      # The leg's simulator: the device of that name on the runtime of that version, from simctl's
+      # list (none created), booted and waited for.
+      - name: Simulator (by device name and runtime)
+        run: |
+          xcrun simctl list runtimes
+          xcrun simctl list devices available -j > "$RUNNER_TEMP/devices.json"
+          udid=$(python3 -I - "$RUNNER_TEMP/devices.json" <<'PY'
+          import json, os, sys
+          runtime = "com.apple.CoreSimulator.SimRuntime.iOS-" + os.environ["KC_IOS"].replace(".", "-")
+          name = os.environ["KC_DEVICE"]
+          devices = json.load(open(sys.argv[1]))["devices"].get(runtime, [])
+          found = [d["udid"] for d in devices if d.get("name") == name and d.get("isAvailable")]
+          if len(found) != 1:
+              sys.stderr.write("no single available %s on %s: %d found\n" % (name, runtime, len(found)))
+              sys.exit(1)
+          print(found[0])
+          PY
+          )
+          echo "simulator: $KC_DEVICE, iOS $KC_IOS, $udid"
+          echo "KC_SIM=$udid" >> "$GITHUB_ENV"
+          xcrun simctl boot "$udid"
+          xcrun simctl bootstatus "$udid" -b
+      # Each scheme: built for testing, tested on the simulator, and its simulator app scanned.
+      - name: Shipping (build-for-testing, test-without-building, --ios-app)
+        run: |
+          dd=$RUNNER_TEMP/dd
+          for verb in build-for-testing test-without-building; do
+            xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-Shipping -configuration Shipping \
+              -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO "$verb"
+          done
+          sh scripts/banned-api-check.sh --ios-app Shipping "$dd/Build/Products/Shipping-iphonesimulator/KeepCrypt.app" mobile/ios/expected
+      - name: WithTestRegistry (build-for-testing, test-without-building, --ios-app)
+        run: |
+          dd=$RUNNER_TEMP/dd
+          for verb in build-for-testing test-without-building; do
+            xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-WithTestRegistry -configuration WithTestRegistry \
+              -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO "$verb"
+          done
+          sh scripts/banned-api-check.sh --ios-app WithTestRegistry "$dd/Build/Products/WithTestRegistry-iphonesimulator/KeepCrypt.app" mobile/ios/expected
+      # The device build of the shipping app (generic iOS, unsigned), scanned the same way.
+      - name: Shipping for the device (build, --ios-app)
+        run: |
+          dd=$RUNNER_TEMP/dd
+          xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-Shipping -configuration Shipping \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO build
+          sh scripts/banned-api-check.sh --ios-app Shipping "$dd/Build/Products/Shipping-iphoneos/KeepCrypt.app" mobile/ios/expected

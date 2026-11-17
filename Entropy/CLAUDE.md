@@ -242,6 +242,9 @@ sh scripts/ios-rust.sh shipping
 sh scripts/ios-rust.sh withTestRegistry
 xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-Shipping -configuration Shipping -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test
 xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-WithTestRegistry -configuration WithTestRegistry -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test
+# CI: .github/workflows/entropy-ios.yml (not a required check) runs these on macos-26 (Xcode 26.6, iOS 26.5) and
+# macos-15 (Xcode 16.4, iOS 18.6): both libraries, --selftest-ios-app, build-for-testing and test-without-building of
+# each scheme on a simulator found by name, --ios-app on each simulator app and on an unsigned Shipping device build.
 sh scripts/ios-rust.sh --selftest    # 12 cases on a stand-in cargo, uname and shasum (CI's gates job)
 scripts/banned-api-check.sh --ios-app CONFIG APP mobile/ios/expected   # CONFIG Shipping or WithTestRegistry: a built
                                      # .app's Info.plist and privacy manifest against expected/, its own files alone, its

@@ -18725,6 +18725,25 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   WithTestRegistry 4 hits. The gate clean (446 files), `--workflows` clean, `--selftest` 1931 passed, 0 failed,
   `sh scripts/banned-api-faults.sh` 696 passed, 0 failed (--ios-app, like --apk and --image, is not faulted there:
   its input is a built app on macOS), `scripts/canaries.sh` all 102 checks ran, `cargo fmt --all --check` clean.
+  As built (M6 commit C4b, the workflow): `.github/workflows/entropy-ios.yml`, "Entropy iPhone", not a required check
+  (Q91), path filters as entropy-android.yml's for the app's inputs (mobile/ios, ffi, core, the manifests, the
+  toolchain file, vectors, banned-api-check.sh, ios-rust.sh, itself), push to main, weekly (Mondays 06:17 UTC) and
+  dispatch; read-only token, no secret, actions/checkout and actions/cache at the repo's pinned SHAs, no expression
+  in a run step (the matrix reaches the scripts through env), the PR head checked out, concurrency as
+  entropy-android.yml's. One job, two legs (fail-fast off): macos-26 with Xcode 26.6 and iPhone 17 on iOS 26.5;
+  macos-15 with Xcode 16.4 and iPhone 16 on iOS 18.6; each leg's Xcode by DEVELOPER_DIR
+  (/Applications/Xcode_X.app/Contents/Developer, the runner images' naming), its version checked; then the pinned
+  toolchain, the crate registry cache, `sh scripts/ios-rust.sh shipping` and `withTestRegistry`, `--selftest-ios-app`,
+  the simulator found by name and runtime in `simctl list devices available -j` (exactly one, none created), booted
+  and waited for (`bootstatus -b`), then per scheme `xcodebuild build-for-testing` and `test-without-building` on it
+  (`-destination id=`, CODE_SIGNING_ALLOWED=NO) and `--ios-app` on its simulator app, then a Shipping device build
+  (generic iOS, unsigned) scanned. Timeout 60 minutes until measured (M5-30's rule). CLAUDE.md's Commands note the
+  workflow.
+  Proof (M6 commit C4b, partial: local only, no CI run yet): `scripts/banned-api-check.sh --workflows
+  ../.github/workflows` "clean, 4 workflow(s)"; the file parses as YAML (Ruby's psych) with the matrix above, and its
+  device finder's Python, cut from the parsed step, picks a canned device list's one iPhone 17 on iOS 26.5. Not run:
+  the workflow itself (CI); the runner images' device names and the two Xcodes' handling of objectVersion 77 are read
+  from the plan's facts, not seen. C4 is ticked from the first green run (its ID and both legs' scan lines).
 - [ ] C5. The capture layers and the offline check, before any Protected screen exists: a cover over the whole scene
   while `isSceneCaptured` (SwiftUI) or `sceneCaptureState` (UIKit) reads active, and while `scenePhase` is not
   `.active` (the app-switcher snapshot); `userDidTakeScreenshotNotification` discarding the session with its
