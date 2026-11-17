@@ -123,6 +123,7 @@ clean-device-allowed/pi/app/src/device/usb.rs
 clean-device-allowed/pi/app/src/device/usb/tests.rs
 clean-ffi/ffi/guard/src/lib.rs
 clean-ffi/ffi/jni/src/lib.rs
+clean-ffi/ffi/capi/src/lib.rs
 clean-ffi/ffi/src/ceremony.rs
 clean-release-probe-call-after-closed-comments/core/examples/release_probe.rs
 clean-near-misses/tools/verify/offline.py

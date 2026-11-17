@@ -253,6 +253,8 @@ sh scripts/android-instrument.sh --selftest
 sh scripts/android-emulator.sh --selftest
 sh scripts/android-handoff.sh --selftest
 sh scripts/android-local.sh --selftest
+sh scripts/banned-api-faults.sh      # the gate's fault check (CI's lint job): every tool the gate runs, faulted at every
+                                     # place that runs it, must stop it with exit 2; run it after any change to the gate
 scripts/canaries.sh                  # 101 checks: proves every gate still fires, the scan's positive controls included
 ```
 

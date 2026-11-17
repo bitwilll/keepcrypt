@@ -18444,6 +18444,12 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   the FFI's four crates' tests in both configurations (10 suites ok each), deny ok, Vetting Succeeded, check-path-deps
   clean, the gate clean (421 files), `--workflows` clean, `--selftest` 414 + 414 + 414 + 413 passed, 0 failed,
   `scripts/canaries.sh` PASS, all 101 checks ran (8 min 59 s).
+  Proof (M6 commit B4c, the lead's review fix after Entropy CI 44016444537 at d9d6da16): the lint job's fault check
+  failed, "ffi_abi_scan: called from 2 places in the text, reached from 1 (lines 3124)": B4a added ffi_capi_abi, the
+  second caller, and the fault check's tree held no ffi/capi/src/lib.rs to reach it. clean-ffi gains the real
+  ffi/capi/src/lib.rs and banned-api-faults.sh's tree lists it. Locally: banned-api-faults.sh 591 runs, 591 passed,
+  0 failed (217 s); the gate's --selftest 1655 passed, 0 failed. CLAUDE.md's Commands gain the fault check, so every
+  change to the gate runs it (tasks/lessons.md, 2026-10-31: the scripts that read the changed one).
 - [ ] B5. CI: entropy-ci.yml's two iOS cross legs build `-p keepcrypt-capi` as a staticlib (release and
   test-registry, as the Android legs build jni) and scan `libkeepcrypt_capi.a` with `--artifact`
   (`_CCRandomGenerateBytes` imported, no other RNG symbol; the test-registry build exactly its marker and the test
