@@ -97,8 +97,7 @@ final class CeremonyBackTests: XCTestCase {
         }
     }
 
-    /// BackTest.kt's backDoesNothingUnderAPrivacyGateTheCoverOrTheWarning, its privacy gate half (the
-    /// cover's and the warning's come with the timers).
+    /// BackTest.kt's backDoesNothingUnderAPrivacyGateTheCoverOrTheWarning, its privacy gate half.
     func testBackDoesNothingUnderAPrivacyGate() {
         for screen in Walk.gated.sorted(by: { $0.rawValue < $1.rawValue }) {
             let rig = Walk.to(screen, gate: true)
@@ -107,6 +106,50 @@ final class CeremonyBackTests: XCTestCase {
             XCTAssertTrue(rig.model.state.gate, "\(screen.id): Back passed its privacy gate")
             assertSlotEmptied()
         }
+    }
+
+    /// BackTest.kt's backDoesNothingUnderAPrivacyGateTheCoverOrTheWarning, its cover and warning half:
+    /// on every screen but the long calls', under the cover (30 s on a Protected screen, a return to a
+    /// Public one) and, where something is held, under the warning, Back does nothing.
+    func testBackDoesNothingUnderTheCoverOrTheWarning() {
+        for screen in Walk.screens where !screen.isWorking {
+            let name = screen.id
+            let covered = Walk.to(screen)
+            if Walk.protected.contains(screen) {
+                covered.clock.now += Timers.coverMillis
+                covered.model.tick()
+            } else {
+                covered.model.appLeft()
+                covered.clock.now += 1_000
+                covered.model.appReturned()
+            }
+            assertBackDoesNothing(covered, .cover, "\(name) under the cover")
+            assertSlotEmptied()
+            let warned = Walk.to(screen)
+            if !warned.model.held {
+                assertSlotEmptied()
+                continue
+            }
+            warned.clock.now += Timers.warnMillis
+            warned.model.tick()
+            assertBackDoesNothing(warned, .warning, "\(name) under the warning")
+            assertSlotEmptied()
+        }
+    }
+
+    /// overlay shows over rig's screen, and Back leaves the screen, its page, the overlay and what is
+    /// held as they were (BackTest.kt's assertBackDoesNothing).
+    private func assertBackDoesNothing(_ rig: Rig, _ overlay: Overlay, _ what: String) {
+        let before = rig.model.state
+        XCTAssertEqual(before.overlay, overlay, what)
+        let held = rig.model.held
+        rig.model.back()
+        let after = rig.model.state
+        XCTAssertEqual(after.screen, before.screen, "\(what): Back moved")
+        XCTAssertEqual(after.page, before.page, "\(what): Back moved the page")
+        XCTAssertEqual(after.overlay, overlay, "\(what): Back took the overlay away")
+        XCTAssertEqual(rig.model.held, held, "\(what): Back changed what is held")
+        XCTAssertFalse(after.notice != nil && before.notice == nil, "\(what): Back wiped")
     }
 
     /// BackTest.kt's backDoesNothingInTheWordsStatesTheWalksScreensDoNotName.

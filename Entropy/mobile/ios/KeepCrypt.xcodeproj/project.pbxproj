@@ -51,6 +51,7 @@
 				Screen.swift,
 				Seams.swift,
 				SecureLayer.swift,
+				Timers.swift,
 				Wire.swift,
 			);
 			target = AC0000000000000000000302 /* KeepCryptTests */;

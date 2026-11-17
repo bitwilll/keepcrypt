@@ -18995,6 +18995,32 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   naming the halt function), `--workflows` clean, `cargo fmt --all --check` clean; on the commit's tree (a
   worktree): `--selftest` 4 x "486 passed, 0 failed", `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708
   passed, 0 failed", `scripts/canaries.sh` "PASS: all 102 checks ran" (572 s). Not run here: the simulator (CI).
+  As built (M6 commit D2b, the timers, the cover, idle and leaving): `KeepCrypt/Timers.swift`, Timers.kt's rules
+  and boundaries on the injected clock (the cover at 30 s on a Protected screen, the warning at 9 minutes and the
+  idle wipe at 10 while something is held, the background wipe at 60 s away, the picker rule); the model gains
+  Android's appReturned, appLeft, pickerOpened, appResumed (the exemption's end with the picker buttons'), input,
+  reading (Q80 (b)), dismissOverlay and tick, the foreground flag (a screen shown away from the app comes up
+  covered), the idle time restarted by every press, a gate passed and a picker's answer, and openPicker's
+  exemption. The platform: CaptureShield maps the scene's phase to the model (active: a return and a resume;
+  background: leaving; inactive: the app-switcher cover alone, as C5's) and ticks the model every second
+  (Timer.publish); Stage C's shell draws the model's cover and warning as one button each (dismissOverlay) until
+  D3 draws them in full. On the iPhone a configuration change never reaches the model as leaving (the scene stays
+  active), so the configuration tests hold the repeated return and resume to changing nothing, as Android's
+  recreated activity does. Tests: TimersTests (8, TimersTest.kt's each), CeremonyLeavingTests (4, LeavingTest.kt's
+  but theProtectedScreensAreTheDocsList, which is CeremonyWalkTests'), CeremonyIdleTests (5, IdleTest.kt's: in the
+  shipping build the snapshot test checks core's NoRegistryKey, since a snapshot loads only in the test-registry
+  build), CeremonyPickerPressTests (4, PickerPressTest.kt's), CeremonyBackTests +1 (the cover and warning half),
+  CeremonyConfigurationAndOnlineTests +2 (the configuration change on every screen and in the words' states, the
+  state compared field by field and object by object, sameState); Rig.startUp now returns to the app first.
+  Proof (M6 commit D2b, partial: local; CI at the next push): the macOS stand-in "Executed 48 tests, with 0
+  failures" (32 s) over the host's release archive and the same over its test-registry archive; with leaving a
+  Protected screen made a cover, the warning dropped from tick and the background wipe moved to 61 s (in a copy),
+  CeremonyLeavingTests, CeremonyIdleTests, CeremonyBackTests and CeremonyConfigurationAndOnlineTests fail
+  (restored). Local builds: build-for-testing of all three schemes and the Shipping device build succeeded, no
+  Swift warning; `--ios-app` clean on the three shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere;
+  `--selftest-ios-app` 33 passed; the gate clean (471 files), `--workflows` clean, `cargo fmt --all --check` clean;
+  on the commit's tree (a worktree): `--selftest` 4 x "486 passed, 0 failed", `sh scripts/banned-api-faults.sh` "708
+  runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102 checks ran" (564 s).
 - [ ] D3. The kit and the start: SwiftUI's fixed text, headings and pane titles; the pads (dice 1-6 with undo, letters
   for the first four letters, the go-ahead code, the BIP39 passphrase) as buttons only, never the system keyboard;
   First launch, Self-test, Go offline, Home, Length, Device entropy (Core Motion's accelerometer and gyroscope and

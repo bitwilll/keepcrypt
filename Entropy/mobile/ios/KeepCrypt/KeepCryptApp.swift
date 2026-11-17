@@ -58,31 +58,14 @@ struct StartView: View {
             TestRegistryStrip()
             #endif
             Spacer()
-            switch model.state.screen {
-            case .firstLaunch:
-                VStack(alignment: .leading, spacing: 16) {
-                    Text("First launch")
-                        .font(.title)
-                        .accessibilityIdentifier("first_launch")
-                    Button("Continue") {
-                        model.firstLaunchDone()
-                    }
-                    .accessibilityIdentifier("continue")
+            if let overlay = model.state.overlay {
+                // The model's cover or idle warning (D3 draws them in full): one tap takes it away.
+                Button(overlay == .cover ? "KeepCrypt: tap to show" : "The session is wiped in a minute without input: tap to keep it") {
+                    model.dismissOverlay()
                 }
-            case .selfTest:
-                Text("Running the self-test")
-                    .accessibilityIdentifier("self_test_running")
-            case .stop:
-                StopScreen(reason: model.state.halt)
-            case .goOffline:
-                GoOfflineScreen(model: model)
-            case .home:
-                Text("Home")
-                    .font(.title)
-                    .accessibilityIdentifier("home")
-            default:
-                Text(model.state.screen.title)
-                    .font(.title)
+                .accessibilityIdentifier(overlay == .cover ? "overlay_cover" : "overlay_warning")
+            } else {
+                screen
             }
             if let notice = model.state.notice {
                 Text(noticeLine(notice))
@@ -93,6 +76,37 @@ struct StartView: View {
         }
         .padding()
         .textSelection(.disabled)
+    }
+
+    /// The screen under no overlay.
+    @ViewBuilder
+    private var screen: some View {
+        switch model.state.screen {
+        case .firstLaunch:
+            VStack(alignment: .leading, spacing: 16) {
+                Text("First launch")
+                    .font(.title)
+                    .accessibilityIdentifier("first_launch")
+                Button("Continue") {
+                    model.firstLaunchDone()
+                }
+                .accessibilityIdentifier("continue")
+            }
+        case .selfTest:
+            Text("Running the self-test")
+                .accessibilityIdentifier("self_test_running")
+        case .stop:
+            StopScreen(reason: model.state.halt)
+        case .goOffline:
+            GoOfflineScreen(model: model)
+        case .home:
+            Text("Home")
+                .font(.title)
+                .accessibilityIdentifier("home")
+        default:
+            Text(model.state.screen.title)
+                .font(.title)
+        }
     }
 }
 

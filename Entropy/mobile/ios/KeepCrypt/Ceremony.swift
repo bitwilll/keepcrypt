@@ -332,9 +332,13 @@ private final class Handed<T> {
 ///   screen, which names it and which no input leaves; only its "Close app" does (Ceremony.halt).
 /// - A long call runs on the worker behind "Working..." (the start-up self-test behind its own screen),
 ///   which takes no input (work); so does a picked file's read.
-/// - Going online after the start-up, while a session or Check a backup's file is held or a long call
-///   runs, calls core's discard at once, even during a long call; the call's discarded reply then returns
-///   the UI to its start screen (toStart). A screenshot discards the same way, on every screen (C5).
+/// - Leaving the app during a long call or on a Protected screen, and going online after the start-up
+///   while a session or Check a backup's file is held or a long call runs, call core's discard at once,
+///   even during a long call; the call's discarded reply then returns the UI to its start screen
+///   (toStart). A screenshot discards the same way, on every screen (C5). On a Public screen leaving puts
+///   the privacy cover up, and 60 s away wipes. On the iPhone leaving is the scene going to the
+///   background, and coming back its next active phase (CaptureShield's scene phase).
+/// - The timers (Timers) cover, warn and wipe on each tick, which the app makes every second.
 /// - On every start First launch shows first, before any core call (lead decision M5-50); its Continue
 ///   runs the start-up self-test, then Go offline (its Start only offline), Home, Length, and the
 ///   ceremony, which needs the phone offline on every screen from Home on: Device entropy and Commitment
@@ -369,6 +373,7 @@ final class CeremonyModel: ObservableObject {
     private let date: UtcDate
     private let motion: MotionSource
     private let latch = HaltLatch()
+    private let timers: Timers
 
     /// The encrypted backup core made in memory (ciphertext, never in the state), from its encryption
     /// until the save screen and its calls are over.
@@ -387,6 +392,8 @@ final class CeremonyModel: ObservableObject {
     private var checked: OpenedBackup?
     /// The start-up self-test (First launch's Continue) has passed.
     private(set) var started = false
+    /// The app is in the foreground (between its return and its leaving; a picker it opened included).
+    private var foreground = false
     /// A picker the app opened is up, from the press that opened it until its answer, so a second press
     /// that would open one opens none (openPicker).
     private var pickerUp = false
@@ -412,6 +419,7 @@ final class CeremonyModel: ObservableObject {
         self.date = date
         self.motion = motion
         self.testRegistry = testRegistry
+        timers = Timers(clock: clock)
     }
 
     /// Check a backup's entries held now, a copy of the list (never drawn): the tests' look at their wiping.
@@ -447,10 +455,89 @@ final class CeremonyModel: ObservableObject {
         return .nothing
     }
 
-    /// The app is active again (the scene's phase, Android's resume): a picker the app opened is over,
-    /// so its buttons are free again even when its answer was lost (Stage U's U2c).
+    /// The app came back (the scene's active phase, Android's start). A configuration change, or a picker
+    /// the app opened, never left the app. Otherwise the background rule comes first (60 s away wipes
+    /// before anything shows). It never runs the start-up self-test: First launch's Continue does.
+    func appReturned() {
+        if stopped() { return }
+        if foreground {
+            timers.returned()
+            return
+        }
+        tick()
+        timers.returned()
+        foreground = true
+    }
+
+    /// The app went to the background (the scene's background phase, Android's stop), not for a picker
+    /// the app opened (the picker rule). During a long call and on a Protected screen the session is
+    /// discarded at once; on a Public screen the privacy cover goes up and the background time starts.
+    func appLeft() {
+        if stopped() || !foreground { return }
+        if !timers.left() { return }
+        foreground = false
+        let screen = state.screen
+        if screen.isWorking || screen.isProtected {
+            discard(.left)
+        } else {
+            state.overlay = .cover
+        }
+    }
+
+    /// The app opens a picker next, over its own scene: a leaving that follows is no leaving (the picker
+    /// rule), until the app's next resume.
+    func pickerOpened() {
+        timers.pickerOpened()
+    }
+
+    /// The app is active again (the scene's phase, Android's resume): the picker rule's exemption ends,
+    /// and a picker the app opened is over, so its buttons are free again even when its answer was lost
+    /// (Stage U's U2c).
     func appResumed() {
         pickerUp = false
+        timers.resumed()
+    }
+
+    /// A tap anywhere (the screens' touch handler, before the tap reaches its control): the idle time
+    /// starts again; a cover or a warning stays up until the tap on it takes it away (dismissOverlay).
+    /// Nothing during a long call or on the stop screen.
+    func input() {
+        if busy() { return }
+        timers.input()
+    }
+
+    /// A person reading the screen through VoiceOver (Q80 (b): a focus or a text read by its parts):
+    /// input, as a tap is. The idle warning shows only after 9 minutes without input, so a reading ends
+    /// it: on a Protected screen the cover it came over is back (only a tap shows a Protected screen
+    /// again), on a Public screen the screen is. A cover stays up until a tap takes it away.
+    func reading() {
+        if busy() { return }
+        timers.input()
+        if state.overlay == .warning { state.overlay = state.screen.isProtected ? .cover : nil }
+    }
+
+    /// The tap that takes the cover or the warning away; it does nothing else.
+    func dismissOverlay() {
+        if busy() { return }
+        timers.input()
+        state.overlay = nil
+    }
+
+    /// The timers' step now: the app calls it each second, and every return to the app does.
+    func tick() {
+        if busy() { return }
+        switch timers.step(onProtected: state.screen.isProtected, holdsSecrets: holds()) {
+        case .backgroundWipe:
+            discard(.background)
+        case .idleWipe:
+            discard(.idle)
+        case .warn:
+            if state.overlay != .warning { state.overlay = .warning }
+        case .cover:
+            if state.overlay == nil { state.overlay = .cover }
+        case nil:
+            break
+        }
     }
 
     /// A recording or mirroring of the screen is reported or no longer reported.
@@ -484,6 +571,7 @@ final class CeremonyModel: ObservableObject {
     /// The privacy gate's "I'm alone, show words": the Protected screen behind it shows.
     func passGate() {
         if busy() { return }
+        timers.input()
         state.gate = false
     }
 
@@ -994,6 +1082,7 @@ final class CeremonyModel: ObservableObject {
     func backupPlaced(_ place: DocumentPlace?) {
         pickerUp = false
         guard let file = backupFile, !busy(), state.screen == .backupSave else { return }
+        timers.input()
         guard let place else { return }
         if !place.write(file.bytes) {
             show(.backupSave) {
@@ -1420,8 +1509,8 @@ final class CeremonyModel: ObservableObject {
         }
     }
 
-    /// Going online, a screenshot, and in D2b leaving the app or a timer's wipe: core's discard, at once,
-    /// even during a long call. The stage and a checked backup go; the kept Wiped and a loaded snapshot
+    /// Leaving the app, going online, a timer's wipe or a screenshot: core's discard, at once, even during
+    /// a long call. The stage and a checked backup go; the kept Wiped and a loaded snapshot
     /// stay. With a long call running, its screen stays until its reply, then the start screen; otherwise
     /// the start screen now, saying why. A discard that is refused or overtaken breaks the bridge's
     /// contract and halts (C5's rule).
@@ -1607,6 +1696,7 @@ final class CeremonyModel: ObservableObject {
     ) {
         pickerUp = false
         if busy() || state.screen != .home { return }
+        timers.input()
         guard let file else { return }
         var refusal: FileRefusal?
         if !(file.name.map { CeremonyModel.endsWith($0, suffix) } ?? false) {
@@ -1643,10 +1733,12 @@ final class CeremonyModel: ObservableObject {
 
     /// A press on screen's button that opens a system picker over the app (Save, Check a backup, Load
     /// registry snapshot): through pressOn, and only while no picker the app opened is up; then the
-    /// picker. Its answer frees the buttons (Stage U's U2c).
+    /// picker rule's exemption (pickerOpened) and the picker. Its answer, or the next resume, frees the
+    /// buttons (Stage U's U2c).
     private func openPicker(_ screen: Screen, _ open: () -> Void) {
         if pickerUp || !pressOn(screen) { return }
         pickerUp = true
+        pickerOpened()
         open()
     }
 
@@ -1687,13 +1779,14 @@ final class CeremonyModel: ObservableObject {
 
     /// Shows screen (its page, notice and the public values fill sets), through the privacy gate when it
     /// is Protected and the screen it leaves is not (a long call's screen stands for the screen its call
-    /// came from).
+    /// came from). Away from the app the privacy cover stays up.
     private func show(_ screen: Screen, page: Int = 0, notice: Notice? = nil, _ fill: (inout UiState) -> Void = { _ in }) {
         let current = state
         let leaving = current.screen.isWorking ? from.screen : current.screen
         var next = UiState(screen: screen)
         next.page = page
         next.gate = screen.isProtected && !leaving.isProtected
+        next.overlay = foreground ? nil : .cover
         next.recording = current.recording
         next.offline = current.offline
         next.notice = notice
@@ -1790,10 +1883,12 @@ final class CeremonyModel: ObservableObject {
     private func holds() -> Bool { session || checkFile != nil }
 
     /// A press on screen's control reaches the model only while that screen shows, uncovered and past any
-    /// privacy gate, with no long call running.
+    /// privacy gate, with no long call running; it is input for the idle timer.
     private func pressOn(_ screen: Screen) -> Bool {
         let current = state
-        return !busy() && current.screen == screen && current.overlay == nil && !current.gate
+        if busy() || current.screen != screen || current.overlay != nil || current.gate { return false }
+        timers.input()
+        return true
     }
 
     /// Where Back goes from screen: only where nothing is lost; nil elsewhere.

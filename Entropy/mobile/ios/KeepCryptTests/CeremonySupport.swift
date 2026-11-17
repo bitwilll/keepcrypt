@@ -161,6 +161,7 @@ final class Rig {
     /// and the offline check's first report.
     @discardableResult
     func startUp() -> Rig {
+        model.appReturned()
         offline.set(offline.offline)
         return self
     }
@@ -511,6 +512,28 @@ final class FakeFile: PickedFile {
         given = secret
         return secret
     }
+}
+
+/// Whether two states are the same (Android's UiState equality): each value equal and each Secret, QR
+/// code, word page, verdicts, challenge, opened backup and export the same object.
+func sameState(_ a: UiState, _ b: UiState) -> Bool {
+    func same(_ x: AnyObject?, _ y: AnyObject?) -> Bool { x === y }
+    let values = a.screen == b.screen && a.page == b.page && a.gate == b.gate && a.overlay == b.overlay
+        && a.recording == b.recording && a.offline == b.offline && a.notice == b.notice && a.dice == b.dice
+        && a.diceOnly == b.diceOnly && a.commitment == b.commitment && a.seal == b.seal && a.registry == b.registry
+        && a.proof == b.proof && a.skipped == b.skipped && a.codeRefused == b.codeRefused && a.scanStop == b.scanStop
+        && a.scanRefusal == b.scanRefusal && a.reviewing == b.reviewing && a.swapTo == b.swapTo && a.matched == b.matched
+        && a.complete == b.complete && a.summary == b.summary && a.twoDevices == b.twoDevices
+        && a.wrongConfirm == b.wrongConfirm && a.backupName == b.backupName && a.saveFailure == b.saveFailure
+        && a.fileRefusal == b.fileRefusal && a.entryRefusal == b.entryRefusal && a.loaded == b.loaded
+        && a.snapshotRefusal == b.snapshotRefusal && a.halt == b.halt
+    let overview = (a.overview ?? []).count == (b.overview ?? []).count
+        && zip(a.overview ?? [], b.overview ?? []).allSatisfy { $0 === $1 } && (a.overview == nil) == (b.overview == nil)
+    let objects = same(a.checkRequest, b.checkRequest) && same(a.report, b.report) && same(a.insert, b.insert)
+        && same(a.mismatch, b.mismatch) && same(a.passphrase, b.passphrase) && same(a.registration, b.registration)
+        && same(a.deviceLeg, b.deviceLeg) && same(a.challenge?.questions.first?.choices.first, b.challenge?.questions.first?.choices.first)
+        && same(a.opened?.recheck, b.opened?.recheck) && same(a.watch?.account, b.watch?.account)
+    return values && overview && objects
 }
 
 /// Whether every byte of secret is zero.

@@ -10,10 +10,14 @@
 //   system sheet), the privacy cover replaces it too, so the snapshot iOS keeps shows the cover.
 // - **The screenshot response.** UIApplication.userDidTakeScreenshotNotification comes after the
 //   screenshot is saved; the model then discards whatever session exists and says why.
+// - **The session's lifetime** (tasks/todo.md, M6 item D2). The scene's phase reaches the model, active as
+//   a return and a resume, background as leaving the app (a Protected screen or a long call discards at
+//   once; a Public one is covered and wiped after 60 s away), and the model's timers tick every second.
 // - The fourth layer, Q88's secure layer, is SecureLayer.swift's, for the views of the words.
 //
 // The content's state lives in the model, never in the views the cover replaces.
 
+import Combine
 import SwiftUI
 import UIKit
 
@@ -50,6 +54,20 @@ struct CaptureShield<Content: View>: View {
         .background(CaptureStateProbe(captured: $windowCaptured))
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
             model.discardAfterScreenshot()
+        }
+        .onChange(of: scenePhase, initial: true) { _, phase in
+            switch phase {
+            case .active:
+                model.appReturned()
+                model.appResumed()
+            case .background:
+                model.appLeft()
+            default:
+                break
+            }
+        }
+        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { _ in
+            model.tick()
         }
         #if KC_TEST_HOOKS
         .overlay(alignment: .bottom) { TestHookPanel() }
