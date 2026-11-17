@@ -2785,3 +2785,263 @@ fn ffi_wire_malformed_inputs_halt() {
         assert_eq!(slot.holds(), HALTED, "op {op}");
     }
 }
+
+/// keepcrypt-capi's reply bound, `kc_max_out()` (tasks/todo.md, M6 item B2): its `MAX_OUT`, read
+/// from that crate's source, which this crate cannot depend on (the boundary depends on the guard
+/// alone, M5-35), so the bound is written once.
+fn capi_max_out() -> usize {
+    let source = include_str!("../capi/src/lib.rs");
+    let key = "const MAX_OUT: usize = ";
+    assert_eq!(source.matches(key).count(), 1, "one MAX_OUT");
+    let start = source.find(key).expect("MAX_OUT") + key.len();
+    let end = start + source[start..].find(';').expect("its end");
+    source[start..end]
+        .replace('_', "")
+        .parse()
+        .expect("a plain number")
+}
+
+/// gate seed dice-99-words24 at Ready, every insert read back: the 24-word stage.
+fn read_back_24(slot: &Slot) {
+    sealed(slot, "dice-99-words24");
+    done(slot.skip_check());
+    read_back_all(slot);
+}
+
+/// The 24-word passphrase's confirm passed: the longest encrypted backup.
+fn confirmed_24(slot: &Slot) {
+    read_back_24(slot);
+    done(slot.generate_backup_passphrase());
+    let right = right_picks(slot, &passphrase(slot));
+    assert!(done(slot.confirm_backup(right)), "the confirm passes");
+}
+
+/// "Check a backup"'s input for backup.json's file `name`: its passphrase's first four letters, a
+/// text each, then the file.
+fn open_backup_input(name: &str) -> Vec<u8> {
+    let age = common::backup().get("age_files").named(name);
+    let mut input: Vec<u8> = age
+        .get("passphrase")
+        .text()
+        .split(' ')
+        .flat_map(|word| text_field(&word.chars().take(4).collect::<String>()))
+        .collect();
+    if age.has("file_hex") {
+        input.extend(age.get("file_hex").hex());
+    } else {
+        input.extend_from_slice(age.get("file").text().as_bytes());
+    }
+    input
+}
+
+// Every reply fits keepcrypt-capi's buffer (tasks/todo.md, M6 item B2; lead decision M6-1): every op
+// of the table, each in a stage that offers it, over the vectors, with the inputs that give its
+// longest reply (24 words where the count matters: the word pages, the encrypted backup, zoo-24's
+// "Check a backup"; the watch-only export with and without a BIP39 passphrase; a read-back
+// mismatch; both passphrase pages), and each reply's length recorded. Every op answers OK, but the
+// registry's two ops, which a release build refuses for want of a key (19). The longest is held
+// under a quarter of `MAX_OUT`, so the bound has four times the room the replies need; every reply
+// is bounded by its layout (the QR matrices at version 11 at most, texts of one length byte, files
+// of a fixed seed), so no input grows one past what is measured here.
+#[test]
+fn ffi_wire_every_reply_fits_max_out() {
+    type Case = (u32, fn(&Slot) -> Vec<u8>);
+    let registry = registry_key_is_test();
+    let mut cases: Vec<Case> = vec![
+        (wire::SELF_TEST, |_| vec![]),
+        (wire::START, |_| vec![24, 1]),
+        (wire::ADD_EXTRA, |s| {
+            drive(s, StageKind::Collecting);
+            vec![1; 255]
+        }),
+        (wire::DEVICE_PROGRESS, |s| {
+            drive(s, StageKind::Collecting);
+            vec![]
+        }),
+        (wire::COMMIT, |s| {
+            done(s.start(SeedLength::Words24, Mode::Mixed));
+            vec![]
+        }),
+        (wire::COMMITMENT, |s| {
+            done(s.start(SeedLength::Words24, Mode::Mixed));
+            done(s.commit());
+            vec![]
+        }),
+        (wire::START_DICE, |s| {
+            drive(s, StageKind::Committed);
+            vec![]
+        }),
+        (wire::PUSH_ROLL, |s| {
+            drive(s, StageKind::Rolling);
+            vec![6]
+        }),
+        (wire::UNDO_ROLL, |s| {
+            drive(s, StageKind::Rolling);
+            done(s.push_roll(6));
+            vec![]
+        }),
+        (wire::DICE_PROGRESS, |s| {
+            rolled(s);
+            vec![]
+        }),
+        (wire::FINISH, |s| {
+            rolled(s);
+            vec![]
+        }),
+        (wire::SEAL, |s| {
+            sealed(s, "dice-99-words24");
+            vec![]
+        }),
+        (wire::SKIP_CHECK, |s| {
+            drive(s, StageKind::Sealed);
+            vec![]
+        }),
+        (wire::START_CHECK, |s| {
+            drive(s, StageKind::Sealed);
+            vec![]
+        }),
+        (wire::CHECK_REQUEST, |s| {
+            checking(s, "dice-99-words24");
+            vec![]
+        }),
+        (wire::REVEAL_CODE, |s| {
+            checking(s, "dice-99-words24");
+            go_ahead(&done(s.check_request())).into_bytes()
+        }),
+        (wire::REVEAL_PROOF, |s| {
+            checking(s, "dice-99-words12");
+            dated(VECTOR_DAY, proof_ur("clear-empty-bucket").as_bytes())
+        }),
+        (wire::MATCH_FOUND, |s| {
+            drive(s, StageKind::Checking);
+            vec![]
+        }),
+        (wire::CANNOT_CHECK, |s| {
+            drive(s, StageKind::Checking);
+            vec![]
+        }),
+        (wire::COLLISION_REPORT, |s| {
+            drive(s, StageKind::Restart);
+            vec![]
+        }),
+        (wire::WORD_PAGE, |s| {
+            read_back_24(s);
+            vec![24]
+        }),
+        (wire::CHECK_READBACK, |s| {
+            drive(s, StageKind::Ready);
+            vec![1, b'z', b'z', b'z', b'z']
+        }),
+        (wire::CHECK_READBACK, |s| {
+            drive(s, StageKind::Ready);
+            let first: String = done(s.word_page(1)).word().chars().take(4).collect();
+            let mut input = vec![1];
+            input.extend(first.bytes());
+            input
+        }),
+        (wire::SUMMARY, |s| {
+            read_back_24(s);
+            vec![]
+        }),
+        (wire::END, |s| {
+            drive(s, StageKind::Ready);
+            vec![]
+        }),
+        (wire::GENERATE_BACKUP_PASSPHRASE, |s| {
+            read_back_24(s);
+            vec![]
+        }),
+        (wire::WATCH_ONLY, |s| {
+            read_back_24(s);
+            vec![0]
+        }),
+        (wire::WATCH_ONLY, |s| {
+            read_back_24(s);
+            b"\x01TREZOR".to_vec()
+        }),
+        (wire::REGISTRATION, |s| {
+            read_back_24(s);
+            vec![]
+        }),
+        (wire::BACKUP_PASSPHRASE_PAGE, |s| {
+            ready_to_export(s);
+            vec![0]
+        }),
+        (wire::BACKUP_PASSPHRASE_PAGE, |s| {
+            ready_to_export(s);
+            vec![1]
+        }),
+        (wire::BACKUP_CHALLENGE, |s| {
+            ready_to_export(s);
+            vec![]
+        }),
+        (wire::CONFIRM_BACKUP, |s| {
+            ready_to_export(s);
+            right_picks(s, &passphrase(s)).to_vec()
+        }),
+        (wire::ENCRYPT_BACKUP, |s| {
+            confirmed_24(s);
+            vec![]
+        }),
+        (wire::VERIFY_BACKUP, |s| {
+            confirmed_24(s);
+            let file = wired(s, wire::ENCRYPT_BACKUP, &[]);
+            file[1 + usize::from(file[0])..].to_vec()
+        }),
+        (wire::REVEAL_DEVICE_LEG, |s| {
+            mixed_read_back(s);
+            vec![]
+        }),
+        (wire::DISCARD, |s| {
+            read_back_24(s);
+            vec![]
+        }),
+        (wire::WIPE_ALL, |s| {
+            read_back_24(s);
+            vec![]
+        }),
+        (wire::LOAD_SNAPSHOT, |_| {
+            dated(M5_DAY, &snapshot("with-dice-50"))
+        }),
+        (wire::OPEN_BACKUP, |_| open_backup_input("zoo-24")),
+        (wire::OPEN_BACKUP, |_| {
+            open_backup_input("abandon-12-binary")
+        }),
+    ];
+    if registry {
+        cases.push((wire::REVEAL_SNAPSHOT, |s| {
+            snapshot_checking(s);
+            M5_DAY.to_be_bytes().to_vec()
+        }));
+    }
+    let mut covered: Vec<u32> = cases.iter().map(|&(op, _)| op).collect();
+    covered.sort_unstable();
+    covered.dedup();
+    let mut every: Vec<u32> = (1..=38).collect();
+    if !registry {
+        every.retain(|&op| op != wire::REVEAL_SNAPSHOT);
+    }
+    assert_eq!(covered, every, "every op of the table");
+
+    let (mut longest, mut longest_op) = (0, 0);
+    for (op, setup) in cases {
+        let slot = Slot::new();
+        let input = Zeroizing::new(setup(&slot));
+        let reply = slot.dispatch(op, &input);
+        let refused = [wire::REFUSED, 19];
+        let registry_op = matches!(op, wire::LOAD_SNAPSHOT | wire::REVEAL_PROOF);
+        if registry_op && !registry {
+            assert_eq!(reply[..], refused, "op {op}: no registry key");
+        } else {
+            assert_eq!(reply.first(), Some(&wire::OK), "op {op}");
+        }
+        if reply.len() > longest {
+            (longest, longest_op) = (reply.len(), op);
+        }
+    }
+    let max_out = capi_max_out();
+    assert!(
+        longest * 4 <= max_out,
+        "the longest reply, op {longest_op}'s, is {longest} bytes: past a quarter of MAX_OUT, {max_out}"
+    );
+}

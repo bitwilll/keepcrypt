@@ -27,8 +27,10 @@ use core::{ptr, slice};
 /// format"): 75,497,598 bytes. A longer input is the shell's bug and halts before a byte is read.
 const MAX_INPUT: usize = 4 + 122 + 18 * (1 << 22);
 
-/// The reply bound, `kc_max_out()`: the size of the buffer Swift passes, which every reply fits
-/// (tasks/todo.md, M6 item B2 measures them). A reply past the caller's `out_cap` halts.
+/// The reply bound, `kc_max_out()`: the size of the buffer Swift passes. keepcrypt-ffi's
+/// ffi_wire_every_reply_fits_max_out drives every op over the vectors and holds the longest reply
+/// under a quarter of it (tasks/todo.md, M6 item B2): 1,399 bytes when measured, the 24-word
+/// encrypted backup's. A reply past the caller's `out_cap` halts.
 const MAX_OUT: usize = 16_384;
 
 /// An op the table does not hold (its ops run from 1, keepcrypt-ffi's wire.rs), on which `guarded`

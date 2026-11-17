@@ -28,7 +28,7 @@ const WORD_PAGE: u32 = 26;
 const OK: u8 = 0;
 const HALTED_INTERNAL: [u8; 2] = [3, 4];
 
-/// The reply bound (tasks/todo.md, M6 item B2).
+/// The reply bound, which ffi/tests' ffi_wire_every_reply_fits_max_out measures against.
 const MAX_OUT: usize = 16_384;
 /// keepcrypt-jni's input cap, a full snapshot with its date.
 const MAX_INPUT: usize = 75_497_598;

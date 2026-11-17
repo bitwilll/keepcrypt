@@ -18356,9 +18356,18 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   fully audited, 86 exempted), check-path-deps clean (104 packages; members exactly core, ffi, ffi/guard, ffi/jni,
   ffi/capi, pi/app, pi/sim), the gate clean (419 files), `--workflows` clean, `--selftest` 414 + 414 + 414 + 413 passed,
   0 failed, `scripts/canaries.sh` PASS, all 94 checks ran (8 min 31 s).
-- [ ] B2. `MAX_OUT`: a test in keepcrypt-ffi drives every op over the vectors and records the longest reply (the age
+- [x] B2. `MAX_OUT`: a test in keepcrypt-ffi drives every op over the vectors and records the longest reply (the age
   backup's armored file, the QR matrices, the watch-only export), and asserts it is under `MAX_OUT` with room; the
   bound and the measured longest are named in the Proof.
+  Proof (M6 commit B2, partial: local; CI at the next push): `ffi_wire_every_reply_fits_max_out` (ffi/tests/ceremony.rs)
+  drives all 38 ops (REVEAL_SNAPSHOT in the test-registry build alone), each in a stage that offers it, with the inputs
+  of its longest reply (24 words for the words page, the encrypted backup and zoo-24's "Check a backup"; the watch-only
+  export with and without "TREZOR"; a read-back mismatch; both passphrase pages), every reply OK but the registry's two
+  ops' refusal 19 in a release build. It reads `MAX_OUT` from ffi/capi/src/lib.rs (keepcrypt-ffi cannot depend on the
+  boundary) and holds the longest under a quarter of it. Measured longest: 1,399 bytes, ENCRYPT_BACKUP of
+  dice-99-words24 (then WATCH_ONLY 818, OPEN_BACKUP 241, CHECK_REQUEST 213), the same in both configurations; `MAX_OUT`
+  = 16,384, 11.7 times it. Release 1 passed, test-registry 1 passed; with `MAX_OUT` set to 4,096 the test fails ("the
+  longest reply, op 32's, is 1399 bytes: past a quarter of MAX_OUT, 4096"), restored.
 - [ ] B3. `ffi/capi/include/keepcrypt.h`, hand-written: exactly the two prototypes; a test (macOS and Linux hosts)
   builds the staticlib, reads its defined `kc_*` symbols with `llvm-nm` (the toolchain's) and compares them with the
   header's two names; a planted extra export fails it.
