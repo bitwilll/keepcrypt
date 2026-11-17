@@ -18912,6 +18912,33 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   with its id, its fixed title (screenTitle) and its kind (Protected or Public, isProtected). A JVM test in :screens'
   commonTest holds the Kotlin enum, screenTitle and isProtected to the table, and an XCTest holds the Swift `Screen`
   enum and its title and kind to it, so the two apps cannot drift (MA:17, MA:34).
+  As built (M6 commit D1): `mobile/screens.json`, written once by hand from Screen.kt's three tables (a one-off
+  reading of the file, not committed; the Kotlin test is the check, not a generator): an `about` line, then one line
+  per screen of the 49, in the enum's order, `{"id", "name", "title", "kind"}` (screenId, the Kotlin constant,
+  screenTitle, Protected or Public), 13 Protected. :screens' commonTest `ScreenTableTest` reads it through
+  entropyFile (the vectors' reader) as text and holds it whole: the opening, an about line of printable ASCII with
+  no quote or backslash, the screens' opening, each row exactly as rendered from Screen.entries (with its comma),
+  and the close, so any change to the enum, an id, a title or a kind fails until the table changes with it. The
+  iPhone: `KeepCrypt/Screen.swift`, `enum Screen: String, CaseIterable` in Screen.kt's order, the raw value its id,
+  `title` and `isProtected` exhaustive switches, `isWorking`; KeepCryptTests' `ScreenTableTests` reads the bundled
+  table (a TestVectors file reference, ../screens.json) with JSONSerialization and holds each case to its row: the
+  id, the Kotlin name in lower camel case against the case's own name, the title and the kind, and 49 rows. C5's
+  Stage C model now uses this Screen (.selfTest, .goOffline, .home, .stop with its reason beside it); its views and
+  tests follow. entropy-ios.yml's path filters gain Entropy/mobile/screens.json (entropy-android.yml's
+  Entropy/mobile/** has it).
+  Proof (M6 commit D1, partial: local; CI at the next push): `:screens:testAndroidHostTest` (JAVA_HOME the Android
+  Studio JBR, offline, strict verification) 38 classes, 209 tests, 0 failures (ScreenTableTest 1); with About's
+  title changed in Screen.kt, ScreenTableTest fails at the table's row (restored). The macOS XCTest stand-in (C3's
+  way: Core, Wire, Ceremony and Screen.swift with the unit tests but CaptureLayerTests, the host's release
+  libkeepcrypt_capi.a, `xcrun xctest`) "Executed 17 tests, with 0 failures" (ScreenTableTests 1); with D's title and
+  About's kind changed in Screen.swift, ScreenTableTests fails twice (restored). Local builds (Xcode 27.2, generic
+  simulator, CODE_SIGNING_ALLOWED=NO): build-for-testing "TEST BUILD SUCCEEDED" for all three schemes, no Swift
+  warning; the Shipping device build "BUILD SUCCEEDED"; `--ios-app Shipping` on the simulator and device apps and
+  `--ios-app WithTestRegistry` on its simulator app clean; the hooks marker on 1 line of the TestHooks binary, 0 in
+  the other three; `--selftest-ios-app` 33 passed. The gate clean (459 files), `--workflows` clean (4 workflows),
+  `cargo fmt --all --check` clean; on the commit's tree (a worktree): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (612 s).
 - [ ] D2. `Ceremony.swift`'s CeremonyModel, the Swift port of `:screens`' CeremonyModel.kt: the same states, screens,
   gate, overlays (the 30-second cover, the idle warning at 9 minutes and the wipe at 10), leaving rules (Protected:
   discard at once; Public: the privacy cover and a wipe after 60 s away), the press guard (300 ms after a new view),

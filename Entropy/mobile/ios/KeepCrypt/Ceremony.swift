@@ -56,34 +56,15 @@ enum StartScreen: Equatable {
 
 /// The stop screen's line for why the slot halted (Android's stopLine, pi-firmware.md's "Finish and
 /// halts"): one fixed line per reason, built from no data.
-func stopLine(_ reason: HaltReason) -> String {
+func stopLine(_ reason: HaltReason?) -> String {
     switch reason {
     case .knownAnswerTest: return "A known-answer test failed."
     case .entropySource: return "The entropy source failed."
     case .healthTest: return "An entropy health test failed."
     case .exportSelfCheck: return "The watch-only export failed its self-check."
     case .panic: return "The app's core stopped unexpectedly."
-    case .internal: return "An internal check failed."
+    case .internal, nil: return "An internal check failed."
     }
-}
-
-/// Stage C's screens (docs/mobile-apps.md, steps 2 and 3; Android's Screen, whose list Stage D's
-/// shared table brings in full).
-enum Screen: Equatable {
-    /// The start-up self-test, running.
-    case selfTest
-    /// The stop screen: the self-test did not pass, or the slot halted.
-    case stopped(HaltReason)
-    /// Go offline: the network state, and Start only while no path is usable.
-    case goOffline
-    /// Home, which Go offline's Start opens; the ceremony starts from here in Stage D.
-    case home
-
-    /// Whether the screen holds a session or a file (Android's holds()): none of Stage C's does.
-    var holds: Bool { false }
-
-    /// Whether the screen needs the phone offline (Android's needsOffline): every one from Home on.
-    var needsOffline: Bool { self == .home }
 }
 
 /// Why the session went, said on the screen the app returns to (Android's Notice).
@@ -114,7 +95,8 @@ enum PathStep: Equatable {
     case goOffline
 }
 
-/// The model of Stage C's screens. It owns the session's two app-wide rules: a screenshot discards
+/// The model of Stage C's screens (the start-up self-test, Go offline, Home and the stop screen, of
+/// Screen.swift's list). It owns the session's two app-wide rules: a screenshot discards
 /// whatever session exists, on every screen (docs/mobile-apps.md: the screenshot response), and going
 /// online after the start-up discards a session held or brings Go offline back (the offline row,
 /// Android's rule). Core is reached through the two calls the model is given, so its tests can watch
@@ -122,6 +104,8 @@ enum PathStep: Equatable {
 @MainActor
 final class CeremonyModel: ObservableObject {
     @Published private(set) var screen: Screen = .selfTest
+    /// Why the slot halted, on the stop screen alone.
+    @Published private(set) var halt: HaltReason?
     @Published private(set) var notice: Notice?
     /// No usable network path, as the offline check last reported it; until its first report the
     /// phone counts as online, so Start stays disabled (fail closed).
@@ -147,13 +131,13 @@ final class CeremonyModel: ObservableObject {
         guard !begun else { return }
         begun = true
         let outcome = await selfTest()
-        if case .stopped = screen { return }
+        if screen == .stop { return }
         switch outcome {
         case .passed:
             started = true
             if screen == .selfTest { screen = .goOffline }
         case .stopped(let reason):
-            screen = .stopped(reason)
+            stop(reason)
         }
     }
 
@@ -167,10 +151,10 @@ final class CeremonyModel: ObservableObject {
 
     /// The offline check's report, on every change of the path: offline is no usable path.
     func pathReported(offline now: Bool) {
-        if case .stopped = screen { return }
+        if screen == .stop { return }
         offline = now
         switch CeremonyModel.afterPathReport(
-            offline: now, started: started, holds: screen.holds, needsOffline: screen.needsOffline)
+            offline: now, started: started, holds: false, needsOffline: screen == .home)
         {
         case .nothing:
             break
@@ -184,7 +168,8 @@ final class CeremonyModel: ObservableObject {
     /// Android's offlineChanged: offline, or before the start-up self-test has passed, only the state
     /// changes; online after it, a session held is discarded at once and the start screen says why,
     /// and a screen past Go offline that holds nothing goes back to Go offline, with nothing to say.
-    /// (A stopped app takes no report.) Stage D's long calls join holds here, as Android's running.
+    /// (A stopped app takes no report.) No Stage C screen holds a session (holds is false on each), and
+    /// Home alone needs the phone offline; Stage D's screens and long calls join both, as Android's.
     nonisolated static func afterPathReport(offline: Bool, started: Bool, holds: Bool, needsOffline: Bool) -> PathStep {
         if offline || !started { return .nothing }
         if holds { return .discard }
@@ -196,7 +181,7 @@ final class CeremonyModel: ObservableObject {
     /// can keep whatever the screen showed, so on every screen, a secret held or not, Core's discard
     /// drops whatever session exists, and the screen says why. A stopped app has nothing to discard.
     func discardAfterScreenshot() {
-        if case .stopped = screen { return }
+        if screen == .stop { return }
         discard(.screenshot)
     }
 
@@ -207,11 +192,17 @@ final class CeremonyModel: ObservableObject {
         switch discardCall() {
         case .done:
             notice = why
-            if started, screen.needsOffline { screen = offline ? .home : .goOffline }
+            if started, screen == .home { screen = offline ? .home : .goOffline }
         case .halted(let reason):
-            screen = .stopped(reason)
+            stop(reason)
         case .refused, .discarded:
-            screen = .stopped(.internal)
+            stop(.internal)
         }
+    }
+
+    /// The stop screen, naming why the slot halted.
+    private func stop(_ reason: HaltReason) {
+        halt = reason
+        screen = .stop
     }
 }

@@ -10,6 +10,7 @@
 		AC0000000000000000000221 /* kcr.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000211 /* kcr.json */; };
 		AC0000000000000000000222 /* braille.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000212 /* braille.json */; };
 		AC0000000000000000000223 /* wire.rs in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000213 /* wire.rs */; };
+		AC0000000000000000000224 /* screens.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000214 /* screens.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -29,6 +30,7 @@
 		AC0000000000000000000211 /* kcr.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = kcr.json; path = ../../vectors/kcr.json; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000212 /* braille.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = braille.json; path = ../../vectors/braille.json; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000213 /* wire.rs */ = {isa = PBXFileReference; lastKnownFileType = text; name = wire.rs; path = ../../ffi/src/wire.rs; sourceTree = SOURCE_ROOT; };
+		AC0000000000000000000214 /* screens.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = screens.json; path = ../screens.json; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -45,6 +47,7 @@
 				CaptureShield.swift,
 				Ceremony.swift,
 				Core.swift,
+				Screen.swift,
 				SecureLayer.swift,
 				Wire.swift,
 			);
@@ -126,6 +129,7 @@
 				AC0000000000000000000211 /* kcr.json */,
 				AC0000000000000000000212 /* braille.json */,
 				AC0000000000000000000213 /* wire.rs */,
+				AC0000000000000000000214 /* screens.json */,
 			);
 			name = TestVectors;
 			sourceTree = "<group>";
@@ -240,6 +244,7 @@
 				AC0000000000000000000221 /* kcr.json in Resources */,
 				AC0000000000000000000222 /* braille.json in Resources */,
 				AC0000000000000000000223 /* wire.rs in Resources */,
+				AC0000000000000000000224 /* screens.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

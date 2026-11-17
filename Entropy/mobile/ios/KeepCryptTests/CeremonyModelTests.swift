@@ -94,12 +94,14 @@ final class CeremonyModelTests: XCTestCase {
         await rig.model.startUp()
         rig.reply = .halted(.panic)
         rig.model.discardAfterScreenshot()
-        XCTAssertEqual(rig.model.screen, .stopped(.panic))
+        XCTAssertEqual(rig.model.screen, .stop)
+        XCTAssertEqual(rig.model.halt, .panic)
         rig.model.discardAfterScreenshot()
         rig.model.pathReported(offline: true)
         rig.model.startOffline()
         XCTAssertEqual(rig.discards, 1, "a stopped app discards nothing more")
-        XCTAssertEqual(rig.model.screen, .stopped(.panic))
+        XCTAssertEqual(rig.model.screen, .stop)
+        XCTAssertEqual(rig.model.halt, .panic)
         XCTAssertFalse(rig.model.offline, "and takes no report")
     }
 
@@ -109,14 +111,16 @@ final class CeremonyModelTests: XCTestCase {
             await rig.model.startUp()
             rig.reply = reply
             rig.model.discardAfterScreenshot()
-            XCTAssertEqual(rig.model.screen, .stopped(.internal))
+            XCTAssertEqual(rig.model.screen, .stop)
+            XCTAssertEqual(rig.model.halt, .internal)
         }
     }
 
     func testAFailedSelfTestStopsTheAppBeforeAnyScreen() async {
         let rig = Rig(.stopped(.knownAnswerTest))
         await rig.model.startUp()
-        XCTAssertEqual(rig.model.screen, .stopped(.knownAnswerTest))
+        XCTAssertEqual(rig.model.screen, .stop)
+        XCTAssertEqual(rig.model.halt, .knownAnswerTest)
         XCTAssertFalse(rig.model.started)
         rig.model.discardAfterScreenshot()
         XCTAssertEqual(rig.discards, 0)

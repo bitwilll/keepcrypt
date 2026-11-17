@@ -45,14 +45,17 @@ struct StartView: View {
             case .selfTest:
                 Text("Running the self-test")
                     .accessibilityIdentifier("self_test_running")
-            case .stopped(let reason):
-                StopScreen(reason: reason)
+            case .stop:
+                StopScreen(reason: model.halt)
             case .goOffline:
                 GoOfflineScreen(model: model)
             case .home:
                 Text("Home")
                     .font(.title)
                     .accessibilityIdentifier("home")
+            default:
+                Text(model.screen.title)
+                    .font(.title)
             }
             if let notice = model.notice {
                 Text(noticeLine(notice))
@@ -92,7 +95,7 @@ struct GoOfflineScreen: View {
 /// The stop screen (docs/mobile-apps.md, "When something fails"): why the slot halted in one fixed
 /// line, and one action, which closes the app.
 struct StopScreen: View {
-    let reason: HaltReason
+    let reason: HaltReason?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
