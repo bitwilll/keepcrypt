@@ -247,9 +247,11 @@ xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-WithTestReg
 # hooks compiled in; never archived, never scanned as a shipped app; its binary must hold KC_TEST_HOOKS_DO_NOT_SHIP):
 xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test
 # CI: .github/workflows/entropy-ios.yml (not a required check) runs these on macos-26 (Xcode 26.6, iOS 26.5) and
-# macos-15 (Xcode 16.4, iOS 18.6): both libraries, --selftest-ios-app, build-for-testing and test-without-building of
-# each scheme on a simulator found by name, --ios-app on the Shipping and WithTestRegistry simulator apps and on an
-# unsigned Shipping device build, and the TestHooks app's hooks marker required.
+# macos-15 (Xcode 16.4, iOS 18.6), each leg as jobs: unit (both libraries, --selftest-ios-app, build-for-testing and
+# test-without-building of each scheme on a simulator found by name, the TestHooks UI tests but the journeys,
+# --ios-app on the Shipping and WithTestRegistry simulator apps and an unsigned Shipping device build, the TestHooks
+# app's hooks marker, and the journeys' groups checked against KC_JOURNEYS) and journeys, one job a group
+# (-only-testing of its TestHooks UI test classes); each job builds its own Rust library.
 sh scripts/ios-rust.sh --selftest    # 12 cases on a stand-in cargo, uname and shasum (CI's gates job)
 scripts/banned-api-check.sh --ios-app CONFIG APP mobile/ios/expected   # CONFIG Shipping or WithTestRegistry: a built
                                      # .app's Info.plist and privacy manifest against expected/, its own files alone, its
