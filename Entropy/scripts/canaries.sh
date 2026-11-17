@@ -1652,19 +1652,21 @@ fi
 # decision M6-5) the condition set in the app's Shipping configuration of the copy's real project
 # file and a second scheme naming the TestHooks configuration, must fail
 # scripts/banned-api-check.sh with exactly these sixteen hits, while the real project's TestHooks
-# configuration and UI-test scheme, the real hook file, the five allowed files, three
-# planted with what each may hold (the offline check's import and monitor, the document picker's
-# write in a catch that halts, the settings page opened) and the real tree's own Ceremony.swift
-# (C3's halt returning Never) and SecureLayer.swift (C5's field with isSecureTextEntry = true),
-# pass, and so does every other file of the real app. So a dropped rule, a widened allowance or a
-# scope that stops reaching mobile/ios turns CI red. Each planted file has a name the real tree
-# does not use (C5 and Stage D bring the offline check, the document picker and the settings page,
-# and this canary then reads their real files instead), and unplant removes it.
+# configuration and UI-test scheme, the real hook file, the five allowed files, two planted
+# with what each may hold (the document picker's write in a catch that halts, the settings page
+# opened) and the real tree's own Ceremony.swift (C3's halt returning Never), SecureLayer.swift
+# (C5's field with isSecureTextEntry = true) and OfflineCheck.swift (C5's import and monitor), pass,
+# and so does every other file of the real app. So a dropped rule, a widened allowance or a scope
+# that stops reaching mobile/ios turns CI red. Each planted file has a name the real tree does not
+# use (Stage D brings the document picker and the settings page, and this canary then reads their
+# real files instead), and unplant removes it.
 name=ios-swift-rules
 si=mobile/ios/KeepCrypt
 [ -f "$tmp/$si/Ceremony.swift" ] || { echo "FAIL: $name: the copy has no $si/Ceremony.swift"; exit 1; }
-[ -f "$tmp/$si/SecureLayer.swift" ] || { echo "FAIL: $name: the copy has no $si/SecureLayer.swift"; exit 1; }
-splanted="$si/KcGateCanary.swift $si/OfflineCheck.swift $si/DocumentPicker.swift
+for f in SecureLayer.swift OfflineCheck.swift; do
+    [ -f "$tmp/$si/$f" ] || { echo "FAIL: $name: the copy has no $si/$f"; exit 1; }
+done
+splanted="$si/KcGateCanary.swift $si/DocumentPicker.swift
 $si/OpenSettings.swift mobile/ios/Package.swift mobile/ios/Config/KcGateCanary.xcconfig tools/KcGateCanary.swift"
 for p in $splanted; do
     mkdir -p "$tmp/${p%/*}" || exit 1
@@ -1686,7 +1688,6 @@ do {
 }
 EOF
 echo 'UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!)' > "$tmp/$si/OpenSettings.swift" || exit 1
-printf '%s\n' 'import Network' 'let monitor = NWPathMonitor()' > "$tmp/$si/OfflineCheck.swift" || exit 1
 echo 'do { try sealed.write(to: url) } catch { Ceremony.halt(.backup) }' > "$tmp/$si/DocumentPicker.swift" || exit 1
 echo '// swift-tools-version: 5.9' > "$tmp/mobile/ios/Package.swift" || exit 1
 echo 'SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS' > "$tmp/mobile/ios/Config/KcGateCanary.xcconfig" || exit 1

@@ -18863,6 +18863,39 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   discard during the start-up self-test wait for it on the main thread (Stage D's long calls: C3's open note on a
   second reply buffer for DISCARD). (3) If a runner's simulator reports isSceneCaptured or sceneCaptureState active
   with nothing recording, every UI test meets the capture cover; the first CI run shows it.
+  As built (M6 commit C5c, the offline check): KeepCrypt/OfflineCheck.swift, the one file importing Network: an
+  NWPathMonitor started at the app's launch for the process's life, its handler reading each update afresh,
+  offline being `path.status != .satisfied` (unsatisfied or requiresConnection: no usable path), reported on the main
+  queue to CeremonyModel.pathReported; until the first report the model counts the phone as online (fail closed, Start
+  disabled). Screens: the self-test's passed screen becomes Go offline ("Self-test passed" kept on it), with the
+  network state line and Start, disabled while a path is usable (a press does nothing then either), and Home behind
+  it. The rule, Android's offlineChanged mirrored as a pure function (CeremonyModel.afterPathReport): offline, or before
+  the start-up self-test has passed, only the state changes; online after it, a session held is discarded at once
+  through Core's discard and the start screen says "The session was wiped: the phone went online."; a screen past Go
+  offline that holds nothing (Home) goes back to Go offline with nothing to say; a stopped app takes no report. No
+  Stage C screen holds a session (Screen.holds is false for each; Stage D's screens and long calls bring them), so in
+  the app today going online from Home brings Go offline back, and the discard branch is the unit tests'. A
+  screenshot's discard now returns a screen past Go offline to Home or Go offline as Android's toStart. TestHooks:
+  "Path usable" and "No path" force the offline check's state (every later report is the forced one, whatever the
+  monitor says), so the UI tests drive the same report path the monitor does. canaries.sh's ios-swift-rules reads the
+  real OfflineCheck.swift (no longer planted; checked present).
+  Proof (M6 commit C5c, partial: local, Xcode 27.2; CI at the next push): CeremonyModelTests 9 (new: a report before
+  the start-up only changes the state; Start opens Home only offline, an offline report again changes nothing, going
+  online on Home brings Go offline back with no notice and no discard; the decision table, every holds and
+  needsOffline value offline, before the start-up and after it, the discard wherever a session is held); the macOS
+  stand-in "Executed 16 tests, with 0 failures"; with the rule's discard turned into Go offline in a copy, 2 failures
+  in testGoingOnlineDecidesAsAndroid, restored. OfflineUITests (TestHooks scheme): Start disabled with the path
+  usable, enabled with none, Home, then Go offline back on going online with no notice. The built apps' Network
+  symbols (llvm-nm -m -u, the Shipping device app): NWPathMonitor's init, metadata and descriptor, its
+  pathUpdateHandler setter and start(queue:), NWPath's status getter and NWPath.Status's satisfied case, metadata and
+  Equatable conformance, 9 in all, each under --ios-app's two allowed prefixes; `--ios-app Shipping` (simulator and
+  device) and `--ios-app WithTestRegistry` clean (24 system libraries: Network now linked); the hooks marker 1 line in
+  the TestHooks binary, 0 in the others; build-for-testing of all three schemes and the device build succeeded.
+  The gate clean (455 files), `--workflows` clean, `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran", `--selftest-ios-app` 33 passed, `cargo fmt --all --check` clean. C5 stays open until CI's run on both
+  legs (the three schemes' unit and UI tests on the simulators, the TestHooks step's marker line, the job's time for
+  the budget).
 
 ### Verification (each maps to a gate item; refined with the plan)
 - [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest

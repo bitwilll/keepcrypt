@@ -11,8 +11,8 @@
 //
 // The hooks stand in for what a simulator cannot do on its own: a recording or mirroring of the
 // screen (the capture state forced on), the app switcher (the scene forced inactive), a hardware
-// screenshot (the system's notification posted, as iOS posts it). Each acts on the same inputs the real
-// events reach.
+// screenshot (the system's notification posted, as iOS posts it) and the network coming and going
+// (the offline check's state forced). Each acts on the same inputs the real events reach.
 
 #if KC_TEST_HOOKS
 import SwiftUI
@@ -31,6 +31,8 @@ final class TestHooks: ObservableObject {
     @Published var captured = false
     /// The scene forced inactive, as the app switcher leaves it.
     @Published var inactive = false
+    /// The app's offline check, whose state the path hooks force.
+    var offlineCheck: OfflineCheck?
 }
 
 /// The hook panel, drawn over the bottom of the scene in the TestHooks build, covers included.
@@ -51,6 +53,12 @@ struct TestHookPanel: View {
                     NotificationCenter.default.post(name: UIApplication.userDidTakeScreenshotNotification, object: UIApplication.shared)
                 }
                 .accessibilityIdentifier("hook_screenshot")
+            }
+            HStack {
+                Button("Path usable") { hooks.offlineCheck?.force(offline: false) }
+                    .accessibilityIdentifier("hook_path_usable")
+                Button("No path") { hooks.offlineCheck?.force(offline: true) }
+                    .accessibilityIdentifier("hook_path_none")
             }
         }
         .font(.caption)

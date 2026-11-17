@@ -22,7 +22,7 @@ final class CaptureUITests: XCTestCase {
         app.buttons["hook_capture"].tap()
         XCTAssertTrue(app.staticTexts["capture_cover"].waitForExistence(timeout: 10), "the capture cover")
         XCTAssertFalse(app.staticTexts["self_test_passed"].exists, "nothing of the screen under it")
-        XCTAssertFalse(app.staticTexts["self_test_running"].exists)
+        XCTAssertFalse(app.buttons["start"].exists, "nor its Start")
         app.buttons["hook_capture"].tap()
         XCTAssertTrue(app.staticTexts["self_test_passed"].waitForExistence(timeout: 10), "the screen again")
         XCTAssertFalse(app.staticTexts["capture_cover"].exists)

@@ -1,5 +1,5 @@
-// The model's app-wide rule (tasks/todo.md, M6 item C5): the screenshot discard on every screen, and the
-// stop screen taking no more.
+// The model's app-wide rules (tasks/todo.md, M6 item C5): the screenshot discard on every screen, going
+// online (Android's offlineChanged, mirrored), Start only offline, and the stop screen taking no more.
 // Core is reached through the two calls the model is given, so these tests count the discards and set
 // their replies; the real calls run in CoreTests and, through the app, in the UI tests.
 
@@ -24,17 +24,68 @@ final class CeremonyModelTests: XCTestCase {
         }
     }
 
+    func testAPathReportBeforeTheStartUpOnlyChangesTheState() async {
+        let rig = Rig()
+        rig.model.pathReported(offline: true)
+        rig.model.pathReported(offline: false)
+        XCTAssertEqual(rig.model.screen, .selfTest)
+        XCTAssertFalse(rig.model.offline)
+        XCTAssertEqual(rig.discards, 0)
+        await rig.model.startUp()
+        XCTAssertEqual(rig.model.screen, .goOffline)
+        XCTAssertTrue(rig.model.started)
+    }
+
+    func testStartOpensHomeOnlyWhileNoPathIsUsable() async {
+        let rig = Rig()
+        await rig.model.startUp()
+        XCTAssertFalse(rig.model.offline, "online until the first report")
+        rig.model.startOffline()
+        XCTAssertEqual(rig.model.screen, .goOffline, "Start does nothing online")
+        rig.model.pathReported(offline: true)
+        rig.model.startOffline()
+        XCTAssertEqual(rig.model.screen, .home)
+        rig.model.pathReported(offline: true)
+        XCTAssertEqual(rig.model.screen, .home, "each report read afresh; offline again changes nothing")
+        rig.model.pathReported(offline: false)
+        XCTAssertEqual(rig.model.screen, .goOffline, "online on Home, holding nothing: Go offline again")
+        XCTAssertNil(rig.model.notice, "nothing held, nothing to say")
+        XCTAssertEqual(rig.discards, 0)
+    }
+
+    func testGoingOnlineDecidesAsAndroid() {
+        let step = CeremonyModel.afterPathReport
+        // Offline, or before the start-up self-test has passed: only the state changes.
+        for holds in [false, true] {
+            for needsOffline in [false, true] {
+                XCTAssertEqual(step(true, true, holds, needsOffline), .nothing)
+                XCTAssertEqual(step(false, false, holds, needsOffline), .nothing)
+                XCTAssertEqual(step(true, false, holds, needsOffline), .nothing)
+                // Online after it: a session held is discarded at once, wherever it is held.
+                if holds { XCTAssertEqual(step(false, true, holds, needsOffline), .discard) }
+            }
+        }
+        // Online after it, nothing held: Go offline again from a screen that needs offline, else nothing.
+        XCTAssertEqual(step(false, true, false, true), .goOffline)
+        XCTAssertEqual(step(false, true, false, false), .nothing)
+    }
+
     func testAScreenshotDiscardsWhateverSessionExistsOnEveryScreen() async {
         let rig = Rig()
         rig.model.discardAfterScreenshot()
         XCTAssertEqual(rig.discards, 1, "during the start-up self-test")
         XCTAssertEqual(rig.model.notice, .screenshot)
         await rig.model.startUp()
-        XCTAssertEqual(rig.model.screen, .passed)
-        XCTAssertTrue(rig.model.started)
+        XCTAssertEqual(rig.model.screen, .goOffline)
         rig.model.discardAfterScreenshot()
-        XCTAssertEqual(rig.discards, 2, "after it, a Public screen with no secret held")
-        XCTAssertEqual(rig.model.screen, .passed)
+        XCTAssertEqual(rig.discards, 2, "on Go offline, a Public screen with no secret held")
+        XCTAssertEqual(rig.model.screen, .goOffline)
+        rig.model.pathReported(offline: true)
+        rig.model.startOffline()
+        XCTAssertNil(rig.model.notice, "Start clears the notice")
+        rig.model.discardAfterScreenshot()
+        XCTAssertEqual(rig.discards, 3, "on Home")
+        XCTAssertEqual(rig.model.screen, .home)
         XCTAssertEqual(rig.model.notice, .screenshot)
     }
 
@@ -45,8 +96,11 @@ final class CeremonyModelTests: XCTestCase {
         rig.model.discardAfterScreenshot()
         XCTAssertEqual(rig.model.screen, .stopped(.panic))
         rig.model.discardAfterScreenshot()
+        rig.model.pathReported(offline: true)
+        rig.model.startOffline()
         XCTAssertEqual(rig.discards, 1, "a stopped app discards nothing more")
         XCTAssertEqual(rig.model.screen, .stopped(.panic))
+        XCTAssertFalse(rig.model.offline, "and takes no report")
     }
 
     func testADiscardThatBreaksTheContractStopsTheAppAsInternal() async {
@@ -81,5 +135,6 @@ final class CeremonyModelTests: XCTestCase {
 
     func testTheNoticeLinesAreFixed() {
         XCTAssertTrue(noticeLine(.screenshot).hasPrefix("The session was wiped: a screenshot was taken."))
+        XCTAssertEqual(noticeLine(.offline), "The session was wiped: the phone went online.")
     }
 }
