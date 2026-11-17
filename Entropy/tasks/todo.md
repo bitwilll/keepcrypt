@@ -21065,7 +21065,8 @@ the same form and stays `[ ]`.
 - Matrix "Reproducible build" (APK): M7.
 - The six named items above, until a run shows their cause or the owner accepts them.
 
-### M5 gate status: MET (2026-11-17), waiting for the owner's approval
+### M5 gate status: MET (2026-11-17), approved by the owner and merged (PR bitwilll/keepcrypt#9)
+The owner's answer, 2026-11-17: "approve M5 gate, merge it".
 The gate in docs/build-plan.md:299: "Screenshot and recording tests come back blank; merged manifest has no INTERNET
 permission; backup round trip passes; snapshot import and Sparrow watch-only import work; a go-ahead QR from the test
 registry reveals the words and a Stop wipes them". Each part on CI (Entropy Android 43950082932, Entropy CI
@@ -21090,5 +21091,5 @@ registry reveals the words and a Stop wipes them". Each part on CI (Entropy Andr
   deliberate misread (Matrix "Metal read-back drill").
 - Named, not blocking (accepted 2026-11-17 with the Review's nine items): the six open items under "items the gate
   report names"; armeabi-v7a on no emulator; U3's TalkBack check not reported (P1's optional item).
-- For the owner: approve the M5 gate. On approval the lead records it here, marks PR bitwilll/keepcrypt#9 ready for
-  review and merges it only on the owner's word; nothing of M6 starts before that.
+- Approved 2026-11-17 ("approve M5 gate, merge it"); this commit records it, and PR bitwilll/keepcrypt#9 is merged
+  after the required checks pass on it. M6 starts only when the owner asks.
