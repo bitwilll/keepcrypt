@@ -18340,6 +18340,20 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Kotlin's) and limits URL opening to `UIApplication.openSettingsURLString` in one file (the camera prompt's "Open
   Settings"); M5's rule that flags any tracked file under mobile/ios/ is retired in C2's commit, replaced by A1's
   rules.
+- M6-7 (2026-11-17, from D4's report): the TestHooks configuration links the test-registry core and sets
+  `KC_WITH_TEST_REGISTRY` with `KC_TEST_HOOKS`, so a UI test can scan a test-registry go-ahead QR to its result
+  (ScanUITests). It is still used only by the UI-test scheme, never archived and never scanned as a shipped app;
+  Shipping and WithTestRegistry hold no hook, and `--ios-app` still requires the hooks marker absent from both. The
+  capture and offline UI tests now run over that core too; neither depends on the registry key.
+- M6-8 (2026-11-17, from D4's report): where an iOS API can fail only by throwing, Swift's rule 3 (a `catch` ends in
+  `Ceremony.halt` or a rethrow) makes that failure end the app. Two places differ from Android, which shows a line
+  and stays: the camera input that cannot be made after access was granted ends the app (`Ceremony.End.camera`,
+  Android: "camera stopped working"); a read error part-way through a picked `.kcr` or `.age` file ends the app
+  (FileHandle's read; the gate refuses `.open(`), where a file that cannot be opened at all still gets the refusal
+  line. Both fail closed and wipe; neither can come from a well-formed file on a working phone.
+- M6-9 (2026-11-17, from D4's report): the scan screen shows "Open Settings" after a refused camera, since iOS
+  asks for the camera once; it goes through `OpenSettings.swift`, the gate's one allowed URL. iOS cannot open the
+  airplane-mode settings page, so Go offline has no such button (D3's deviation 1).
 
 ### Stage B: the bridge (M6 commits 2-4)
 - [x] B1. `ffi/capi` (`keepcrypt-capi`): `[lib] name = "keepcrypt_capi"`, `crate-type = ["staticlib", "rlib"]`,

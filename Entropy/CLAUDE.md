@@ -243,8 +243,8 @@ sh scripts/ios-rust.sh shipping
 sh scripts/ios-rust.sh withTestRegistry
 xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-Shipping -configuration Shipping -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test
 xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-WithTestRegistry -configuration WithTestRegistry -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test
-# The UI tests with the app's test hooks (M6-5: the TestHooks configuration, shipping's library, the hooks compiled
-# in; never archived, never scanned as a shipped app; its binary must hold KC_TEST_HOOKS_DO_NOT_SHIP):
+# The UI tests with the app's test hooks (M6-5, M6-7: the TestHooks configuration, the test-registry library, the
+# hooks compiled in; never archived, never scanned as a shipped app; its binary must hold KC_TEST_HOOKS_DO_NOT_SHIP):
 xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test
 # CI: .github/workflows/entropy-ios.yml (not a required check) runs these on macos-26 (Xcode 26.6, iOS 26.5) and
 # macos-15 (Xcode 16.4, iOS 18.6): both libraries, --selftest-ios-app, build-for-testing and test-without-building of
