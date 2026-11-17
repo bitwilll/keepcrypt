@@ -18597,7 +18597,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   aarch64-apple-ios-sim 29,735,288 bytes 0820b45e80fe52b3cb2e48ea6f8c26d6e6941631c8fb21143adbda230774df08 (each copy
   the same). The gates job runs the selftest after android-rust.sh's; CLAUDE.md's Commands list the script and its
   selftest; `--workflows ../.github/workflows` clean.
-- [ ] C2. `mobile/ios/KeepCrypt.xcodeproj`, written by hand: one app target and two test targets (XCTest unit, XCUITest),
+- [x] C2. `mobile/ios/KeepCrypt.xcodeproj`, written by hand: one app target and two test targets (XCTest unit, XCUITest),
   Xcode's synchronized folders (objectVersion 77, Xcode 16 and later), deployment target iOS 17.0, no Swift package,
   no Run Script phase that fetches anything. Two configurations per flavour: `Shipping` (bundle id
   com.keepcrypt.entropy) and `WithTestRegistry` (com.keepcrypt.entropy.testregistry, its "TEST REGISTRY" strip), each
@@ -18644,7 +18644,12 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   26.5 23F77, iOS 27.0 24A434; none was installed). Needed from the owner: `sudo env
   DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -runFirstLaunch` (or Xcode's own first-launch
   prompt), after which `build test` on iPhone 17 (iOS 26.5) runs the unit and UI tests; or CI at C4.
-- [ ] C3. `Core.swift`: the one wrapper over `kc_call`, a reply buffer of `kc_max_out()` bytes allocated once, wiped
+  Proof (CI, the lead's, 2026-11-17: Entropy iPhone 44049143630 at ab3e8ab0, both legs green, macos-26 (Xcode 26.6,
+  iPhone 17, iOS 26.5) 826 s and macos-15 (Xcode 16.4, iPhone 16, iOS 18.6) 857 s; Entropy CI green): the hand-written project builds for testing and tests
+  for both schemes on both Xcodes ("** TEST BUILD SUCCEEDED **", "** TEST EXECUTE SUCCEEDED **" twice per leg), so
+  objectVersion 77's synchronized folders hold on Xcode 16.4 too; the device build of Shipping with
+  CODE_SIGNING_ALLOWED=NO succeeds on both legs.
+- [x] C3. `Core.swift`: the one wrapper over `kc_call`, a reply buffer of `kc_max_out()` bytes allocated once, wiped
   with `memset_s` after each call is read, -1 a halt; `Wire.swift`: keepcrypt-ffi's wire protocol (wire.rs), its
   status byte and every op's encoding, its decoders over `Data` copies that are wiped (`resetBytes`) when dropped.
   XCTest over vectors/: the self-test, a dice-only 50-roll ceremony to its words (dice-50-words12), every refusal and
@@ -18680,7 +18685,11 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   -O -wmo` into an XCTest bundle linking the host's release libkeepcrypt_capi.a (aarch64-apple-darwin) and run with
   `xcrun xctest`: "Executed 7 tests, with 0 failures". With memset_s replaced by nothing in a copy of Core.swift, the
   walk fails at "the reply buffer after a roll" and every later call's check. Not ticked until the simulator runs it.
-- [ ] C4. `.github/workflows/entropy-ios.yml` (Q91): non-required, legs on macos-26 (Xcode 26.6, iOS 26.5 simulator)
+  Proof (CI, the lead's, 2026-11-17: Entropy iPhone 44049143630 at ab3e8ab0, both legs green, macos-26 (Xcode 26.6,
+  iPhone 17, iOS 26.5) 826 s and macos-15 (Xcode 16.4, iPhone 16, iOS 18.6) 857 s; Entropy CI green): on the simulators of both legs, in both schemes, KeepCryptTests' CoreTests and
+  WireTests "Executed 7 tests, with 0 failures" and StartUpUITests "Executed 1 test, with 0 failures" (the
+  start-up self-test reaching its screen through the real library).
+- [x] C4. `.github/workflows/entropy-ios.yml` (Q91): non-required, legs on macos-26 (Xcode 26.6, iOS 26.5 simulator)
   and macos-15 (Xcode 16.4, iOS 18.6), the three approved actions pinned by SHA, read-only token, no secret: the
   Rust libraries (C1), `xcodebuild build-for-testing` and `test-without-building` for both configurations on the
   simulator, then the app scan: a new gate mode, `--ios-app APP`, over the built `.app` (its Mach-O: the
@@ -18751,6 +18760,12 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   stopped at its match ("Abort trap: 6") and pipefail failed the step, a race the macos-26 leg won. The step now
   reads the version once into a variable (M6 commit C4c); no other pipe in the workflow ends in an early-closing
   reader.
+  Proof (CI, the lead's, 2026-11-17: Entropy iPhone 44049143630 at ab3e8ab0, both legs green, macos-26 (Xcode 26.6,
+  iPhone 17, iOS 26.5) 826 s and macos-15 (Xcode 16.4, iPhone 16, iOS 18.6) 857 s; Entropy CI green): "selftest-ios-app: 33 passed, 0 failed" on both legs; `--ios-app`
+  clean on the Shipping simulator app, the Shipping device app and the WithTestRegistry simulator app (Info.plist and
+  the privacy manifest equal to mobile/ios/expected/, the OS import, no other RNG, no networking, pasteboard or
+  denied framework, the markers as each configuration needs) on both legs. The budget: 857 s x 1.25, 18 minutes
+  (M5-30), set in this commit.
 - [ ] C5. The capture layers and the offline check, before any Protected screen exists: a cover over the whole scene
   while `isSceneCaptured` (SwiftUI) or `sceneCaptureState` (UIKit) reads active, and while `scenePhase` is not
   `.active` (the app-switcher snapshot); `userDidTakeScreenshotNotification` discarding the session with its

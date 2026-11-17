@@ -82,9 +82,10 @@ jobs:
   app:
     name: iphone (${{ matrix.os }}, Xcode ${{ matrix.xcode }}, ${{ matrix.device }} iOS ${{ matrix.ios }})
     runs-on: ${{ matrix.os }}
-    # Budget (lead decision M5-30's rule): 60 minutes until the first green run is measured; then the
-    # measured time plus 25%, recorded in tasks/todo.md.
-    timeout-minutes: 60
+    # Budget (lead decision M5-30's rule): the measured whole job plus 25%, rounded up. The first green
+    # run, 44049143630 at ab3e8ab0, took 826 s on macos-26 and 857 s on macos-15: 857 s x 1.25 is
+    # 1071 s, so 18 minutes (tasks/todo.md, M6 item C4). A commit that adds tests re-measures it.
+    timeout-minutes: 18
     strategy:
       fail-fast: false
       matrix:
