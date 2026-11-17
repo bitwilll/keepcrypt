@@ -19619,6 +19619,10 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   workflows); the file parses as YAML (Ruby's Psych: jobs unit and journeys, two journeys rows); the UI test
   groups check, run locally from the workflow's text, passes on it and fails on KC_JOURNEYS short a class, on
   a row short a class and on a class with no file; the gate clean.
+  Proof (M6 commit U5b, on the final tree, a worktree at U5a): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (its workflow canaries among them: workflow-hardening, workflow-bootstrap and
+  workflow-review-before-gradle failed as intended, workflow-bootstrap-exception-empty passed; 1016 s in all).
 - [ ] U1. User journeys through the UI alone, one XCUITest per journey from First launch to Finish on both simulators,
   as M5's U1: mixed and dice-only, 12 and 24 words (24 with the device swap); the check by a typed code, a scanned
   proof (the Scan hook, M6-7, the camera's own path), a loaded snapshot and Skip; Match found and a scanned collision
