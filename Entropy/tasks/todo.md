@@ -19178,6 +19178,55 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   QR reader, the camera asked for only there), the code entry, Match found's and Cannot check's confirms, the
   collision result, its report QR, the result before the words; Load registry snapshot through the document picker
   (`.kcr`, kept in memory only).
+  As built (plan, 2026-11-17): CheckScreens.kt's screens, words, order and tags, the fixed texts pinned to the
+  Kotlin sources as D3's (CheckScreens.kt, Drawing.kt and WordsScreens.kt bundled too). (1) QR codes: core draws
+  every matrix (QrMatrix, as on Android, whose screens only paint it), so the iPhone uses no QR generator;
+  Drawing.kt's layout (whole modules inside the four-module quiet zone), the seal card's palette and the braille
+  cells are ported and pinned by DrawingTest.kt's cases. (2) The scan: AVFoundation's capture session with a
+  metadata output for QR codes and no preview layer (nothing the camera sees is drawn); the camera is asked for
+  as the scan screen opens and only there; a QR's text alone goes to the model's onGoAheadText, which core
+  parses and judges; frames never reach the app. A runtime error or interruption is ScanStop.failed. The
+  capture input's creation throws, and rule 3's catch rule lets a catch only halt or rethrow, so a camera that
+  cannot be opened after access was granted ends the app (Ceremony.halt) where Android says SCAN_FAILED; it is
+  named here for the lead. (3) After a refused camera the iPhone can never ask again, so the scan screen adds
+  "Open Settings" (OpenSettings.swift, the gate's one allowed settings call, M6-6) beside Android's two actions;
+  an iPhone-own button. (4) The collision-report QR is the first Protected screen: the privacy gate (Screens.kt's
+  PrivacyGate) and the QR drawn inside SecureLayer (Q88, mobile-apps.md's wrapper list names the seal code's
+  screens). (5) Load registry snapshot: SwiftUI's fileImporter (any data file; the model refuses a name not ending
+  in .kcr and a size past Core.snapshotMaxBytes before any byte is read), the file sized by stat and read once on
+  the model's worker through a FileHandle (the gate refuses any `.open(` call, so no stream), at most one byte
+  past the limit, into a Secret, the Data wiped, nothing kept or copied; a read error there raises (the
+  app ends) rather than Home's "could not be read", the handle's read having no throwing form that rule 3's
+  catch rule would let the app answer. Home's Load registry snapshot is enabled. (6) The canned scan for CI: a TestHooks-only scanner that,
+  when the UI test's launch environment carries a scanned text, holds the scan screen's callbacks instead of
+  starting the camera (the simulator has none) and hands that text on the hook panel's Scan button, the camera's
+  own path; to let a test-registry go-ahead QR reveal its result, the TestHooks configuration links the
+  test-registry archive and sets KC_WITH_TEST_REGISTRY beside KC_TEST_HOOKS (it was shipping's, M6-5); it is
+  still never archived or shipped, and the Shipping and WithTestRegistry apps hold no hook.
+  As built (M6 commit D4a, the check's screens and Load registry snapshot): `CheckScreens.swift` (the prompt,
+  the seal card, the check QR with its four answers, the code entry on D3's Crockford pad, the collision result,
+  the collision-report QR behind the privacy gate and inside SecureLayer, the result before the words, Load
+  registry snapshot's result), Kit.swift's OneWayConfirm (Skip's, Match found's and Cannot check's confirms),
+  Screens.swift's Protected wrapper and PrivacyGate (Screens.kt's; the SeedBook rules for D5's words),
+  `DrawingMath.swift` and `Drawing.swift` (QrLayout, QrKind, the seal card's palette, braille cells, and the
+  views that draw core's QrMatrix, the seal card and a row of cells), Texts.swift's CheckTexts and GateTexts
+  and the lines (snapshotLine, proofLine, scanLine, freshnessWarning, clearText, codeShown,
+  snapshotRefusalText), `DocumentPicker.swift` (ScreenPickers, the open picker's flag; PickedURLFile: stat's
+  size, one read through a FileHandle of at most limit + 1 bytes into a Secret, the Data wiped, the security
+  scope held only for the read), Screens.swift's fileImporter (any data file, its answer or its cancellation
+  to the model's snapshotPicked), and Home's Load registry snapshot enabled. The scan screen is D4b's.
+  Tests: DrawingTests (5, DrawingTest.kt's but the three refusals that end the app here, and QrKind's names),
+  CheckLinesTests (4: the registry lines and the result, the code's groups, the scan line for every state,
+  core's text for every snapshot refusal), ScreenTextsTests' pins grown by every new fixed text (CheckScreens.kt,
+  Drawing.kt and WordsScreens.kt bundled too) and the lines' Kotlin templates.
+  Proof (M6 commit D4a, partial: local; CI at the next push): the macOS stand-in "Executed 106 tests, with 0
+  failures" over the host's release archive and the same over its test-registry archive (conditions from
+  Xcode's settings); with "Destroy this seed" and the proof line reworded and the QR's offset halved wrongly (a
+  copy), ScreenTextsTests, CheckLinesTests and DrawingTests fail (restored). Local builds: all three schemes
+  built for testing and the Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps
+  (Info.plist unchanged); the hooks marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the
+  gate clean (494 files; its first run refused InputStream's `.open()`, SwOpenURL's, and two comments naming a
+  catch: a FileHandle reads instead, and the comments say rule 3), `cargo fmt --all --check` clean.
 - [ ] D5. The words: the privacy gate ("I'm alone, show words"), insert view (the word, its SeedBook number, five braille
   faces, blank faces and mirror pairs flagged) drawn inside SecureLayer, the overview, the device swap, the read-back
   entry, its mismatch and its end, the wallet summary.

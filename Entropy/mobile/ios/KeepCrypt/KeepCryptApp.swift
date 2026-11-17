@@ -10,6 +10,7 @@ struct KeepCryptApp: App {
     @StateObject private var model: CeremonyModel
     private let offlineCheck: OfflineCheck
     private let pressGuard = PressGuard()
+    @StateObject private var pickers = ScreenPickers()
 
     init() {
         #if KC_WITH_TEST_REGISTRY
@@ -33,7 +34,7 @@ struct KeepCryptApp: App {
     var body: some Scene {
         WindowGroup {
             CaptureShield(model: model) {
-                Screens(model: model, pressGuard: pressGuard)
+                Screens(model: model, pressGuard: pressGuard, pickers: pickers)
             }
         }
     }

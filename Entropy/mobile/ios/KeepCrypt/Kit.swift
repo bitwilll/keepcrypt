@@ -309,3 +309,26 @@ struct TestRegistryStrip: View {
             .accessibilityIdentifier("test_registry_strip")
     }
 }
+
+/// The one-way-choice confirm screen (docs/pi-firmware.md, "Confirmations": Skip, Match found and Cannot
+/// check each take one; Android's OneWayConfirm): the question, what cannot be undone, the one action that
+/// does it, and Back, which keeps everything and returns to the screen that offered the choice.
+struct OneWayConfirm: View {
+    let id: String
+    let testRegistry: Bool
+    let question: String
+    let consequence: String
+    let action: String
+    let onAction: () -> Void
+    let onBack: () -> Void
+
+    var body: some View {
+        KitScreen(id, testRegistry: testRegistry) {
+            Heading(question)
+            KitText(consequence)
+        } actions: {
+            KitButton(action, id: "confirm_action", action: onAction)
+            KitButton(CheckTexts.back, id: "back", action: onBack)
+        }
+    }
+}

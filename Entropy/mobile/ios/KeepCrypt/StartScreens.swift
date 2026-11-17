@@ -70,13 +70,14 @@ struct GoOfflineScreen: View {
 
 /// Home (docs/mobile-apps.md, step 4): New seed, Dice-only seed, Check a backup, Load registry snapshot and
 /// About (lead decision M5-48); why a file Check a backup or Load registry snapshot was given was not
-/// opened, when it was not; and the registry snapshot loaded, or that none is. Check a backup, Load
-/// registry snapshot and About are drawn disabled until their screens come (D4, D7; D3's plan, (2)).
+/// opened, when it was not; and the registry snapshot loaded, or that none is. Check a backup and About are
+/// drawn disabled until their screens come (D7; D3's plan, (2)); Load registry snapshot came with D4.
 struct HomeScreen: View {
     let state: UiState
     let testRegistry: Bool
     let onNewSeed: () -> Void
     let onDiceOnly: () -> Void
+    let onLoadSnapshot: () -> Void
 
     var body: some View {
         KitScreen(Screen.home.id, testRegistry: testRegistry) {
@@ -91,7 +92,7 @@ struct HomeScreen: View {
             KitButton(StartTexts.newSeed, id: "new_seed", action: onNewSeed)
             KitButton(StartTexts.diceOnlySeed, id: "dice_only_seed", action: onDiceOnly)
             KitButton(StartTexts.checkBackup, id: "check_backup", enabled: false) {}
-            KitButton(StartTexts.loadSnapshot, id: "load_snapshot", enabled: false) {}
+            KitButton(StartTexts.loadSnapshot, id: "load_snapshot", action: onLoadSnapshot)
             KitButton(StartTexts.about, id: "show_about", enabled: false) {}
         }
     }

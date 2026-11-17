@@ -18,6 +18,9 @@
 		AC0000000000000000000254 /* HomeScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000244 /* HomeScreens.kt */; };
 		AC0000000000000000000255 /* Kit.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000245 /* Kit.kt */; };
 		AC0000000000000000000256 /* BackupScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000246 /* BackupScreens.kt */; };
+		AC0000000000000000000257 /* CheckScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000247 /* CheckScreens.kt */; };
+		AC0000000000000000000258 /* Drawing.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000248 /* Drawing.kt */; };
+		AC0000000000000000000259 /* WordsScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000249 /* WordsScreens.kt */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -45,6 +48,9 @@
 		AC0000000000000000000244 /* HomeScreens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = HomeScreens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/HomeScreens.kt; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000245 /* Kit.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = Kit.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/Kit.kt; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000246 /* BackupScreens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = BackupScreens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/BackupScreens.kt; sourceTree = SOURCE_ROOT; };
+		AC0000000000000000000247 /* CheckScreens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = CheckScreens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/CheckScreens.kt; sourceTree = SOURCE_ROOT; };
+		AC0000000000000000000248 /* Drawing.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = Drawing.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/Drawing.kt; sourceTree = SOURCE_ROOT; };
+		AC0000000000000000000249 /* WordsScreens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = WordsScreens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/WordsScreens.kt; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -61,6 +67,7 @@
 				CaptureShield.swift,
 				Ceremony.swift,
 				Core.swift,
+				DrawingMath.swift,
 				Pads.swift,
 				PressGuard.swift,
 				Screen.swift,
@@ -156,6 +163,9 @@
 				AC0000000000000000000244 /* HomeScreens.kt */,
 				AC0000000000000000000245 /* Kit.kt */,
 				AC0000000000000000000246 /* BackupScreens.kt */,
+				AC0000000000000000000247 /* CheckScreens.kt */,
+				AC0000000000000000000248 /* Drawing.kt */,
+				AC0000000000000000000249 /* WordsScreens.kt */,
 			);
 			name = TestVectors;
 			sourceTree = "<group>";
@@ -278,6 +288,9 @@
 				AC0000000000000000000254 /* HomeScreens.kt in Resources */,
 				AC0000000000000000000255 /* Kit.kt in Resources */,
 				AC0000000000000000000256 /* BackupScreens.kt in Resources */,
+				AC0000000000000000000257 /* CheckScreens.kt in Resources */,
+				AC0000000000000000000258 /* Drawing.kt in Resources */,
+				AC0000000000000000000259 /* WordsScreens.kt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
