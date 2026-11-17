@@ -19227,6 +19227,34 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   (Info.plist unchanged); the hooks marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the
   gate clean (494 files; its first run refused InputStream's `.open()`, SwOpenURL's, and two comments naming a
   catch: a FileHandle reads instead, and the comments say rule 3), `cargo fmt --all --check` clean.
+  As built (M6 commit D4b, the scan): `GoAheadScanner.swift` (Seams.swift's QrScanner, Android's seam):
+  AVCaptureDevice's authorization asked as a scan starts (the prompt only then, NSCameraUsageDescription as C2
+  wrote it), a capture session with the default camera and an AVCaptureMetadataOutput for QR codes, no preview
+  layer, its delegate on the main queue handing the first QR text (4,296 characters at most) to found once and
+  stopping; a refused or restricted camera is ScanStop.refused, no camera .missing, a session that cannot take
+  the input or output or offers no QR type, or reports a runtime error, .failed; a scan stopped before a
+  prompt's answer drops it (a generation count). The input's creation throws, so it ends in `Ceremony.halt(.camera)`
+  (Ceremony.End gains .camera, plan (2)). CheckScreens.swift's ScanScreen (Android's: the guide, the scan line,
+  "Type go-ahead code" and Back; the scanner started while the screen shows uncovered and unstopped, stopped
+  otherwise and as it leaves) with the iPhone's "Open Settings" after a refusal (`OpenSettings.swift`, the gate's
+  allowed call). TestHooks: HookedScanner (with KC_HOOK_SCAN_TEXT in the launch environment it holds the scan
+  screen's callbacks and the panel's Scan hook hands that text to found; without it, the camera's scanner) and
+  the Scan hook; the TestHooks configuration now links the test-registry archive and sets KC_WITH_TEST_REGISTRY
+  beside KC_TEST_HOOKS, in the app's and the UI tests' configurations (plan (6)), and the UI-test bundle carries
+  kcr.json. ScanUITests (TestHooks): dice-50-words12's 50 rolls on the dice pad, Check now, the seal card's Seal
+  ID against kcr.json's, the check QR, the scan screen, the Scan hook with collision-dice-50's go-ahead QR text:
+  the collision result with its proof line.
+  Proof (M6 commit D4b, partial: local; CI at the next push, where the simulator runs ScanUITests): the macOS
+  stand-in "Executed 106 tests, with 0 failures" both ways (the scanner and the hooks are UIKit and AVFoundation
+  code, build-only here). Local builds: all three schemes built for testing and the Shipping device build, no
+  Swift warning; `--ios-app` clean on the three shipped apps (AVFoundation linked, no denied framework; Info.plist
+  unchanged); the hooks marker 1 line in TestHooks, 0 elsewhere; the registry marker now on 1 line of the
+  TestHooks binary (it links the test-registry core); `--selftest-ios-app` 33 passed; the gate clean (497 files),
+  `cargo fmt --all --check` clean; on the final tree (a worktree at D4b): `--selftest` 4 x "486 passed, 0 failed",
+  `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all
+  102 checks ran" (668 s).
+  For the lead: CLAUDE.md's Commands still describe the TestHooks configuration as linking shipping's library
+  (line 246); the plan's (6) changes that, and CLAUDE.md is not this agent's to edit.
 - [ ] D5. The words: the privacy gate ("I'm alone, show words"), insert view (the word, its SeedBook number, five braille
   faces, blank faces and mirror pairs flagged) drawn inside SecureLayer, the overview, the device swap, the read-back
   entry, its mismatch and its end, the wallet summary.

@@ -196,3 +196,14 @@ private func putBigEndian(_ bytes: inout [UInt8], _ at: Int, _ value: UInt64, _ 
         bytes[at + index] = UInt8(truncatingIfNeeded: value >> (8 * UInt64(size - 1 - index)))
     }
 }
+
+/// The go-ahead QR scanner (docs/mobile-apps.md, step 9; Android's QrScanner), the scan screen's: it runs
+/// while that screen shows uncovered and the scan has not stopped. start asks for the camera (the system's
+/// prompt, while the app does not hold it), then reads until one frame holds a QR code: its text goes to
+/// found, once, on the main thread, and the scan ends. A scan that cannot read ends with why instead
+/// (stopped, once, on the main thread). stop ends a scan at any time, a prompt's answer still to come
+/// included, and nothing reaches found or stopped after it. Nothing it reads is drawn, logged or kept.
+protocol QrScanner: AnyObject {
+    func start(found: @escaping (String) -> Void, stopped: @escaping (ScanStop) -> Void)
+    func stop()
+}

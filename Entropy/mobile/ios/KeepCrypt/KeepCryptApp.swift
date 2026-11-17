@@ -10,6 +10,7 @@ struct KeepCryptApp: App {
     @StateObject private var model: CeremonyModel
     private let offlineCheck: OfflineCheck
     private let pressGuard = PressGuard()
+    private let scanner: QrScanner
     @StateObject private var pickers = ScreenPickers()
 
     init() {
@@ -28,13 +29,18 @@ struct KeepCryptApp: App {
         offlineCheck.start()
         #if KC_TEST_HOOKS
         TestHooks.shared.offlineCheck = offlineCheck
+        let hooked = HookedScanner(camera: GoAheadScanner())
+        TestHooks.shared.scanner = hooked
+        scanner = hooked
+        #else
+        scanner = GoAheadScanner()
         #endif
     }
 
     var body: some Scene {
         WindowGroup {
             CaptureShield(model: model) {
-                Screens(model: model, pressGuard: pressGuard, pickers: pickers)
+                Screens(model: model, pressGuard: pressGuard, scanner: scanner, pickers: pickers)
             }
         }
     }

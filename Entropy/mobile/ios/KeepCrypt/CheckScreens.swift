@@ -1,8 +1,7 @@
 // The collision check and Load registry snapshot's result (tasks/todo.md, M6 item D4; Android's
 // CheckScreens.kt and HomeScreens.kt's SnapshotResult; docs/mobile-apps.md, step 9;
 // docs/seal-watchonly-braille.md, "Checking the seal", word for word): the prompt, Skip's confirm, the seal
-// card, its check QR with the checker's answers, the code entry on the Crockford pad (the scan screen comes
-// with its scanner, D4b), Match
+// card, its check QR with the checker's answers, the scan screen, the code entry on the Crockford pad, Match
 // found's and Cannot check's confirms, the collision result and its report QR (the first Protected screen),
 // and the result before the words. Each hands its presses to the ceremony model, which ignores a press its
 // screen no longer shows.
@@ -80,6 +79,50 @@ struct CheckQrScreen: View {
                 KitButton(CheckTexts.cannotCheck, id: "cannot_check", action: onCannotCheck)
             }
         }
+    }
+}
+
+/// The scan screen: the checker's go-ahead QR read with the camera, which nothing here draws (no preview):
+/// the screen only says how to aim and what the scan does. Its scanner runs while the screen shows
+/// uncovered and has not stopped: it starts as the screen opens, asking for the camera then, stops under
+/// the cover or the idle warning and starts again when that goes, and stops when the screen leaves. Its
+/// first text goes to onText (the model's onGoAheadText, which core checks behind "Working..."), and a stop
+/// without a code to onStopped. After a refused camera the iPhone adds "Open Settings" (iOS never asks
+/// again), the gate's one settings call.
+struct ScanScreen: View {
+    let state: UiState
+    let scanner: QrScanner
+    let testRegistry: Bool
+    let onText: (String) -> Void
+    let onStopped: (ScanStop) -> Void
+    let onTypeCode: () -> Void
+    let onBack: () -> Void
+
+    private var scanning: Bool {
+        state.overlay == nil && state.scanStop == nil && state.scanRefusal == nil
+    }
+
+    var body: some View {
+        let line = scanLine(state)
+        KitScreen(Screen.scan.id, testRegistry: testRegistry) {
+            Heading(Screen.scan.title)
+            KitText(CheckTexts.scanGuide)
+            KitText(line, style: line == CheckTexts.scanning ? .small : .warning, id: "scan_line", live: true)
+        } actions: {
+            if state.scanStop == .refused {
+                KitButton(CheckTexts.openSettings, id: "open_settings") { OpenSettings.show() }
+            }
+            KitButton(CheckTexts.typeCode, id: "type_code", action: onTypeCode)
+            KitButton(CheckTexts.back, id: "back", action: onBack)
+        }
+        .onChange(of: scanning, initial: true) { _, now in
+            if now {
+                scanner.start(found: onText, stopped: onStopped)
+            } else {
+                scanner.stop()
+            }
+        }
+        .onDisappear { scanner.stop() }
     }
 }
 

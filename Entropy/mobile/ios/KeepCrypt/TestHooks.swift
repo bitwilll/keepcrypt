@@ -11,8 +11,10 @@
 //
 // The hooks stand in for what a simulator cannot do on its own: a recording or mirroring of the
 // screen (the capture state forced on), the app switcher (the scene forced inactive), a hardware
-// screenshot (the system's notification posted, as iOS posts it) and the network coming and going
-// (the offline check's state forced). Each acts on the same inputs the real events reach.
+// screenshot (the system's notification posted, as iOS posts it), the network coming and going
+// (the offline check's state forced) and a QR code before the camera (D4: the scanner's found callback
+// handed the UI test's text, the camera's own path into the model; the simulator has no camera). Each acts
+// on the same inputs the real events reach.
 
 #if KC_TEST_HOOKS
 import SwiftUI
@@ -33,6 +35,45 @@ final class TestHooks: ObservableObject {
     @Published var inactive = false
     /// The app's offline check, whose state the path hooks force.
     var offlineCheck: OfflineCheck?
+    /// The scan screen's scanner while it scans, whose found callback the Scan hook calls.
+    var scanner: HookedScanner?
+
+    /// The text the UI test's launch environment gives the Scan hook (KC_HOOK_SCAN_TEXT), if any.
+    nonisolated static var scanText: String? {
+        ProcessInfo.processInfo.environment["KC_HOOK_SCAN_TEXT"]
+    }
+}
+
+/// The scanner in the TestHooks build: with a scan text in the launch environment it holds the scan
+/// screen's callbacks instead of starting the camera, and the Scan hook hands that text to found, as a
+/// QR code before the camera would; without one it is the app's own scanner.
+final class HookedScanner: QrScanner {
+    private let camera: QrScanner
+    private var found: ((String) -> Void)?
+
+    init(camera: QrScanner) {
+        self.camera = camera
+    }
+
+    func start(found: @escaping (String) -> Void, stopped: @escaping (ScanStop) -> Void) {
+        guard TestHooks.scanText != nil else {
+            camera.start(found: found, stopped: stopped)
+            return
+        }
+        self.found = found
+    }
+
+    func stop() {
+        found = nil
+        camera.stop()
+    }
+
+    /// The Scan hook: the launch environment's text to found, once, as a scanned QR code's.
+    func scan() {
+        guard let found, let text = TestHooks.scanText else { return }
+        self.found = nil
+        found(text)
+    }
 }
 
 /// The hook panel, drawn under the scene in the TestHooks build (outside the press guard), covers included.
@@ -59,6 +100,8 @@ struct TestHookPanel: View {
                     .accessibilityIdentifier("hook_path_usable")
                 Button("No path") { hooks.offlineCheck?.force(offline: true) }
                     .accessibilityIdentifier("hook_path_none")
+                Button("Scan") { hooks.scanner?.scan() }
+                    .accessibilityIdentifier("hook_scan")
             }
         }
         .font(.caption)

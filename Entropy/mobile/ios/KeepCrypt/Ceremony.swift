@@ -25,6 +25,9 @@ enum Ceremony {
         /// The bridge or the app broke its own contract: a value the app cannot have made, a wipe
         /// that did not happen.
         case bridge
+        /// The camera could not be opened for the scan after access was granted (GoAheadScanner): its
+        /// error has no answer but the app's end (rule 3).
+        case camera
     }
 
     /// Halts the slot, which drops everything it held, wipes Core's reply buffer and ends the process

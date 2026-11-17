@@ -21,6 +21,7 @@
 		AC0000000000000000000257 /* CheckScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000247 /* CheckScreens.kt */; };
 		AC0000000000000000000258 /* Drawing.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000248 /* Drawing.kt */; };
 		AC0000000000000000000259 /* WordsScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000249 /* WordsScreens.kt */; };
+		AC0000000000000000000261 /* kcr.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000211 /* kcr.json */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -298,6 +299,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				AC0000000000000000000261 /* kcr.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -458,12 +460,12 @@
 				GENERATE_INFOPLIST_FILE = NO;
 				INFOPLIST_FILE = KeepCrypt/Info.plist;
 				KC_DISPLAY_NAME = "KeepCrypt TEST HOOKS";
-				"OTHER_LDFLAGS[sdk=iphoneos*]" = "\"$(SRCROOT)/build/rust/shipping/aarch64-apple-ios/libkeepcrypt_capi.a\"";
-				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = "\"$(SRCROOT)/build/rust/shipping/aarch64-apple-ios-sim/libkeepcrypt_capi.a\"";
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = "\"$(SRCROOT)/build/rust/withTestRegistry/aarch64-apple-ios/libkeepcrypt_capi.a\"";
+				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = "\"$(SRCROOT)/build/rust/withTestRegistry/aarch64-apple-ios-sim/libkeepcrypt_capi.a\"";
 				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/KeepCryptCore";
 				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.testhooks;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "KC_TEST_HOOKS KC_WITH_TEST_REGISTRY";
 			};
 			name = TestHooks;
 		};
@@ -531,7 +533,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.uitests;
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "KC_TEST_HOOKS KC_WITH_TEST_REGISTRY";
 				TEST_TARGET_NAME = KeepCrypt;
 			};
 			name = TestHooks;

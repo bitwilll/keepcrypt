@@ -5,9 +5,9 @@
 // the touch's own time; M5-79): TouchGuard below, a gesture recognizer on the window that cancels a refused
 // touch before any control gets it. The cover and the warning lie over the screen and take the tap that
 // removes them, and while either is up the screen under it is hidden from VoiceOver (Q80 (a)). Each state's
-// pane title (paneTitle(of:), fixed text) is posted to VoiceOver as it opens (U3g). The document pickers are
-// the platform's seam (DocumentPicker.swift). The scan screen (D4b) and the screens past the check's result
-// draw their title alone until they come.
+// pane title (paneTitle(of:), fixed text) is posted to VoiceOver as it opens (U3g). The scan screen's scanner
+// and the document pickers are the platform's seams (GoAheadScanner.swift, DocumentPicker.swift). Screens
+// past the check's result draw their title alone until D5-D7 draw them.
 
 import SwiftUI
 import UIKit
@@ -16,6 +16,7 @@ import UIKit.UIGestureRecognizerSubclass
 struct Screens: View {
     @ObservedObject var model: CeremonyModel
     let pressGuard: PressGuard
+    let scanner: QrScanner
     @ObservedObject var pickers: ScreenPickers
 
     var body: some View {
@@ -90,6 +91,10 @@ struct Screens: View {
             CheckQrScreen(
                 state: state, testRegistry: registry, onScan: model.scanQr, onTypeCode: model.typeCode,
                 onMatchFound: model.matchFound, onCannotCheck: model.cannotCheck)
+        case .scan:
+            ScanScreen(
+                state: state, scanner: scanner, testRegistry: registry, onText: model.onGoAheadText,
+                onStopped: model.scanStopped, onTypeCode: model.typeCode, onBack: model.back)
         case .codeEntry:
             CodeEntryScreen(
                 state: state, code: model.goAheadCode, testRegistry: registry,
