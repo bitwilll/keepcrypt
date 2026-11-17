@@ -18151,14 +18151,15 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
 
 ### Inputs from M5 and earlier
 - M5 merged 2026-11-17 as d5c1a3a6 (PR bitwilll/keepcrypt#9, the owner's "approve M5 gate, merge it"); `m6-iphone`
-  is cut from it. Main's push runs at d5c1a3a6: Entropy CI 44004400421, Entropy Android 44004400403, Entropy Pi image
-  44004400523 (results recorded when read).
+  is cut from it. Main's push runs at d5c1a3a6, all green: Entropy CI 44004400421, Entropy Android 44004400403 (every
+  job), Entropy Pi image 44004400523 (both legs built, their scans passed, the two images equal).
 - Main's weekly Pi image run failed on 2026-11-02, 11-09 and 11-16 (runs 41444141646, 42620364124, 43869162827), all at
   95c43598 (M4's merge): the scan's Kconfig compare, "CONFIG_RUSTC_VERSION=109900" against 109901 in that tree's
   expected/linux.config, the kernel's probe of the runner's own rustc after a runner-image update. M4b's probe fix
   (74b80be, cherry-picked into M5 as 8y 79c75de, M5-34; expected/linux.config now pins 0) reached main only with
-  d5c1a3a6, so the scheduled runs built the old tree. The push run at d5c1a3a6 is the check; the next weekly run on
-  main is the closing bar (tasks/lessons.md 2026-10-31: the fix's own path, not a green run alone).
+  d5c1a3a6, so the scheduled runs built the old tree. The push run at d5c1a3a6 (44004400523) passed the Kconfig
+  compare with the probe pinned to 0, which is the fix's own path on main; the next weekly run on main confirms it
+  holds across a runner update.
 - From M5 for the iPhone: core, keepcrypt-ffi (the safe layer, its wire protocol and every rule) and keepcrypt-guard
   (the one panic catch) are platform-free; the cross legs already build and scan core for aarch64-apple-ios and
   aarch64-apple-ios-sim (`_CCRandomGenerateBytes` imported, no other RNG symbol). The screens' flow and every
