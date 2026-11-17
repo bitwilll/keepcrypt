@@ -19315,6 +19315,17 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   builds: all three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean
   on the three shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed;
   the gate clean (499 files), `cargo fmt --all --check` clean.
+  As built (M6 commit D5b, the words' UI test): WordsUITests (TestHooks): dice-50-words12's 50 rolls on the dice
+  pad, Skip and its confirm, Show words, the privacy gate (its SeedBook rules shown, no insert header behind it),
+  insert 1's header and face 6, Next to insert 12, the read-back started, insert 1's first four letters pressed on
+  the letter pad (its keys found by their labels, as Android's sensitive keys carry no tag), the match, and Next
+  to insert 2's entry. The secure layer's content is read by no UI test.
+  Proof (M6 commit D5b, partial: local build only; CI at the next push runs it on both simulators): the TestHooks
+  scheme built for testing with the test compiled, all three schemes and the device build, no Swift warning;
+  `--ios-app` clean on the three shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere; the gate
+  clean (500 files); on the final tree (a worktree at D5b): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1477 s, on a loaded Mac).
 - [ ] D6. The exports: the backup's passphrase, confirm and save (`.fileExporter` in DocumentPicker.swift, the file read
   back and verified, "Backup verified"), the watch-only offer, the BIP39 question and entry, the summary, the account
   and descriptor QRs, the registration offer and QR, Reveal D, the checklist and Finish.
