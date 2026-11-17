@@ -19280,6 +19280,41 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
 - [ ] D5. The words: the privacy gate ("I'm alone, show words"), insert view (the word, its SeedBook number, five braille
   faces, blank faces and mirror pairs flagged) drawn inside SecureLayer, the overview, the device swap, the read-back
   entry, its mismatch and its end, the wallet summary.
+  As built (plan, 2026-11-17): WordsScreens.kt's screens, words, order and identifiers, the fixed texts pinned to
+  the Kotlin sources as D3's and D4's. (1) Every secret of the Protected screens is drawn inside SecureLayer: the
+  insert's word, its SeedBook number and its five faces; the overview's four lines; the letters typed and the
+  matched word on the read-back entry; the mismatch's verdicts. The headers ("Insert 01 · device 1 of 1", the
+  read-back's and the mismatch's), face 6's engraved number and the fixed notes stay outside it, as Android
+  leaves them unmarked; the privacy gate (D4's PrivacyGate) carries the SeedBook rules before the words.
+  SecureLayer gains sizeThatFits (the hosted content's own size at the width offered), so wrapping text sizes
+  it. (2) The words: each body reads the WordPage, PadEntry or Mismatch the model holds as it draws, into a
+  String used for that drawing only (wordText wipes the word's own copy at once); no view keeps a secret in
+  @State, an observable of its own or a cache. What cannot be guaranteed: Swift's Strings and the text SwiftUI
+  draws and keeps for its rendering are not wiped (MA:17's iPhone residual), and the content hosted inside the
+  secure field is reachable by VoiceOver or not as UIKit decides (D8 settles it; labels are left as Android
+  has them, the words unlabelled beyond their text). (3) Braille: each face's letter, dots, lighter flag and
+  mirror partner are core's (WordPage), and the tests hold them to vectors/braille.json; no table of the app's.
+  The labels under the faces are Drawing.kt's ("leave blank", "mirror"). (4) The read-back types on D3's
+  letter pad. (5) A TestHooks UI test walks dice-50-words12 through Skip, the gate, insert 1 to 12 and the
+  first read-back (about 50 s of presses on top of D4's 75 s; the iPhone job then sits near 24 of its 29
+  minutes).
+  As built (M6 commit D5a, the words' screens): `WordsScreens.swift` (WordsInsertScreen, WordsOverviewScreen,
+  DeviceSwapScreen, ReadbackEntryScreen, ReadbackMismatchScreen, ReadbackDoneScreen, WalletSummaryScreen),
+  Drawing.swift's BrailleFaceView (the letter, the six dots with their numbers, the label, face 5 lighter),
+  DrawingMath.swift's faceLabel, Texts.swift's WordsTexts and the lines (insertHeader, overviewHeader,
+  readbackHeader, mismatchHeader, seedbookText, faceSixText, fingerprintHex, typedFaces, verdictLine, wordText,
+  overviewLine, digits), SecureLayer's sizeThatFits, and the screens wired in Screens.swift.
+  Tests: CeremonyWordsTests (4: every insert of dice-99-words24 against braille.json face by face with its label,
+  the headers and device 2 of 2 from word 13; CLAUDE.md's SeedBook cross-checks and every word's mirror
+  partners e/i, d/f, h/j, r/w in braille.json; the read-back's lines and the fingerprint; the summary's
+  fingerprint after a 12-word read-back), ScreenTextsTests' pins grown by WordsTexts, the face labels and the
+  headers' Kotlin forms.
+  Proof (M6 commit D5a, partial: local; CI at the next push): the macOS stand-in "Executed 110 tests, with 0
+  failures" over the host's release archive and the same over its test-registry archive; with the mirror label
+  dropped and the insert header's number widened (a copy), CeremonyWordsTests fails 40 times (restored). Local
+  builds: all three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean
+  on the three shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed;
+  the gate clean (499 files), `cargo fmt --all --check` clean.
 - [ ] D6. The exports: the backup's passphrase, confirm and save (`.fileExporter` in DocumentPicker.swift, the file read
   back and verified, "Backup verified"), the watch-only offer, the BIP39 question and entry, the summary, the account
   and descriptor QRs, the registration offer and QR, Reveal D, the checklist and Finish.

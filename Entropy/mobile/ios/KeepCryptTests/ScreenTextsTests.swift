@@ -50,6 +50,12 @@ final class ScreenTextsTests: XCTestCase {
             CheckTexts.scanNoRegistryKey, CheckTexts.snapshotNotLoaded, CheckTexts.snapshotLoaded,
             CheckTexts.snapshotLoadedNote, CheckTexts.snapshotRejected, CheckTexts.snapshotNoRegistryKey, GateTexts.line,
             GateTexts.action, GateTexts.headphones, GateTexts.seedBookRules, ShellTexts.redacted,
+            WordsTexts.readbackHow, WordsTexts.readbackMatched, WordsTexts.mirrors, WordsTexts.reviewing,
+            WordsTexts.readbackComplete, WordsTexts.deviceSwap, WordsTexts.deviceSwapWords, WordsTexts.compareAfterRestore,
+            WordsTexts.backToReadback, WordsTexts.previous, WordsTexts.next, WordsTexts.overview, WordsTexts.startReadback,
+            WordsTexts.insertView, WordsTexts.overviewNote, WordsTexts.readAgain, WordsTexts.showInsert,
+            WordsTexts.fingerprint, WordsTexts.firstAddress, faceLabel(blank: true, mirror: false),
+            faceLabel(blank: false, mirror: true),
         ] + HaltReason.allCases.map(stopLine) + QrKind.allCases.map(\.spoken)
     }
 
@@ -73,6 +79,16 @@ final class ScreenTextsTests: XCTestCase {
         XCTAssertTrue(source.contains("\"Proof from snapshot No. ${header.number}, dated ${registryDate(header.date)}: $entries in this seal's bucket.\""))
         XCTAssertTrue(source.contains("\"No collision for seal $sealId, as of the date your checker showed.\""))
         XCTAssertTrue(source.contains("\"No collision for seal $sealId as of ${registryDate(registry.date)}.\""))
+        // The words' headers, as WordsScreens.kt builds them.
+        XCTAssertTrue(source.contains("private const val PARTS = \" \u{00B7} \""))
+        XCTAssertTrue(source.contains("\"Insert \" + digits(insert.position, 2) + PARTS + deviceText(insert)"))
+        XCTAssertTrue(source.contains("\"Read back insert \" + digits(insert.position, 2) + PARTS + deviceText(insert)"))
+        XCTAssertTrue(source.contains("\" does not match\" + PARTS"))
+        XCTAssertTrue(source.contains("\"SeedBook \" + digits(number, 4)"))
+        XCTAssertTrue(source.contains("\"Face 6: the engraved number \" + digits(sequence, 2)"))
+        for verdict in ["\"ok\"", "\"mirror misread\"", "\"should be blank\"", "\"should have a letter\"", "\"wrong letter: missing\"", "\", extra\"", "\" none\""] {
+            XCTAssertTrue(source.contains(verdict), "WordsScreens.kt's verdict text " + verdict)
+        }
         for (refusal, tail) in [(Refusal.badSignature, "bad signature"), (.proofCount, "more bucket entries than the snapshot holds")] {
             XCTAssertEqual(snapshotRefusalText(refusal), CheckTexts.snapshotRejected + tail)
             XCTAssertTrue(source.contains("SNAPSHOT_REJECTED + \"" + tail + "\""))

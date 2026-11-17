@@ -3,7 +3,8 @@
 // is secure, which iOS leaves out of screenshots and recordings. Apple documents no such use and gives
 // no guarantee, so it is never the only layer (the capture cover and the screenshot discard carry the
 // gate either way), and I1 tests it on the owner's iPhone; if it hides nothing on current iOS, Q88
-// drops it by a doc edit. Stage D puts the word views in it.
+// drops it by a doc edit. Stage D puts the word views in it (D4 the collision report's QR, D5 the words,
+// their SeedBook numbers and faces, the overview, the letters read back and the verdicts).
 //
 // The field never takes input: it is never made first responder, takes no touch and is not an
 // accessibility element (the content inside it is read instead), so no keyboard can open. If the
@@ -27,6 +28,12 @@ struct SecureLayer<Content: View>: UIViewRepresentable {
 
     func updateUIView(_ view: SecureLayerView, context: Context) {
         view.show(AnyView(content))
+    }
+
+    /// The content's own size at the width offered (D5: text that wraps sizes the layer).
+    func sizeThatFits(_ proposal: ProposedViewSize, uiView: SecureLayerView, context: Context) -> CGSize? {
+        let width = proposal.width ?? UIView.layoutFittingExpandedSize.width
+        return uiView.host.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
     }
 }
 

@@ -92,3 +92,10 @@ func dotCentre(_ dot: Int, _ width: Double, _ height: Double) -> (x: Double, y: 
     let row = Double((dot - 1) % 3)
     return (width * (1 + 2 * column) / 4, height * (1 + 2 * row) / 6)
 }
+
+/// A face's label under its dots: a blank face says to leave it blank, a mirror letter to read it twice.
+func faceLabel(blank: Bool, mirror: Bool) -> String {
+    if blank { return "leave blank" }
+    if mirror { return "mirror" }
+    return ""
+}

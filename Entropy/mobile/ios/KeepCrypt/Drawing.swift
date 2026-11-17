@@ -92,3 +92,59 @@ struct BrailleCellsView: View {
         .accessibilityHidden(true)
     }
 }
+
+/// One face of an insert (docs/seal-watchonly-braille.md, "Braille backup"; Android's BrailleFace): its
+/// letter, its six dots with their numbers (1-3 left, 4-5-6 right), and under them "leave blank" or
+/// "mirror"; face 5 lighter. The dots are core's (WordPage's faces), never a table of the app's.
+struct BrailleFaceView: View {
+    let face: Face
+
+    /// The lighter colour of face 5 (the Pi's lighter dots).
+    private static let lighter = Color(red: 0x9E / 255, green: 0x9E / 255, blue: 0x9E / 255)
+
+    var body: some View {
+        let colour = face.isLighter ? BrailleFaceView.lighter : Color.white
+        VStack(spacing: 2) {
+            Text(face.isBlank ? " " : String(UnicodeScalar(face.letter)))
+                .font(.system(size: 24, weight: .bold))
+                .foregroundColor(colour)
+            HStack(spacing: 2) {
+                numbers(1, colour)
+                Canvas { context, size in
+                    let radius = min(size.width / 2, size.height / 3) * 0.35
+                    for dot in 1...6 {
+                        let centre = dotCentre(dot, Double(size.width), Double(size.height))
+                        let circle = Path(ellipseIn: CGRect(
+                            x: CGFloat(centre.x) - radius, y: CGFloat(centre.y) - radius, width: 2 * radius, height: 2 * radius))
+                        if isRaised(Int(face.dots), dot) {
+                            context.fill(circle, with: .color(colour))
+                        } else {
+                            context.stroke(circle, with: .color(colour), lineWidth: max(1, radius / 3))
+                        }
+                    }
+                }
+                .frame(width: 40, height: 60)
+                numbers(4, colour)
+            }
+            Text(faceLabel(blank: face.isBlank, mirror: face.mirrorPartner != 0))
+                .font(.system(size: 14))
+                .foregroundColor(colour)
+                .multilineTextAlignment(.center)
+        }
+        .padding(4)
+        .frame(maxWidth: .infinity)
+        .background(Color.black)
+    }
+
+    /// The numbers of the three dots of a column, first to first + 2, beside it.
+    private func numbers(_ first: Int, _ colour: Color) -> some View {
+        VStack(spacing: 0) {
+            ForEach(first..<(first + 3), id: \.self) { dot in
+                Text(String(dot))
+                    .font(.system(size: 12))
+                    .foregroundColor(colour)
+                    .frame(height: 20)
+            }
+        }
+    }
+}

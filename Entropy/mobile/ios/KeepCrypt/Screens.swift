@@ -7,7 +7,7 @@
 // removes them, and while either is up the screen under it is hidden from VoiceOver (Q80 (a)). Each state's
 // pane title (paneTitle(of:), fixed text) is posted to VoiceOver as it opens (U3g). The scan screen's scanner
 // and the document pickers are the platform's seams (GoAheadScanner.swift, DocumentPicker.swift). Screens
-// past the check's result draw their title alone until D5-D7 draw them.
+// past the wallet summary draw their title alone until D6 and D7 draw them.
 
 import SwiftUI
 import UIKit
@@ -118,6 +118,31 @@ struct Screens: View {
                 state: state, testRegistry: registry, passGate: model.passGate, onAddFreshEntropy: model.addFreshEntropy)
         case .checkResult:
             CheckResultScreen(state: state, testRegistry: registry, onShowWords: model.showWords)
+        case .words:
+            WordsInsertScreen(
+                state: state, testRegistry: registry, passGate: model.passGate, onPrevious: model.previousPage,
+                onNext: model.nextPage, onOverview: model.toOverview, onReadback: model.startReadback,
+                onBackToReadback: model.backToReadback, onBackupDone: model.backupWordsDone)
+        case .wordsOverview:
+            WordsOverviewScreen(
+                state: state, testRegistry: registry, passGate: model.passGate, onPrevious: model.previousPage,
+                onNext: model.nextPage, onInsertView: model.toInsertView)
+        case .deviceSwap:
+            DeviceSwapScreen(testRegistry: registry, onContinue: model.swapDone)
+        case .readbackEntry:
+            ReadbackEntryScreen(
+                state: state, letters: model.readbackLetters, testRegistry: registry, passGate: model.passGate,
+                onKey: { model.padKey(screen: .readbackEntry, page: state.page, key: $0) },
+                onDelete: { model.padDelete(screen: .readbackEntry, page: state.page) }, onDone: model.readbackTyped,
+                onNext: model.readbackNext)
+        case .readbackMismatch:
+            ReadbackMismatchScreen(
+                state: state, testRegistry: registry, passGate: model.passGate, onAgain: model.readbackAgain,
+                onShowInsert: model.reviewInsert)
+        case .readbackDone:
+            ReadbackDoneScreen(testRegistry: registry, onNext: model.showSummary)
+        case .wallet:
+            WalletSummaryScreen(state: state, testRegistry: registry, onNext: model.summaryDone)
         case .snapshot:
             SnapshotScreen(state: state, testRegistry: registry, onDone: model.snapshotDone)
         case .working:

@@ -299,3 +299,135 @@ func snapshotRefusalText(_ refusal: Refusal) -> String? {
     default: return nil
     }
 }
+
+/// The words' and the read-back's texts (Android's WordsScreens.kt; the Pi's wording).
+enum WordsTexts {
+    static let readbackHow = "Type faces 1-4 as punched on the metal. For a blank face 4, press Done after the three letters."
+    static let readbackMatched = "It matches the seed, which completes it as:"
+    static let mirrors = "Read the insert again, face by face: the mirror pairs e/i, d/f, h/j and r/w read twice."
+    static let reviewing = "Compare each face with the metal, then read this insert back again."
+    static let readbackComplete = "Every insert matches the seed. Next: the wallet summary."
+    static let deviceSwap =
+        "Close device 1 of 2, fastened shut, and put it away before you open device 2. Both insert sets are engraved 01-12."
+    static let deviceSwapWords = "Words 13-24 go on device 2 of 2."
+    static let compareAfterRestore = "Compare both after any restore."
+    static let backToReadback = "Back to the read-back"
+    static let previous = "Previous"
+    static let next = "Next"
+    static let overview = "Overview"
+    static let startReadback = "Start the read-back"
+    static let insertView = "Insert view"
+    static let overviewNote = "For the paper copy: each word with its position and SeedBook number."
+    static let readAgain = "Read it again"
+    static let showInsert = "Show the insert"
+    static let fingerprint = "Fingerprint"
+    static let firstAddress = "First receive address"
+}
+
+/// A word's letters past the fourth are drawn lighter (swb's insert view; the Pi's LIGHTER_FROM).
+let lighterFrom = 4
+
+/// The longest BIP39 word: the overview pads each word to it, so the SeedBook numbers line up.
+let longestWord = 8
+
+/// Between a header's parts, as the Pi writes it (a middle dot).
+private let parts = " \u{00B7} "
+
+/// number as width decimal digits, zero first (the Pi's push_number).
+func digits(_ number: Int, _ width: Int) -> String {
+    let text = String(number)
+    return String(repeating: "0", count: max(0, width - text.count)) + text
+}
+
+/// "device 1 of 2": the device core labels the insert with (swb, "24-word seeds").
+private func deviceText(_ insert: WordPage) -> String {
+    "device " + String(insert.device) + " of " + String(insert.devices)
+}
+
+/// The insert view's header (the Pi's): "Insert 01 · device 1 of 1".
+func insertHeader(_ insert: WordPage) -> String {
+    "Insert " + digits(insert.position, 2) + parts + deviceText(insert)
+}
+
+/// The overview's header (the Pi's): "Words 01-04 · device 1 of 1", the device of its first word.
+func overviewHeader(_ first: WordPage, _ last: WordPage) -> String {
+    "Words " + digits(first.position, 2) + "-" + digits(last.position, 2) + parts + deviceText(first)
+}
+
+/// The read-back entry's header (the Pi's): "Read back insert 01 · device 1 of 1".
+func readbackHeader(_ insert: WordPage) -> String {
+    "Read back insert " + digits(insert.position, 2) + parts + deviceText(insert)
+}
+
+/// The mismatch's header (the Pi's): "Insert 01 does not match · device 1 of 1".
+func mismatchHeader(_ insert: WordPage) -> String {
+    "Insert " + digits(insert.position, 2) + " does not match" + parts + deviceText(insert)
+}
+
+/// A SeedBook number as the insert view shows it (the Pi's): "SeedBook 0001", the word's 1-based BIP39 index.
+func seedbookText(_ number: Int) -> String {
+    "SeedBook " + digits(number, 4)
+}
+
+/// Face 6, the insert's engraved sequence number (the Pi's): "Face 6: the engraved number 01".
+func faceSixText(_ sequence: Int) -> String {
+    "Face 6: the engraved number " + digits(sequence, 2)
+}
+
+/// The wallet summary's fingerprint (the Pi's fingerprint_hex): its 4 bytes as 8 lower-case hex digits.
+func fingerprintHex(_ fingerprint: [UInt8]) -> String {
+    let hex = Array("0123456789abcdef")
+    var out = ""
+    for byte in fingerprint {
+        out.append(hex[Int(byte >> 4)])
+        out.append(hex[Int(byte & 0x0F)])
+    }
+    return out
+}
+
+/// The faces typed so far on the read-back entry (the Pi's): each letter, then a dash for each face still
+/// to come, "ab--".
+func typedFaces(_ letters: PadEntry) -> String {
+    var out = ""
+    for index in 0..<letters.capacity {
+        out.append(index < letters.length ? letters.keyAt(index) : "-")
+    }
+    return out
+}
+
+/// One face's verdict on the mismatch screen (the Pi's verdict_line): "Face 2: mirror misread" for a
+/// mirror-pair letter read as its partner, "should be blank", "should have a letter", or "wrong letter:
+/// missing 1 4, extra 2" with the dots the letter read lacks and has too many.
+func verdictLine(_ face: Int, _ verdict: FaceVerdict) -> String {
+    let text: String
+    switch verdict.verdict {
+    case .ok: text = "ok"
+    case .mirrorMisread: text = "mirror misread"
+    case .shouldBeBlank: text = "should be blank"
+    case .shouldHaveLetter: text = "should have a letter"
+    case .wrongLetter:
+        text = "wrong letter: missing" + dotsText(Int(verdict.missingDots)) + ", extra" + dotsText(Int(verdict.extraDots))
+    }
+    return "Face " + String(face) + ": " + text
+}
+
+/// Each raised dot's number after a space (dot d at bit d - 1), or " none" (the Pi's push_dots).
+private func dotsText(_ dots: Int) -> String {
+    let raised = (1...6).filter { isRaised(dots, $0) }
+    return raised.isEmpty ? " none" : raised.map { " " + String($0) }.joined()
+}
+
+/// insert's word as the text on screen (Q58: a String only for what is drawn), its copy wiped.
+func wordText(_ insert: WordPage) -> String {
+    let word = insert.word()
+    defer { word.wipe() }
+    return String(decoding: (0..<word.count).map { word[$0] }, as: UTF8.self)
+}
+
+/// An overview line (the Pi's): the position, the word padded to the longest, the SeedBook number,
+/// "01 abandon  0001".
+func overviewLine(_ insert: WordPage) -> String {
+    let word = wordText(insert)
+    return digits(insert.position, 2) + " " + word + String(repeating: " ", count: max(0, longestWord - word.count)) + " "
+        + digits(insert.seedbook, 4)
+}
