@@ -18385,7 +18385,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   header`: 2 passed (21 s with a fresh build dir). The real build with a planted export is B4b's canary
   capi-header-planted-export. The host library defines 14,671 external symbols, of them exactly `_kc_call` and
   `_kc_max_out` named `kc_`.
-- [ ] B4. The gate: capi becomes the second boundary. `#[no_mangle]`/`extern "C"` exports only in ffi/jni/src/lib.rs and
+- [x] B4. The gate: capi becomes the second boundary. `#[no_mangle]`/`extern "C"` exports only in ffi/jni/src/lib.rs and
   ffi/capi/src/lib.rs; a capi export needs the guard's one catch (as jni's); unsafe only in keepcrypt-jni and
   keepcrypt-capi; JNI names never in capi; the thread ban, Rule1's hashing and FailOpen over ffi/capi/src. Fixtures for
   each placement (hit and clean), the canaries' crate pins (members, direct dependencies, identical clippy.toml and
@@ -18413,6 +18413,21 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   it): `cargo fmt --all --check`, both clippy runs, `cargo deny --locked check`, `cargo vet --locked`,
   check-path-deps and `--workflows ../.github/workflows` clean; the gate clean, 414 files; `scripts/canaries.sh`
   PASS, all 94 checks ran (9 min 34 s).
+  Proof (M6 commit B4b, partial: local; CI at the next push): the canaries' crate pins grown by capi. Unsafe only in
+  keepcrypt-jni and keepcrypt-capi: the lint-table pin adds ffi/capi/Cargo.toml (`unused_must_use` forbid, no
+  `unsafe_code` forbid, as jni's), and jni_lint became boundary_lint CRATE, so `real-keepcrypt-capi-undocumented-unsafe-
+  block` and `real-keepcrypt-capi-two-unsafe-ops` fail clippy on the copy's capi lib.rs as jni's two do; ffi/capi/
+  clippy.toml joins the cmp with core's; the direct-dependency pin (now boundary_pins ROOT CRATE) holds keepcrypt-capi
+  to exactly keepcrypt-guard, and `capi-safe-layer-edge` (a dev-dependency on keepcrypt-ffi in the copy) fails it;
+  ffi_paths holds capi's targets at their default paths; `capi-export-tie` (the copy's real capi lib.rs with kc_call's
+  guarded call replaced by the safe layer's) fails the gate with exactly 1 hit at kc_call's fn line; and
+  `capi-header-planted-export` (a planted `kc_planted` export in the copy) fails ffi/capi/tests/header.rs on a real
+  build, naming it. The shared lint and clippy.toml comments name ffi/capi (all six clippy.toml files changed alike, so
+  the cmp and the guard check still hold); jni's description and doc say capi is the other unsafe crate. want_checks
+  94 -> 101, and CLAUDE.md's canaries line says 101. On the commit's own tree (a worktree at it): fmt, both clippy runs,
+  the FFI's four crates' tests in both configurations (10 suites ok each), deny ok, Vetting Succeeded, check-path-deps
+  clean, the gate clean (421 files), `--workflows` clean, `--selftest` 414 + 414 + 414 + 413 passed, 0 failed,
+  `scripts/canaries.sh` PASS, all 101 checks ran (8 min 59 s).
 - [ ] B5. CI: entropy-ci.yml's two iOS cross legs build `-p keepcrypt-capi` as a staticlib (release and
   test-registry, as the Android legs build jni) and scan `libkeepcrypt_capi.a` with `--artifact`
   (`_CCRandomGenerateBytes` imported, no other RNG symbol; the test-registry build exactly its marker and the test

@@ -357,38 +357,42 @@ need "-F clippy::disallowed-methods"
 need "could not compile \`keepcrypt-ffi\` (lib) due to 1 previous error"
 verdict
 
-# keepcrypt-jni, the one crate with unsafe code (tasks/todo.md, M5 groups 7 and 10): an unsafe block
-# with no SAFETY: comment, and one with two unsafe operations, each appended to the copy's real
-# ffi/jni/src/lib.rs, must fail clippy as CI runs it, with its own lint and nothing else, so neither
-# lint can be relaxed in that crate unseen (a crate-level #![expect], or the line dropped from its
-# [lints.clippy], which the static check below also pins).
-# jni_lint NAME TEXT...: appends stdin to the copy's ffi/jni/src/lib.rs, runs clippy on
-# keepcrypt-jni, restores the file, and needs every TEXT and exactly one error in that file.
-jni_lint() {
-    name=$1
-    shift
-    cat "$root/ffi/jni/src/lib.rs" - > "$tmp/ffi/jni/src/lib.rs" || exit 1
+# keepcrypt-jni and keepcrypt-capi, the two crates with unsafe code (tasks/todo.md, M5 groups 7 and
+# 10; M6 item B4): an unsafe block with no SAFETY: comment, and one with two unsafe operations, each
+# appended to the copy's real ffi/jni/src/lib.rs and ffi/capi/src/lib.rs, must fail clippy as CI
+# runs it, with its own lint and nothing else, so neither lint can be relaxed in either crate unseen
+# (a crate-level #![expect], or the line dropped from its [lints.clippy], which the static check
+# below also pins).
+# boundary_lint CRATE NAME TEXT...: appends stdin to the copy's ffi/CRATE/src/lib.rs (CRATE jni or
+# capi), runs clippy on keepcrypt-CRATE, restores the file, and needs every TEXT and exactly one
+# error in that file.
+boundary_lint() {
+    crate=$1
+    name=$2
+    shift 2
+    cat "$root/ffi/$crate/src/lib.rs" - > "$tmp/ffi/$crate/src/lib.rs" || exit 1
     expect_failure "$name" cargo clippy --color never --manifest-path "$tmp/Cargo.toml" \
-        -p keepcrypt-jni --lib --locked --target-dir "$root/target/canary-real" -- -D warnings
-    cp "$root/ffi/jni/src/lib.rs" "$tmp/ffi/jni/src/lib.rs" || exit 1
+        -p "keepcrypt-$crate" --lib --locked --target-dir "$root/target/canary-real" -- -D warnings
+    cp "$root/ffi/$crate/src/lib.rs" "$tmp/ffi/$crate/src/lib.rs" || exit 1
     for text in "$@"; do
         need "$text"
     done
-    need "--> ffi/jni/src/lib.rs:"
-    need "could not compile \`keepcrypt-jni\` (lib) due to 1 previous error"
+    need "--> ffi/$crate/src/lib.rs:"
+    need "could not compile \`keepcrypt-$crate\` (lib) due to 1 previous error"
     verdict
 }
-jni_lint real-keepcrypt-jni-undocumented-unsafe-block "unsafe block missing a safety comment" \
-    "#undocumented_unsafe_blocks" "-D clippy::undocumented-unsafe-blocks" <<'EOF'
+for crate in jni capi; do
+    boundary_lint "$crate" "real-keepcrypt-$crate-undocumented-unsafe-block" "unsafe block missing a safety comment" \
+        "#undocumented_unsafe_blocks" "-D clippy::undocumented-unsafe-blocks" <<'EOF'
 
 /// Gate canary (scripts/canaries.sh, temp copy only): an unsafe block with no SAFETY: comment.
 pub fn kc_gate_canary(byte: &u8) -> u8 {
     unsafe { core::ptr::read(byte) }
 }
 EOF
-jni_lint real-keepcrypt-jni-two-unsafe-ops \
-    "this \`unsafe\` block contains 2 unsafe operations, expected only one" \
-    "#multiple_unsafe_ops_per_block" "-D clippy::multiple-unsafe-ops-per-block" <<'EOF'
+    boundary_lint "$crate" "real-keepcrypt-$crate-two-unsafe-ops" \
+        "this \`unsafe\` block contains 2 unsafe operations, expected only one" \
+        "#multiple_unsafe_ops_per_block" "-D clippy::multiple-unsafe-ops-per-block" <<'EOF'
 
 /// Gate canary (scripts/canaries.sh, temp copy only): two unsafe operations in one block.
 pub fn kc_gate_canary(byte: &u8) -> u8 {
@@ -396,6 +400,7 @@ pub fn kc_gate_canary(byte: &u8) -> u8 {
     unsafe { core::ptr::read(byte) ^ core::ptr::read(byte) }
 }
 EOF
+done
 
 # Verifier agreement, core's side (tasks/todo.md, M2 groups 6 and 8): one value core must compare,
 # changed in the copy's vectors/agreement.json, must fail core's agreement test, naming that case
@@ -628,9 +633,9 @@ else
 fi
 
 # core, the FFI and the Pi app get the same clippy rules: keepcrypt-ffi (the safe layer) and
-# keepcrypt-jni (the boundary) as core does, so neither can call catch_unwind (tasks/todo.md, M5
-# group 7; Q53, Q66).
-for f in ffi/clippy.toml ffi/jni/clippy.toml pi/app/clippy.toml; do
+# keepcrypt-jni and keepcrypt-capi (the two boundaries) as core does, so none can call catch_unwind
+# (tasks/todo.md, M5 group 7; Q53, Q66; M6 item B4).
+for f in ffi/clippy.toml ffi/jni/clippy.toml ffi/capi/clippy.toml pi/app/clippy.toml; do
     checks=$((checks + 1))
     if cmp core/clippy.toml "$f"; then
         echo "PASS: core/clippy.toml and $f are identical"
@@ -669,10 +674,11 @@ verdict
 # tables below: an extra key (a group such as all = { level = "allow", priority = 1 }, or
 # unused = "allow"), a missing one or a changed level fails, named. A real change to a table is
 # a reviewed change here too.
-# keepcrypt-jni alone may hold unsafe code (tasks/todo.md, M5 group 7): core, the safe layer and the
-# guard forbid it, and every crate's block denies an unsafe block without a SAFETY: comment or with
-# more than one unsafe operation.
-static_check "[lints.clippy] and [lints.rust] in core, ffi, ffi/guard, ffi/jni and pi/app exactly as pinned" \
+# keepcrypt-jni and keepcrypt-capi alone may hold unsafe code (tasks/todo.md, M5 group 7; M6 item
+# B4): core, the safe layer and the guard forbid it (pi/app by the gate's #![forbid(unsafe_code)]
+# line), and every crate's block denies an unsafe block without a SAFETY: comment or with more than
+# one unsafe operation.
+static_check "[lints.clippy] and [lints.rust] in core, ffi, ffi/guard, ffi/jni, ffi/capi and pi/app exactly as pinned" \
     python3 -I -c '
 import sys, tomllib
 CLIPPY = {
@@ -691,6 +697,7 @@ RUST = {
     "ffi/Cargo.toml": {"unsafe_code": "forbid", "unused_must_use": "forbid"},
     "ffi/guard/Cargo.toml": {"unsafe_code": "forbid", "unused_must_use": "forbid"},
     "ffi/jni/Cargo.toml": {"unused_must_use": "forbid"},
+    "ffi/capi/Cargo.toml": {"unused_must_use": "forbid"},
     "pi/app/Cargo.toml": {"unused_must_use": "forbid"},
 }
 
@@ -1052,23 +1059,25 @@ fi
 cp "$root/Cargo.toml" "$mem/Cargo.toml" || exit 1
 cp "$root/Cargo.lock" "$mem/Cargo.lock" || exit 1
 
-# keepcrypt-jni reaches the safe layer only through keepcrypt_guard::guarded (lead decision M5-35):
-# its direct dependencies, of every kind and for every target, are exactly keepcrypt-guard (the
-# member at ffi/guard, which depends on keepcrypt-ffi) and jni-sys =0.3.0 from crates.io with no
-# features, as cargo metadata reads them, so a renamed, inherited or target-specific edge counts
-# too. A dev-dependency is a reviewed change here too.
-jni_pins='
+# Both boundaries reach the safe layer only through keepcrypt_guard::guarded (lead decision M5-35;
+# M6 item B1): keepcrypt-jni's direct dependencies, of every kind and for every target, are exactly
+# keepcrypt-guard (the member at ffi/guard, which depends on keepcrypt-ffi) and jni-sys =0.3.0 from
+# crates.io with no features, and keepcrypt-capi's exactly keepcrypt-guard, as cargo metadata reads
+# them, so a renamed, inherited or target-specific edge counts too. A dev-dependency is a reviewed
+# change here too. Run as boundary_pins ROOT CRATE, CRATE jni or capi.
+boundary_pins='
 import json, os, subprocess, sys
 
 CRATES_IO = "registry+https://github.com/rust-lang/crates.io-index"
 root = os.path.realpath(sys.argv[1])
+crate = sys.argv[2]
 run = subprocess.run(["cargo", "metadata", "--no-deps", "--offline", "--locked", "--format-version", "1",
                       "--manifest-path", os.path.join(root, "Cargo.toml")], capture_output=True, text=True)
 if run.returncode != 0:
     print("cargo metadata failed:\n" + run.stderr)
     sys.exit(1)
 by_path = {os.path.realpath(p["manifest_path"]): p for p in json.loads(run.stdout)["packages"]}
-jni = by_path.get(os.path.join(root, "ffi", "jni", "Cargo.toml"))
+pkg = by_path.get(os.path.join(root, "ffi", crate, "Cargo.toml"))
 
 def edge(d):
     """Everything that decides an edge: the package, where it comes from and how it is taken."""
@@ -1076,31 +1085,39 @@ def edge(d):
     return (d["name"], d["source"], path, d["req"], d["kind"], d["target"], d["rename"], d["optional"],
             d["uses_default_features"], tuple(d["features"]))
 
-WANT = {
+GUARD = {
     ("keepcrypt-guard", None, os.path.join(root, "ffi", "guard"), "*", None, None, None, False, True, ()):
         "keepcrypt-guard, the member at ffi/guard",
-    ("jni-sys", CRATES_IO, None, "=0.3.0", None, None, None, False, False, ()):
-        "jni-sys =0.3.0 from crates.io, with default features off and no features",
 }
+WANT = {
+    "jni": ({**GUARD,
+        ("jni-sys", CRATES_IO, None, "=0.3.0", None, None, None, False, False, ()):
+            "jni-sys =0.3.0 from crates.io, with default features off and no features",
+    }, "dependencies are keepcrypt-guard and jni-sys"),
+    "capi": (GUARD, "dependency is keepcrypt-guard"),
+}[crate]
+name = "keepcrypt-" + crate
 bad = []
-if jni is None or jni["name"] != "keepcrypt-jni":
-    bad.append("no workspace member keepcrypt-jni at ffi/jni")
+if pkg is None or pkg["name"] != name:
+    bad.append("no workspace member %s at ffi/%s" % (name, crate))
 else:
-    got = [edge(d) for d in jni["dependencies"]]
+    got = [edge(d) for d in pkg["dependencies"]]
     for e in got:
-        if e not in WANT:
-            bad.append("keepcrypt-jni depends directly on %s %s (%s dependency%s%s, from %s); its only direct "
-                       "dependencies are keepcrypt-guard and jni-sys" % (e[0], e[3], e[4] or "normal",
-                       ", target " + e[5] if e[5] else "", ", renamed " + e[6] if e[6] else "", e[2] or e[1]))
-    for e, what in WANT.items():
+        if e not in WANT[0]:
+            bad.append("%s depends directly on %s %s (%s dependency%s%s, from %s); its only direct %s"
+                       % (name, e[0], e[3], e[4] or "normal", ", target " + e[5] if e[5] else "",
+                          ", renamed " + e[6] if e[6] else "", e[2] or e[1], WANT[1]))
+    for e, what in WANT[0].items():
         if got.count(e) != 1:
-            bad.append("keepcrypt-jni does not depend exactly once on %s" % what)
+            bad.append("%s does not depend exactly once on %s" % (name, what))
 for line in bad:
     print(line)
 sys.exit(1 if bad else 0)
 '
 static_check "keepcrypt-jni's direct dependencies are exactly keepcrypt-guard and jni-sys" \
-    python3 -I -c "$jni_pins" "$root"
+    python3 -I -c "$boundary_pins" "$root" jni
+static_check "keepcrypt-capi's direct dependency is exactly keepcrypt-guard" \
+    python3 -I -c "$boundary_pins" "$root" capi
 
 # ... and the check must fire: the copy's keepcrypt-jni given an edge to keepcrypt-ffi, the safe
 # layer, must fail it, naming that edge and nothing else.
@@ -1111,21 +1128,38 @@ cat >> "$mem/ffi/jni/Cargo.toml" <<'EOF'
 [dependencies.keepcrypt-ffi]
 workspace = true
 EOF
-expect_failure "$name" python3 -I -c "$jni_pins" "$mem"
+expect_failure "$name" python3 -I -c "$boundary_pins" "$mem" jni
 need "keepcrypt-jni depends directly on keepcrypt-ffi * (normal dependency, from "
 need "/members/ffi); its only direct dependencies are keepcrypt-guard and jni-sys"
 never "does not depend exactly once"
 verdict
 cp "$root/ffi/jni/Cargo.toml" "$mem/ffi/jni/Cargo.toml" || exit 1
 
+# ... and for keepcrypt-capi: the copy's given a dev-dependency on keepcrypt-ffi (a test edge would
+# let its tests reach the safe layer around the guard and hide a change to the shipped graph's
+# review) must fail it, naming that edge and nothing else.
+name=capi-safe-layer-edge
+cat >> "$mem/ffi/capi/Cargo.toml" <<'EOF'
+
+# Gate canary (scripts/canaries.sh, temp copy only): the boundary's tests straight to the safe layer.
+[dev-dependencies.keepcrypt-ffi]
+workspace = true
+EOF
+expect_failure "$name" python3 -I -c "$boundary_pins" "$mem" capi
+need "keepcrypt-capi depends directly on keepcrypt-ffi * (dev dependency, from "
+need "/members/ffi); its only direct dependency is keepcrypt-guard"
+never "does not depend exactly once"
+verdict
+cp "$root/ffi/capi/Cargo.toml" "$mem/ffi/capi/Cargo.toml" || exit 1
+
 # The FFI crates' targets sit at cargo's default paths (lead decision M5-8): the gate exempts
 # keepcrypt-ffi's integration tests, ffi/tests/, from its thread ban by path and scopes its other
 # FFI rules by path, so a manifest that pointed a target elsewhere ([lib] path = "tests/x.rs")
 # would ship code from where those rules do not look. Every target of keepcrypt-ffi,
-# keepcrypt-guard and keepcrypt-jni, as cargo metadata reads it, is at the default path for its
-# kind: the lib at src/lib.rs, a test at tests/NAME.rs or tests/NAME/main.rs, a bin at src/main.rs,
-# src/bin/NAME.rs or src/bin/NAME/main.rs, an example or a bench under examples/ or benches/ the
-# same way, the build script at build.rs.
+# keepcrypt-guard, keepcrypt-jni and keepcrypt-capi, as cargo metadata reads it, is at the default
+# path for its kind: the lib at src/lib.rs, a test at tests/NAME.rs or tests/NAME/main.rs, a bin at
+# src/main.rs, src/bin/NAME.rs or src/bin/NAME/main.rs, an example or a bench under examples/ or
+# benches/ the same way, the build script at build.rs.
 ffi_paths='
 import json, os, subprocess, sys
 
@@ -1154,7 +1188,8 @@ def defaults(base, kinds, name):
     return [os.path.join(base, "src", "lib.rs")]
 
 bad = []
-for crate, rel in (("keepcrypt-ffi", "ffi"), ("keepcrypt-guard", "ffi/guard"), ("keepcrypt-jni", "ffi/jni")):
+for crate, rel in (("keepcrypt-ffi", "ffi"), ("keepcrypt-guard", "ffi/guard"), ("keepcrypt-jni", "ffi/jni"),
+                   ("keepcrypt-capi", "ffi/capi")):
     pkg = by_path.get(os.path.join(root, rel, "Cargo.toml"))
     if pkg is None or pkg["name"] != crate:
         bad.append("no workspace member %s at %s" % (crate, rel))
@@ -1170,7 +1205,7 @@ for line in bad:
     print(line)
 sys.exit(1 if bad else 0)
 '
-static_check "keepcrypt-ffi, keepcrypt-guard and keepcrypt-jni keep every target at its default path" \
+static_check "keepcrypt-ffi, keepcrypt-guard, keepcrypt-jni and keepcrypt-capi keep every target at its default path" \
     python3 -I -c "$ffi_paths" "$root"
 
 # ... and the check must fire: the copy's keepcrypt-ffi with its lib moved into ffi/tests/, where the
@@ -1490,6 +1525,39 @@ need "pub unsafe extern \"system\" fn Java_com_keepcrypt_entropy_ffi_Native_call
 need "banned-api-check: 1 hit(s) in "
 verdict
 cp "$root/ffi/jni/src/lib.rs" "$tmp/ffi/jni/src/lib.rs" || exit 1
+
+# ... and keepcrypt-capi's, the second boundary (M6 item B4): the copy's real ffi/capi/src/lib.rs
+# with kc_call's keepcrypt_guard::guarded call replaced by a direct call of the safe layer must fail
+# the gate with exactly one hit, at kc_call's fn line (kc_max_out, the exempt one, stays clean).
+name=capi-export-tie
+sed 's/keepcrypt_guard::guarded(op, input)/keepcrypt_ffi::dispatch(op, \&input)/' "$root/ffi/capi/src/lib.rs" \
+    > "$tmp/ffi/capi/src/lib.rs" || exit 1
+expect_failure "$name" sh "$root/scripts/banned-api-check.sh" "$tmp"
+need "FFI: ffi/capi/src/lib.rs:"
+need "pub unsafe extern \"C\" fn kc_call("
+need "banned-api-check: 1 hit(s) in "
+verdict
+cp "$root/ffi/capi/src/lib.rs" "$tmp/ffi/capi/src/lib.rs" || exit 1
+
+# The header test on a real build (M6 item B3): the copy's ffi/capi/src/lib.rs with one more export,
+# which include/keepcrypt.h does not declare, must fail ffi/capi/tests/header.rs, which builds the
+# copy's staticlib for the host and reads its kc_ symbols with llvm-nm, naming the planted one.
+name=capi-header-planted-export
+cat "$root/ffi/capi/src/lib.rs" - > "$tmp/ffi/capi/src/lib.rs" <<'EOF' || exit 1
+
+/// Gate canary (scripts/canaries.sh, temp copy only): an export the header does not declare.
+#[unsafe(no_mangle)]
+pub extern "C" fn kc_planted() -> usize {
+    MAX_OUT
+}
+EOF
+expect_failure "$name" cargo test --color never --manifest-path "$tmp/Cargo.toml" -p keepcrypt-capi --locked \
+    --test header --target-dir "$root/target/canary-real"
+cp "$root/ffi/capi/src/lib.rs" "$tmp/ffi/capi/src/lib.rs" || exit 1
+need "test the_header_names_exactly_the_librarys_exports ... FAILED"
+need 'the library defines [\"kc_call\", \"kc_max_out\", \"kc_planted\"]'
+need "test result: FAILED. 1 passed; 1 failed;"
+verdict
 
 # The Kotlin Multiplatform, iPhone and bridge rules on the real tree (tasks/todo.md, M5 re-plan for
 # Compose Multiplatform, "Gate changes"; the re-cut after Q73): one planted file or line per rule in
@@ -1848,7 +1916,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=94
+want_checks=101
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

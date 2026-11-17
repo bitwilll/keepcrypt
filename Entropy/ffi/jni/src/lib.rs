@@ -1,6 +1,6 @@
-//! keepcrypt-jni: the Android JNI boundary, built as libkeepcrypt.so (Q53), and the workspace's
-//! only unsafe code (tasks/todo.md, M5 group 10, as the re-plan's M5-21 and lead decisions M5-32
-//! and M5-35 amend it). It defines two exports: `JNI_OnLoad`, and
+//! keepcrypt-jni: the Android JNI boundary, built as libkeepcrypt.so (Q53), and with keepcrypt-capi
+//! (the iPhone's, M6) the workspace's only unsafe code (tasks/todo.md, M5 group 10, as the re-plan's
+//! M5-21 and lead decisions M5-32 and M5-35 amend it). It defines two exports: `JNI_OnLoad`, and
 //! `Java_com_keepcrypt_entropy_ffi_Native_call`, Kotlin's `Native.call(op: Int, input: ByteArray):
 //! ByteArray`, the one call per boundary. The library also exports secp256k1-sys 0.10.1's own four
 //! `#[no_mangle]` functions (`rustsecp256k1_v0_10_0_context_create`, `_context_destroy`,
