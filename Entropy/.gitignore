@@ -9,6 +9,13 @@ target/
 # Build) and any tracked .so or ELF under mobile/ (KtBinary), so an ignore here hides nothing from CI.
 mobile/android/**/build/
 mobile/android/**/jniLibs/
+# The iPhone app's build input and Xcode's per-user state (tasks/todo.md, M6 items C1 and C2):
+# scripts/ios-rust.sh copies the libkeepcrypt_capi.a it built into mobile/ios/build/rust/FLAVOUR/TARGET/,
+# from which the Xcode project links it; Xcode keeps a user's window and breakpoint state in xcuserdata/.
+# The gate refuses a tracked file under mobile/**/build/ (Build) and any tracked archive under mobile/
+# (KtBinary), so an ignore here hides nothing from CI.
+mobile/ios/build/
+mobile/ios/**/xcuserdata/
 # The canary library's build output: CI's canary build (-Pkc.canary=true) adds
 # scripts/testdata/android-canary-lib to the Android build (mobile/android/settings.gradle.kts),
 # and Gradle writes its build/ there. The gate never scans scripts/testdata/.

@@ -18605,11 +18605,81 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Swift imports `KeepCryptCore` and calls `kc_call` and `kc_max_out` alone. Info.plist: the camera usage string (asked
   only at the scan), no `NSAppTransportSecurity`, no background modes, no URL schemes, no document types beyond
   `.age` and `.kcr` import; `PrivacyInfo.xcprivacy` declaring no data collected and no tracking.
+  As built (M6 commit C2): project.pbxproj by hand, objectVersion 77, three PBXFileSystemSynchronizedRootGroups
+  (KeepCrypt, KeepCryptTests, KeepCryptUITests); the app's folder excludes Info.plist from the app's resources and adds
+  Core.swift, Wire.swift and Ceremony.swift to KeepCryptTests (two exception sets). No package reference, no Run Script
+  phase, no xcconfig. Project settings: iOS 17.0, iphoneos and iphonesimulator, arm64 only (the two Rust targets),
+  -O whole-module, ENABLE_TESTABILITY NO, DEVELOPMENT_TEAM empty (Q89's Personal Team later), automatic signing (builds
+  here pass CODE_SIGNING_ALLOWED=NO). The app links its flavour's archive by path, "OTHER_LDFLAGS[sdk=iphoneos*]" and
+  "[sdk=iphonesimulator*]" = mobile/ios/build/rust/FLAVOUR/aarch64-apple-ios[-sim]/libkeepcrypt_capi.a (no system
+  library beyond what Xcode links was needed), and finds the module map by SWIFT_INCLUDE_PATHS; the module map names
+  ffi/capi/include/keepcrypt.h by relative path, so there is one header, not a copy. WithTestRegistry: bundle id
+  com.keepcrypt.entropy.testregistry, display name "KeepCrypt TEST REGISTRY" and the condition KC_WITH_TEST_REGISTRY,
+  which draws the strip. Info.plist: the camera string, portrait, no ATS key, no background modes, no URL types, no
+  CFBundleDocumentTypes (the app opens no file handed to it), UTImportedTypeDeclarations for .age and .kcr only (for
+  Stage D's pickers). PrivacyInfo.xcprivacy: no tracking, no domains, no data collected, no accessed API types. Shared
+  schemes KeepCrypt-Shipping and KeepCrypt-WithTestRegistry (every action in their configuration; both test targets).
+  The unit tests are not hosted (no TEST_HOST): they compile the three app files and link the archive themselves, so
+  they run on a slot of their own, never after the app's start-up self-test. mobile/ios/build/ and xcuserdata/ ignored.
+  The gate: KtRoot's M5 clause (any tracked file under mobile/ios/) retired as M6-6 said; its four selftest cases
+  (ktroot-tracked-ios-swift, -ios-plist, -ios-xcode-project, clean-ktroot-untracked-under-mobile-ios) became one,
+  clean-tracked-files-under-mobile-ios; canaries.sh's ios-swift-rules no longer plants Ceremony.swift (the real one is
+  in the copy and must pass, checked present). With the files staged, before the retirement: exactly 14 KtRoot hits,
+  no Swift-rule hit; after it `scripts/banned-api-check.sh` "clean, 442 files scanned (10 binary by extension)" (the
+  four local archives under mobile/ios/build/ among the binaries); `--workflows ../.github/workflows` clean, 3
+  workflows; `--selftest` "1931 passed, 0 failed" (1934 - 3); `sh scripts/banned-api-faults.sh` "696 runs (3 ways):
+  696 passed, 0 failed" (699 - 3: the retired clause's grep); `scripts/canaries.sh` "PASS: all 102 checks ran"
+  (ios-swift-rules with the real tree's Swift files in its copy); `cargo fmt --all --check` clean (no Rust changed).
+  Proof (partial: local; CI at C4): `xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-Shipping
+  -configuration Shipping -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
+  build-for-testing` "TEST BUILD SUCCEEDED" (app, unit and UI test bundles; no Swift warning), the same for
+  KeepCrypt-WithTestRegistry, and `-sdk iphoneos -destination 'generic/platform=iOS' build` "BUILD SUCCEEDED". The
+  built app: Info.plist's id, display name and MinimumOSVersion 17.0 as set, PrivacyInfo.xcprivacy in the bundle, no
+  Info.plist copied twice; `_kc_call` and `_kc_max_out` defined, `_CCRandomGenerateBytes` its one RNG import;
+  KC_TEST_REGISTRY_DO_NOT_SHIP once in the test-registry app's binary, never in the shipping one's.
+  Open (not ticked): no test could run on a simulator here. Xcode 27.2's simulator support needs CoreSimulator
+  1174.21; the Mac has 1174.9.2, so xcodebuild says "CoreSimulator is out of date ... Simulator device support
+  disabled" and no named simulator destination exists, and simctl's wrapper starts `xcodebuild -runFirstLaunch`, which
+  asks for an administrator password (a system install; stopped unanswered). The runtimes are already installed (iOS
+  26.5 23F77, iOS 27.0 24A434; none was installed). Needed from the owner: `sudo env
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -runFirstLaunch` (or Xcode's own first-launch
+  prompt), after which `build test` on iPhone 17 (iOS 26.5) runs the unit and UI tests; or CI at C4.
 - [ ] C3. `Core.swift`: the one wrapper over `kc_call`, a reply buffer of `kc_max_out()` bytes allocated once, wiped
   with `memset_s` after each call is read, -1 a halt; `Wire.swift`: keepcrypt-ffi's wire protocol (wire.rs), its
   status byte and every op's encoding, its decoders over `Data` copies that are wiped (`resetBytes`) when dropped.
   XCTest over vectors/: the self-test, a dice-only 50-roll ceremony to its words (dice-50-words12), every refusal and
   halt status, and the start-up self-test failing closed.
+  As built (M6 commit C3): Core.swift, one Core per process, an NSRecursiveLock held for each call; the reply buffer
+  kc_max_out() bytes, allocated once and zeroed, wiped whole with memset_s after every call is decoded (memset_s's
+  result checked: a wipe that fails ends the app); each input one array made once (secrets copied in), passed inout and
+  wiped with memset_s; -1 or a reply past the buffer, and a reply that is not its layout, halt the slot (op 0) and give
+  halted with the reason it latched; an argument out of range ends the app. Typed calls for all 38 ops, as Core.kt's.
+  Wire.swift: the status bytes, Op 0-38, the 42 refusal codes and their groups, the 6 halt codes (an unknown halt code
+  is internal, an unknown refusal code malformed), every layout, a pure decoder; Secret owns a Data, wiped by
+  resetBytes on wipe() and in deinit, never handed out. Ceremony.swift: `enum Ceremony` with `static func halt(_ end:
+  End) -> Never` (halts the slot, wipes the buffer, exit), StartScreen (only OK passes; a refusal or discard stops as
+  internal) and the stop screen's fixed lines. One deviation from Android, for the lead: the halt status is a Reply case
+  (halted(reason)), not thrown, since a Swift handler must end in Ceremony.halt, which ends the process, and the stop
+  screen has to be shown from the value; Swift's exhaustive switch keeps every caller handling it. For Stage D: the lock
+  makes a discard during a long call wait for it (the result is then wiped by the discard, not dropped as DISCARDED);
+  ffi_discard_during_call's rule needs a second, small reply buffer for DISCARD and WIPE_ALL, or another design.
+  The test data: kcr.json, braille.json and keepcrypt-ffi's wire.rs as file references (../../vectors, ../../ffi/src)
+  in the unit-test bundle's Copy Bundle Resources, so the tests read the repo's own files and wire.rs pins the tables.
+  Tests (7): CoreTests.testTheSlotFromStartUpToItsHalt, one ordered walk on the real kc_call (the slot's first halt
+  latches): the self-test and StartScreen passed; dice-50-words12's 50 rolls (dice progress 50 of 50, 129,250
+  millibits), its Seal ID, Check: "ZZZZ-ZZZZ" refused wrongCode (2), "0000" malformedCode (1), Cannot check; the
+  restart, Skip, all 12 words pages against kcr.json's mnemonic and braille.json (SeedBook number, position, count,
+  device, sequence, every face's letter, dots, lighter flag and mirror partner), each page wiped; Finish, the self-test
+  at home; a snapshot one byte past the input cap, kc_call's -1, halted internal; then the self-test halted internal,
+  StartScreen stopped(internal) and a start halted; the reply buffer all zeros after every call. WireTests (6): the
+  status bytes and op table against wire.rs's pub consts, the refusal and halt tables against its PINNED and
+  PINNED_HALTS, every refused and halted code 0-255, malformed replies (8 statuses and 5 layouts), layouts' fields, and
+  StartScreen failing closed.
+  Proof (partial: local, on the macOS host, not the simulator; the simulator run at C2's open item or C4): the same
+  sources (Core.swift, Wire.swift, Ceremony.swift and KeepCryptTests/*.swift) built with `xcrun --sdk macosx swiftc
+  -O -wmo` into an XCTest bundle linking the host's release libkeepcrypt_capi.a (aarch64-apple-darwin) and run with
+  `xcrun xctest`: "Executed 7 tests, with 0 failures". With memset_s replaced by nothing in a copy of Core.swift, the
+  walk fails at "the reply buffer after a roll" and every later call's check. Not ticked until the simulator runs it.
 - [ ] C4. `.github/workflows/entropy-ios.yml` (Q91): non-required, legs on macos-26 (Xcode 26.6, iOS 26.5 simulator)
   and macos-15 (Xcode 16.4, iOS 18.6), the three approved actions pinned by SHA, read-only token, no secret: the
   Rust libraries (C1), `xcodebuild build-for-testing` and `test-without-building` for both configurations on the

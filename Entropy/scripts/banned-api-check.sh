@@ -837,11 +837,11 @@
 #              drand48, arc4random, SecRandomCopyBytes, URLSession, NWConnection and CFNetwork are
 #              other categories' everywhere. KtSourceSet refuses iosMain and iosTest themselves in
 #              M5, so a KtIos hit there comes with one of its.
-#   KtRoot     (lead decisions M5-19 and M5-25; "KtRoot: <file>: <detail>"): a .kt or .kts file
-#              under mobile/ outside mobile/android/, and any tracked file under mobile/ios/ (read
-#              from git ls-files as the Build rule reads it), which stays empty until the app's
-#              first file (M6's Stage C, whose first commit retires this clause); the Swift and
-#              Xcode rules (below) are in place before it (M6 item A1).
+#   KtRoot     (lead decision M5-19; "KtRoot: <file>: <detail>"): a .kt or .kts file under
+#              mobile/ outside mobile/android/. M5's second clause (M5-25: any tracked file under
+#              mobile/ios/, which stayed empty in M5) was retired by M6's item C2 (lead decision
+#              M6-6), whose commit brought the iPhone app's first files under the Swift and Xcode
+#              rules below (M6 items A1 and A2).
 #   KtCinterop (the re-plan's C bridge): mobile/android/core-ffi/src/nativeInterop/cinterop/
 #              keepcrypt.def holds exactly the lines headers = keepcrypt.h, headerFilter =
 #              keepcrypt.h and package = com.keepcrypt.native, each once, and no other (no ---
@@ -1238,7 +1238,7 @@ manifest's network permissions, backup, debug and components; a Kotlin Multiplat
 outside the allow list (no iPhone set in M5), a Java source, the iOS names in iosMain and iosTest,
 C callbacks, pinned memory, Kotlin Multiplatform DSL lines outside the allow list (no iPhone target
 in M5) and Kotlin/Native settings, and a cinterop definition other than the one exact .def; Kotlin outside
-mobile/android and a tracked file under mobile/ios; a tracked binary (a klib, a framework, any
+mobile/android; a tracked binary (a klib, a framework, any
 Mach-O, ELF, ar, zip, dex, keystore or compressed file among them) under mobile/; the CI passphrase
 key outside its two files; and under ffi/ a catch_unwind but the one std::panic::catch_unwind call
 in the crate root's fn guarded in ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs and
@@ -4631,17 +4631,6 @@ EOF
     done <<EOF
 $built
 EOF
-    # KtRoot (lead decision M5-25): mobile/ios/ stays empty in M5, so any tracked file under it is a
-    # hit, until M6's first gate commit brings the Swift and Xcode rules.
-    ios=$(printf '%s\n' "$tracked" | grep -E "${tab}mobile/ios/")
-    [ $? -le 1 ] || exit 2
-    while IFS= read -r e; do
-      [ -n "$e" ] || continue
-      echo "KtRoot: ${e#*"$tab"}: a tracked file under mobile/ios/, which stays empty in M5 (lead decision M5-25)"
-      hits=$((hits + 1))
-    done <<EOF
-$ios
-EOF
     # KtBinary: a tracked file (or link; not a submodule, the Build rule's) under mobile/ with a
     # binary extension, in any letter case: the plan's nine, every other code or archive extension
     # of $binext (whose files the scan never reads) and a Kotlin/Native klib, or under a directory
@@ -5484,22 +5473,16 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   echo 'kc.gate.canary=true' >"$d/tools/x.jar" || exit 2
   git -C "$d" add -f -- mobile/android/app/src tools || exit 2
   expect 'clean-ktbinary-untracked-image-outside-mobile' "$d" clean
-  # KtRoot's mobile/ios rule reads the index too (lead decision M5-25): any tracked file under
-  # mobile/ios/ is a hit, a Swift file, a plist and an Xcode project alike; the same file untracked
-  # is not.
-  for case in 'ios-swift:mobile/ios/KeepCrypt/SecureHostViewController.swift' \
-    'ios-plist:mobile/ios/KeepCrypt/Info.plist' 'ios-xcode-project:mobile/ios/KeepCrypt.xcodeproj/project.pbxproj'; do
-    x=${case#*:}
-    fresh
-    git init -q "$d" || exit 2
-    mkdir -p "$d/${x%/*}" && echo 'kc.gate.canary=true' >"$d/$x" || exit 2
-    git -C "$d" add -f -- "$x" || exit 2
-    expect "ktroot-tracked-${case%%:*}" "$d" KtRoot "$x"
-  done
+  # KtRoot's M5 clause for mobile/ios (lead decision M5-25: any tracked file there was a hit) was
+  # retired by M6's item C2 (M6-6): a tracked Swift file, plist and Xcode project under mobile/ios,
+  # each clean under the Swift rules, pass, as the iPhone app's real files do.
   fresh
   git init -q "$d" || exit 2
-  mkdir -p "$d/mobile/ios/KeepCrypt" && echo 'kc.gate.canary=true' >"$d/mobile/ios/KeepCrypt/App.swift" || exit 2
-  expect 'clean-ktroot-untracked-under-mobile-ios' "$d" clean
+  for x in mobile/ios/KeepCrypt/App.swift mobile/ios/KeepCrypt/Info.plist mobile/ios/KeepCrypt.xcodeproj/project.pbxproj; do
+    mkdir -p "$d/${x%/*}" && echo 'kc.gate.canary=true' >"$d/$x" || exit 2
+    git -C "$d" add -f -- "$x" || exit 2
+  done
+  expect 'clean-tracked-files-under-mobile-ios' "$d" clean
   # The FFI cases that need keepcrypt-guard beside the JNI boundary (a fixture holds one file): with
   # the one catch in fn guarded in ffi/guard/src/lib.rs, an extern "C" fn or an extern fn with no
   # ABI string in ffi/jni/src/lib.rs is a hit of its own (JNI's ABI is "system"), and a guard file

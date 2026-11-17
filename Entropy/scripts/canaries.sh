@@ -1643,21 +1643,25 @@ else
     unplant $kplanted $kdef
 fi
 
-# The Swift and iPhone rules on the real tree (tasks/todo.md, M6 item A1), before any Swift file is
-# committed: one planted line per rule in a Swift file of the copy's mobile/ios (a random UUID, an
+# The Swift and iPhone rules on the real tree (tasks/todo.md, M6 item A1; the app's own files since
+# item C2): one planted line per rule in a Swift file of the copy's mobile/ios (a random UUID, an
 # import of Network outside the offline check, a paste control, a print, the defaults store, a
 # file write outside the document picker, a SwiftUI text field and a UITextField outside the secure
 # layer, and from A2 a try?, a URL opened and a catch that does not halt), a Package.swift and a
 # settings file defining KC_TEST_HOOKS there, and a Swift file outside mobile/ios must fail
-# scripts/banned-api-check.sh with exactly these fourteen hits, while the five allowed files,
+# scripts/banned-api-check.sh with exactly these fourteen hits, while the five allowed files, four
 # planted with what each may hold (the offline check's import and monitor, the secure layer's
 # field with isSecureTextEntry = true, the document picker's write in a catch that halts, the
-# halt returning Never, the settings page opened), pass. So a dropped rule, a widened allowance or a scope that stops reaching mobile/ios turns CI
-# red. Each planted file has a name the real tree does not use, and unplant removes it.
+# settings page opened) and the real tree's own Ceremony.swift (C3's halt returning Never), pass,
+# and so does every other file of the real app. So a dropped rule, a widened allowance or a scope
+# that stops reaching mobile/ios turns CI red. Each planted file has a name the real tree does not
+# use (C5 and Stage D bring the offline check, the secure layer, the document picker and the
+# settings page, and this canary then reads their real files instead), and unplant removes it.
 name=ios-swift-rules
 si=mobile/ios/KeepCrypt
+[ -f "$tmp/$si/Ceremony.swift" ] || { echo "FAIL: $name: the copy has no $si/Ceremony.swift"; exit 1; }
 splanted="$si/KcGateCanary.swift $si/OfflineCheck.swift $si/SecureLayer.swift $si/DocumentPicker.swift
-$si/Ceremony.swift $si/OpenSettings.swift mobile/ios/Package.swift mobile/ios/Config/KcGateCanary.xcconfig tools/KcGateCanary.swift"
+$si/OpenSettings.swift mobile/ios/Package.swift mobile/ios/Config/KcGateCanary.xcconfig tools/KcGateCanary.swift"
 for p in $splanted; do
     mkdir -p "$tmp/${p%/*}" || exit 1
 done
@@ -1677,7 +1681,6 @@ do {
 } catch {
 }
 EOF
-printf '%s\n' 'enum Ceremony {' '    static func halt(_ reason: Halt) -> Never { exit(1) }' '}' > "$tmp/$si/Ceremony.swift" || exit 1
 echo 'UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!)' > "$tmp/$si/OpenSettings.swift" || exit 1
 printf '%s\n' 'import Network' 'let monitor = NWPathMonitor()' > "$tmp/$si/OfflineCheck.swift" || exit 1
 printf '%s\n' 'let field = UITextField()' 'field.isSecureTextEntry = true' > "$tmp/$si/SecureLayer.swift" || exit 1
