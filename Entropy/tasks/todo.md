@@ -14191,10 +14191,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): the manifest summaries (above); banned-api-check clean over 414 files with its KtSdk, KtBinary and network
   rules, its selftest 819 + 820 passed, canaries all 94; the build job's `android-deps-review.py classpath` against
   expected/ and its --selftest, green.
-- [ ] **Matrix "Full ceremony with offline verification"** (Android): `ffi_verify_py_tie`; P2 with verify.py on the
+- [x] **Matrix "Full ceremony with offline verification"** (Android): `ffi_verify_py_tie`; P2 with verify.py on the
   offline computer (exit 0, same words, same Seal ID).
   Proof: test output; P2.
-  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): `ffi_verify_py_tie` ok in its three configurations; unticked until P2 and P3's verify.py run.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): `ffi_verify_py_tie` ok in its three configurations; P2's ceremony and P3's verify.py on the offline
+  computer, exit 0 with the same words and Seal ID (the owner's, 2026-11-17, "matched").
 - [x] **Matrix "Duplicate-seed drill"** (Android part): `ffi_drill_12` and the emulator drill; end to end in M9.
   Proof: test output; run ID.
   Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): `ffi_drill_12` ok; the emulator drill (SnapshotDrillTest, the Match found journey and the scanned
@@ -14430,11 +14431,16 @@ SHA-256 8983977bd0fb4fb6ac125cfc3bc99112ea9451b4f47f715386113471dea5a328, goahea
   paper; none was sent.
 
 **P3. After the ceremony (same throwaway seed)**
-- [ ] From Home, Check a backup with the saved file and the passphrase: "Backup OK", the same fingerprint and Seal ID.
-- [ ] On the offline computer, `python3 -I tools/verify/verify.py mixed --words 12` with C, D and the rolls from paper
+- [x] From Home, Check a backup with the saved file and the passphrase: "Backup OK", the same fingerprint and Seal ID.
+- [x] On the offline computer, `python3 -I tools/verify/verify.py mixed --words 12` with C, D and the rolls from paper
   exits 0 with the same words and Seal ID.
-- [ ] Delete the backup file and destroy the paper.
-- [ ] In a later throwaway session, turning Wi-Fi on wipes it; leaving the app on a words page wipes it.
+- [x] Delete the backup file and destroy the paper.
+- [x] In a later throwaway session, turning Wi-Fi on wipes it; leaving the app on a words page wipes it.
+  Proof (the owner's report, 2026-11-17): "P3 done, all passed, matched", on the Galaxy S25 with 62396383's shipping
+  APK: Check a backup "Backup OK" with the same fingerprint and Seal ID; verify.py mixed --words 12 on the offline
+  computer exited 0 with the same words and Seal ID ("matched"); the backup file deleted and the paper destroyed; a
+  later throwaway session wiped by Wi-Fi on and by leaving on a words page. Which verify.py copy ran was not restated
+  (P0 names 62396383's, SHA-256 0ba842e2...).
 
 **P4. The test registry** (a loaded snapshot or a pending 99-roll minimum lasts until the app's process ends). At every
 check, compare the Seal ID with the lead's value from `p4-seal-ids.txt`: on the seal card before a scan, or on the
