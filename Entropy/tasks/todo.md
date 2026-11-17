@@ -14132,26 +14132,27 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   HIDE_OVERLAY_WINDOWS and androidx.core's DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION); the canary APK "refused, with
   the INTERNET, provider and DexRef hits"; `--selftest-apk` 89 passed in the gates job; `dumpsys package` "no
   INTERNET" for both apps in every emulator job.
-- [ ] **Gate: the backup round trip passes.** `ffi_backup_round_trip`; the emulator's DocumentsUI save, "Backup
+- [x] **Gate: the backup round trip passes.** `ffi_backup_round_trip`; the emulator's DocumentsUI save, "Backup
   verified", `age -d` through the pty hand-off and Check a backup; P2 on the phone.
   Proof: test names, run ID, P2.
   Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: `ffi_backup_round_trip` ok in its three configurations; BackupTest on API 34 and 36 "saved
   through DocumentsUI ... read back and verified (Backup verified)", then "age-check: pass (1.1.1): age -d through
   the pty decrypted the backup (946 bytes) ... and refused a wrong passphrase"; Check a backup through the picker.
-  Unticked until P2.
+  P2 (the owner's, 2026-11-17, Galaxy S25): "Backup verified" on the phone, "P2 done, all passed".
 - [ ] **Gate: snapshot import works.** The test-registry APK loads `with-dice-50` through the picker with its Stale
   warning and it stops `dice-50-words12` (emulator and P4); the shipping APK refuses it.
   Proof: run ID, P4.
   Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: both registry jobs' snapshot drill, "with-dice-50 picked from Downloads through DocumentsUI
   and loaded (No. 4, dated 2026-03-01, 7 entries, the Stale warning)", dice-50-words12's check stopped; the shipping
   app "refused: This build trusts no registry key yet ...; nothing loaded". Unticked until P4.
-- [ ] **Gate: Sparrow watch-only import works.** P3: Sparrow 2.5.5 imports the account QR from the phone and its first
+- [x] **Gate: Sparrow watch-only import works.** P3: Sparrow 2.5.5 imports the account QR from the phone and its first
   receive address matches the wallet summary; Bitcoin Core 31.1 imports the descriptor with the same address (swb:235).
   CI: the drawn matrices decode to core's QR text.
   Proof: P3's report; the JVM test.
   Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: the build job's QrRoundTripTest (:core-ffi androidHostTest, ZXing on the JVM; its report
   required by the JVM test results step) reads every matrix back: the account UR's fingerprint equals the summary's
-  and the descriptor's structure holds. Unticked until P3 (P2's watch-only step).
+  and the descriptor's structure holds. The phone step is P2's (M5-70 (e) moved the export there): "P2 done, all
+  passed, matched" (2026-11-17), Sparrow's and Bitcoin Core's first addresses equal to the wallet summary's.
 - [ ] **Gate: a go-ahead QR from the test registry reveals the words.** P4's camera scan of `clear-empty-bucket` reveals
   `dice-99-words12`'s words after the Stale warning, with the Seal ID checked first; CI feeds the same UR through the
   decoder (canned YUV frames) and `onGoAheadText`.
@@ -14198,10 +14199,11 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   Proof: test output; run ID.
   Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): `ffi_drill_12` ok; the emulator drill (SnapshotDrillTest, the Match found journey and the scanned
   collision QR) on API 34 and 36; end to end in M9.
-- [ ] **Matrix "Watch-only import"**: P3.
-- [ ] **Matrix "Metal read-back drill"**: `ffi_readback_drill`; P2's deliberate misread.
+- [x] **Matrix "Watch-only import"**: P3.
+  Proof (2026-11-17): the export's step is P2's (M5-70 (e)); the owner's "P2 done, all passed, matched".
+- [x] **Matrix "Metal read-back drill"**: `ffi_readback_drill`; P2's deliberate misread.
   Proof: test names; P2.
-  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): `ffi_readback_drill` ok; unticked until P2's deliberate misread.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): `ffi_readback_drill` ok; P2's deliberate e/i misread named and refused (the owner's, 2026-11-17).
 - [ ] **Matrix "Reproducible build"** (APK): M7 (Deferred).
 - [x] **CI:** the 14 required checks green at the final head with names unchanged; the Android job green at the final
   head within its budget; `gates` <= 12 min and `test` <= 6 min; any emulator re-run logged.
@@ -14408,19 +14410,24 @@ SHA-256 8983977bd0fb4fb6ac125cfc3bc99112ea9451b4f47f715386113471dea5a328, goahea
   next step. Send pass or fail per check only, never what was spoken.
 
 **P2. A throwaway ceremony (shipping APK)**
-- [ ] Airplane mode on, Wi-Fi off. New seed, 12 words.
-- [ ] At the Commitment screen, write C on paper.
-- [ ] Roll 50 real dice; write each roll on paper before tapping it.
-- [ ] At the check prompt, Skip (and confirm).
-- [ ] "I'm alone, show words"; copy the words. Read back from paper with one deliberate e/i misread first (it must be
+- [x] Airplane mode on, Wi-Fi off. New seed, 12 words.
+- [x] At the Commitment screen, write C on paper.
+- [x] Roll 50 real dice; write each roll on paper before tapping it.
+- [x] At the check prompt, Skip (and confirm).
+- [x] "I'm alone, show words"; copy the words. Read back from paper with one deliberate e/i misread first (it must be
   named), then correctly.
-- [ ] Backup: write the 8-word passphrase on paper; confirm it; save to Downloads ("Backup verified").
-- [ ] Show the watch-only QRs, answering No to the BIP39 passphrase question: Sparrow scans the account QR, and its
+- [x] Backup: write the 8-word passphrase on paper; confirm it; save to Downloads ("Backup verified").
+- [x] Show the watch-only QRs, answering No to the BIP39 passphrase question: Sparrow scans the account QR, and its
   first receive address equals the wallet summary's; Bitcoin Core imports the descriptor (H4's steps) with the same
   first address. (The app offers these once, after the backup and before D: M5-70 (e).)
-- [ ] Skip the registration, or show its QR once.
-- [ ] Reveal D; write it on paper.
-- [ ] Finish.
+- [x] Skip the registration, or show its QR once.
+- [x] Reveal D; write it on paper.
+- [x] Finish.
+  Proof (the owner's report, 2026-11-17): "P2 done, all passed, matched", on the Galaxy S25 with 62396383's shipping
+  APK: each step above passed, the deliberate e/i misread named and refused, "Backup verified", and Sparrow's and
+  Bitcoin Core's first receive addresses matched the wallet summary ("matched"). The wallet versions were not restated;
+  the checklist names Sparrow 2.5.5 and Bitcoin Core 31.1. C, D, the rolls, the words and the passphrase stayed on
+  paper; none was sent.
 
 **P3. After the ceremony (same throwaway seed)**
 - [ ] From Home, Check a backup with the saved file and the passphrase: "Backup OK", the same fingerprint and Seal ID.
@@ -21049,11 +21056,12 @@ registry reveals the words and a Stop wipes them".
   the owner's Galaxy S25, "P1 done, all passed" (2026-11-17).
 - Merged manifest has no INTERNET permission: met (run 43950082932's `--apk`, the canary refused, `dumpsys package`
   on every emulator job).
-- Backup round trip passes: CI's part met (`ffi_backup_round_trip`, BackupTest's save, "Backup verified", age -d
-  through the pty, Check a backup); P2 is owed.
+- Backup round trip passes: met. CI (`ffi_backup_round_trip`, BackupTest's save, "Backup verified", age -d through
+  the pty, Check a backup); P2 on the owner's S25, "Backup verified" (2026-11-17).
 - Snapshot import works: CI's part met (the drill's load through DocumentsUI, the Stale warning, the shipping APK's
   refusal); P4 is owed.
-- Sparrow watch-only import works: owed (P2's watch-only step and P3); CI decodes the drawn matrices.
+- Sparrow watch-only import works: met. P2's watch-only step on the owner's S25, "matched" in Sparrow and Bitcoin
+  Core (2026-11-17); CI reads the drawn matrices back (QrRoundTripTest).
 - A go-ahead QR from the test registry reveals the words: CI's part met (the scanned clear-empty-bucket QR through
   the decoder); P0b passed on the owner's S25 (2026-11-17, bf132744's APK); P4's scans on the final APK are owed.
 - A Stop wipes them: CI's part met (`ffi_drill_12`, the scanned collision QR and the snapshot's collision, no words, 0
