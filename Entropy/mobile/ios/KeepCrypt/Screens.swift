@@ -297,7 +297,7 @@ struct WorkingScreen: View {
             Text(ShellTexts.working)
                 .font(KitType.heading)
                 .foregroundColor(KitColors.text)
-                .accessibilityAddTraits(.isHeader)
+                .spoken(.heading)
                 .frame(maxWidth: .infinity)
             Spacer()
         }
@@ -364,7 +364,7 @@ struct OverlayScreen: View {
         .contentShape(Rectangle())
         .onTapGesture(perform: dismiss)
         .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
+        .spoken(.overlay)
         .accessibilityAction { dismiss() }
         .accessibilityIdentifier(overlay == .cover ? "cover" : "idle_warning")
     }

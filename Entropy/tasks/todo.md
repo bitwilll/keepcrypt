@@ -19487,6 +19487,52 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   data, each Protected pad key reading its letter; reading counts as input for the idle rule (Q80 (b)'s answer on
   Android). iOS has no accessibility-data-sensitive mark, so VoiceOver reads the words as any screen reader would:
   named as an iPhone residual for the owner's I5 check.
+  As built (plan, 2026-11-18): Android's semantics (Kit.kt, Pads.kt, Drawing.kt, Screens.kt), kind by kind, as
+  one table the views apply (VoiceOver.swift's spokenSemantics; Kit.swift's spoken(_:)), held to the Kotlin
+  sources by VoiceOverTests. (1) Titles: D3 already posts each state's pane title as it opens (Screens.swift,
+  paneTitle(of:): the screen's, the privacy gate's, the cover's and the idle warning's; the stop screen and
+  Working are screens of their own), held by ScreenTitlesTests; the capture and app-switcher covers, which
+  replace the whole scene (CaptureShield), now tell VoiceOver the screen changed as they come and go. (2)
+  Headings and the title: the header trait (Android's heading()), Working's too. (3) Live lines: Android's
+  polite live regions, tag for tag (liveLineIds: the scan line, the code's refusal, the wrong confirm, the
+  save's failure, the entry's refusal, the keys' page, the file's refusal, the dice's count, minimum and cap,
+  More below; and the notice), plus the iPhone's own offline line (network_state, D3's), each announced as it
+  appears or changes with UIAccessibility's queued (polite) announcement and marked updates-frequently; only
+  fixed or public text is such a line. Android has no device-entropy progress line and its airplane-mode and
+  Wi-Fi lines are not live; nothing is added for them. (4) QR codes: an image named by its kind (QrKind.spoken,
+  Drawing.kt's), the check, collision report, re-check, account, descriptor and registration QRs; D4's and
+  D6's QRs inside SecureLayer gain the image trait they lacked. (5) Pad keys: a button named by its label, its
+  letter or "space" (Pads.kt's), a Protected key with no identifier. (6) Reading is input (Q80 (b)):
+  UIAccessibility.elementFocusedNotification, posted when VoiceOver's cursor (or a braille display's, or Switch
+  Control's) lands on an element, goes to the model's reading(), as Android's onAccessibilityReading does: the
+  idle time starts again and the idle warning goes. Whether VoiceOver posts it for every element read in a
+  continuous read is I5's to see. Android uses no stateDescription.
+  The iPhone residual (I5): iOS has no accessibility-data-sensitive mark (Android's isSensitiveData, Q79), so
+  VoiceOver, and any assistive technology, reads the words, the passphrases, D and a Protected key's letter as
+  any element, aloud or on a braille display; every gate's headphones line (Q83) stands as on Android.
+  SecureLayer and VoiceOver: the secure field and its view are not accessibility elements, so what SecureLayer
+  hosts is offered in their place; WordsUITests checks that the insert's SeedBook line, drawn inside it, is in
+  the accessibility tree XCUITest and VoiceOver read. Reachable, a screen-reader user hears the words as on
+  Android, and the layer hides them from captures only (the residual above stands); if CI finds it unreachable,
+  a VoiceOver user could not read the words at all, a gap Android does not have, and the lead decides.
+  (7) Tests: VoiceOverTests (the table against Kotlin's heading(), LiveRegionMode.Polite, Role.Image with
+  contentDescription, Role.Button with its text, the overlays' clickable; the live lines tag for tag; the QR
+  names and the key labels; no stateDescription; Pads.kt bundled for it). The UI checks join existing classes:
+  ScanUITests (the check QR is an image labelled "Check QR code"), WordsUITests (the SeedBook line inside
+  SecureLayer is reachable; the letter pad's 26 keys are buttons labelled with their letters), about 2 s in
+  all. XCUITest has no public way to read a trait, so the header trait is the table's and I5's.
+  As built (M6 commit D8a): VoiceOver.swift (Spoken, SpokenSemantics, spokenSemantics, liveLineIds,
+  androidLiveLineIds); Kit.swift's spoken(_:), LiveLine and announcePolitely, KitText's live taken from its id
+  (the call sites' live arguments gone), the notice a live line; the heading, title, Working, QR (QrCodeView,
+  the collision report's, ExportQr), key and overlay traits from the table; CaptureShield's reading and its
+  covers' screen change. Tests: VoiceOverTests (3), the two UI checks above.
+  Proof (M6 commit D8a, partial: local; CI at the next push): the macOS stand-in "Executed 126 tests, with 0
+  failures" over the host's release archive (conditions: none) and over its test-registry archive
+  (KC_WITH_TEST_REGISTRY); with the heading's header, the dice count's live line and the QR's image trait
+  dropped in a copy, VoiceOverTests fails 4 times. Local builds: all three schemes built for testing and the
+  Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps; the hooks marker 1 line
+  in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate clean (507 files), `cargo fmt --all
+  --check` clean.
 
 ### Verification (each maps to a gate item; refined with the plan)
 - [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest

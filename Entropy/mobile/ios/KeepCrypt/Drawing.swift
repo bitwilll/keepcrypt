@@ -31,7 +31,7 @@ struct QrCodeView: View {
         .frame(width: CGFloat(side), height: CGFloat(side))
         .accessibilityElement()
         .accessibilityLabel(kind.spoken)
-        .accessibilityAddTraits(.isImage)
+        .spoken(.qrCode)
     }
 }
 

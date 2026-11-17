@@ -72,7 +72,7 @@ struct Bip39EntryScreen: View {
             let keys = state.page
             KitScreen(Screen.bip39Entry.id, testRegistry: testRegistry) {
                 Heading(Screen.bip39Entry.title)
-                KitText(keysPageText(keys), style: .small, id: "keys_page", live: true)
+                KitText(keysPageText(keys), style: .small, id: "keys_page")
                 KitText(ExportTexts.bip39How, style: .small)
             } actions: {
                 SecureLayer {
@@ -282,6 +282,7 @@ private struct ExportQr: View {
         .frame(maxWidth: .infinity)
         .accessibilityElement()
         .accessibilityLabel(kind.spoken)
+        .spoken(.qrCode)
         Gap(8)
     }
 }

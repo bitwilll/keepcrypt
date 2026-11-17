@@ -1,9 +1,10 @@
 // The words through the privacy gate to the read-back (tasks/todo.md, M6 item D5), on the app itself: vectors/
 // kcr.json's gate seed dice-50-words12 rolled on the dice pad as a dice-only 12-word seed, the check skipped
 // and confirmed, Show words, the privacy gate's "I'm alone, show words", insert 1 (its header outside the
-// secure layer; the word, SeedBook number and faces are inside it and read by no test here), the pages to
-// insert 12, the read-back started, insert 1's first four letters pressed on the letter pad (buttons, never
-// the system keyboard), its match, and Next to insert 2's entry. The journeys past it are Stage U's.
+// secure layer; the word, SeedBook number and faces are inside it, and D8 checks only that a SeedBook line is
+// reachable there, by its prefix), the pages to insert 12, the read-back started, the letter pad's keys each
+// labelled with its letter (D8), insert 1's first four letters pressed on it (buttons, never the system
+// keyboard), its match, and Next to insert 2's entry. The journeys past it are Stage U's.
 // Compiled only where the UI tests' TestHooks configuration sets KC_TEST_HOOKS (the TestHooks scheme alone
 // runs it, to keep the shipped schemes' runs short).
 
@@ -59,6 +60,11 @@ final class WordsUITests: XCTestCase {
         on(app, "words", "insert 1")
         XCTAssertEqual(app.element("insert_header").label, "Insert 01 \u{00B7} device 1 of 1")
         XCTAssertEqual(app.element("face_six").label, "Face 6: the engraved number 01")
+        // D8: what SecureLayer draws is reachable to VoiceOver (the iPhone's residual: no sensitive mark), as
+        // the words are to TalkBack: the SeedBook number drawn inside it is in the accessibility tree. Its
+        // value is compared by prefix alone and never printed.
+        let seedbook = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "SeedBook "))
+        XCTAssertEqual(seedbook.count, 1, "the secure layer's content is not reachable to VoiceOver")
         for _ in 1..<words.count {
             app.buttons["next"].tap()
         }
@@ -66,6 +72,11 @@ final class WordsUITests: XCTestCase {
         app.buttons["start_readback"].tap()
         on(app, "readback_entry", "the read-back's entry")
         XCTAssertEqual(app.element("readback_header").label, "Read back insert 01 \u{00B7} device 1 of 1")
+        // D8: each Protected pad key is a button whose VoiceOver label is its letter (and no identifier).
+        for letter in "abcdefghijklmnopqrstuvwxyz" {
+            let key = app.buttons[String(letter)]
+            XCTAssertTrue(key.exists && key.label == String(letter), "the letter pad's key " + String(letter))
+        }
         for letter in words[0].prefix(4) {
             app.buttons[String(letter)].tap()
         }

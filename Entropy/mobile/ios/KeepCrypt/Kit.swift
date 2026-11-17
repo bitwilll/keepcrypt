@@ -6,6 +6,7 @@
 // selectable. Plain SwiftUI: no third-party package, no theme library.
 
 import SwiftUI
+import UIKit
 
 /// The kit's colours (Android's KitColors).
 enum KitColors {
@@ -132,7 +133,7 @@ struct KitScreen<Content: View, Actions: View>: View {
             })
             .onPreferenceChange(ContentBottom.self) { contentBottom = $0 }
             if contentBottom > viewportHeight + 1 {
-                KitText(ShellTexts.moreBelow, style: KitStyle(font: KitType.small, color: KitColors.text), id: "more_below", live: true)
+                KitText(ShellTexts.moreBelow, style: KitStyle(font: KitType.small, color: KitColors.text), id: "more_below")
                     .padding(.horizontal, 24)
             }
             if hasActions, !scrolling {
@@ -178,7 +179,7 @@ struct Heading: View {
             .foregroundColor(KitColors.text)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.vertical, 6)
-            .accessibilityAddTraits(.isHeader)
+            .spoken(.heading)
         Gap(16)
     }
 }
@@ -197,24 +198,26 @@ struct Title: View {
             .foregroundColor(KitColors.text)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.vertical, 6)
-            .accessibilityAddTraits(.isHeader)
+            .spoken(.title)
     }
 }
 
-/// Running text (body), or a note (small). live marks a line that appears or changes while its screen
-/// stays (the dice's counts, a refusal), which VoiceOver is told updates; only for fixed or public text.
+/// Running text (body), or a note (small). A line whose id is a live line's (VoiceOver.swift's liveLineIds:
+/// one that appears or changes while its screen stays, the dice's counts, a refusal, the scan's state) is
+/// spoken politely as it does (Android's polite live region; spoken(.liveLine)); only fixed or public text is
+/// ever such a line, never a secret.
 struct KitText: View {
     let text: String
     var style = KitStyle.body
     var id: String?
-    var live = false
 
-    init(_ text: String, style: KitStyle = .body, id: String? = nil, live: Bool = false) {
+    init(_ text: String, style: KitStyle = .body, id: String? = nil) {
         self.text = text
         self.style = style
         self.id = id
-        self.live = live
     }
+
+    private var live: Bool { id.map(liveLineIds.contains) ?? false }
 
     var body: some View {
         let line = Text(text)
@@ -222,7 +225,7 @@ struct KitText: View {
             .foregroundColor(style.color)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.vertical, 6)
-            .accessibilityAddTraits(live ? .updatesFrequently : [])
+            .modifier(LiveLine(text: text, live: live))
         if let id {
             line.accessibilityIdentifier(id)
         } else {
@@ -291,7 +294,7 @@ struct NoticeBar: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 8)
             .background(KitColors.warning)
-            .accessibilityAddTraits(.updatesFrequently)
+            .modifier(LiveLine(text: text, live: true, kind: .notice))
             .accessibilityIdentifier("notice")
     }
 }
@@ -331,4 +334,46 @@ struct OneWayConfirm: View {
             KitButton(CheckTexts.back, id: "back", action: onBack)
         }
     }
+}
+
+extension View {
+    /// What VoiceOver is told of this kind of element (VoiceOver.swift's table): its traits. A QR code's and
+    /// a key's label are set where they are drawn.
+    func spoken(_ kind: Spoken) -> some View {
+        let semantics = spokenSemantics(kind)
+        var traits: AccessibilityTraits = []
+        if semantics.header { traits.formUnion(.isHeader) }
+        if semantics.image { traits.formUnion(.isImage) }
+        if semantics.button { traits.formUnion(.isButton) }
+        if semantics.updatesFrequently { traits.formUnion(.updatesFrequently) }
+        return accessibilityAddTraits(traits)
+    }
+}
+
+/// A live line (Android's polite live region): marked as one (spoken(.liveLine) or .notice), and its text
+/// announced to VoiceOver when it appears and whenever it changes while its view stays, queued behind what
+/// VoiceOver is saying (polite), never interrupting it. Its text is fixed or public: no secret is announced.
+struct LiveLine: ViewModifier {
+    let text: String
+    let live: Bool
+    var kind = Spoken.liveLine
+
+    func body(content: Content) -> some View {
+        if live {
+            content
+                .spoken(kind)
+                .onAppear { announcePolitely(text) }
+                .onChange(of: text) { _, now in announcePolitely(now) }
+        } else {
+            content
+        }
+    }
+}
+
+/// text announced to VoiceOver, queued behind what it is saying (UIAccessibility's queue-announcement
+/// attribute), while VoiceOver runs.
+func announcePolitely(_ text: String) {
+    guard spokenSemantics(.liveLine).announced, UIAccessibility.isVoiceOverRunning else { return }
+    let queued = NSAttributedString(string: text, attributes: [.accessibilitySpeechQueueAnnouncement: true])
+    UIAccessibility.post(notification: .announcement, argument: queued)
 }

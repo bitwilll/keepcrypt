@@ -58,7 +58,7 @@ struct GoOfflineScreen: View {
             Heading(Screen.goOffline.title)
             KitText(StartTexts.goOfflineNeeds)
             Gap(8)
-            KitText(state.offline ? StartTexts.pathNone : StartTexts.pathUsable, id: "network_state", live: true)
+            KitText(state.offline ? StartTexts.pathNone : StartTexts.pathUsable, id: "network_state")
             if !state.offline {
                 KitText(StartTexts.startDisabled, style: .small)
             }
@@ -84,7 +84,7 @@ struct HomeScreen: View {
         KitScreen(Screen.home.id, testRegistry: testRegistry) {
             Title(appName)
             if let refusal = state.fileRefusal {
-                KitText(fileRefusalText(refusal), style: .warning, id: "file_refusal", live: true)
+                KitText(fileRefusalText(refusal), style: .warning, id: "file_refusal")
             }
             Gap(16)
             KitText(StartTexts.homeModes, style: .small)
@@ -195,12 +195,12 @@ struct DiceScreen: View {
             KitScreen(Screen.dice.id, testRegistry: testRegistry) {
                 Heading(Screen.dice.title)
                 // The counts and their limits first, the notes under them, as Android's.
-                KitText(diceText(dice.rolls, dice.minimum, dice.millibits), id: "dice_count", live: true)
+                KitText(diceText(dice.rolls, dice.minimum, dice.millibits), id: "dice_count")
                 if dice.rolls >= dice.minimum {
-                    KitText(StartTexts.diceMinimum, id: "dice_minimum", live: true)
+                    KitText(StartTexts.diceMinimum, id: "dice_minimum")
                 }
                 if !open {
-                    KitText(StartTexts.diceCap, id: "dice_cap", live: true)
+                    KitText(StartTexts.diceCap, id: "dice_cap")
                 }
                 KitText(StartTexts.diceHow, style: .small)
                 if state.diceOnly {

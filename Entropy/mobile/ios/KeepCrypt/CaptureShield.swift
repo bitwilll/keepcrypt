@@ -14,6 +14,10 @@
 //   a return and a resume, background as leaving the app (a Protected screen or a long call discards at
 //   once; a Public one is covered and wiped after 60 s away), and the model's timers tick every second.
 // - The fourth layer, Q88's secure layer, is SecureLayer.swift's, for the views of the words.
+// - **Reading is input** (Q80 (b); tasks/todo.md, M6 item D8). An assistive technology focusing an element
+//   (UIAccessibility.elementFocusedNotification: VoiceOver's cursor, a braille display's, Switch Control's)
+//   is the model's reading, as Android's accessibility focus is: the idle time starts again, and the idle
+//   warning goes. A cover that comes or goes tells VoiceOver the screen changed, so it reads what is there.
 //
 // The content's state lives in the model, never in the views the cover replaces.
 
@@ -54,6 +58,12 @@ struct CaptureShield<Content: View>: View {
         .background(CaptureStateProbe(captured: $windowCaptured))
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
             model.discardAfterScreenshot()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIAccessibility.elementFocusedNotification)) { _ in
+            model.reading()
+        }
+        .onChange(of: CaptureCover.of(captured: captured, active: active)) { _, _ in
+            UIAccessibility.post(notification: .screenChanged, argument: nil)
         }
         .onChange(of: scenePhase, initial: true) { _, phase in
             switch phase {

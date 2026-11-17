@@ -88,6 +88,7 @@ private struct KeyGrid: View {
         .buttonStyle(.plain)
         .disabled(!enabled)
         .accessibilityLabel(label)
+        .spoken(.padKey)
         if sensitive {
             button
         } else {

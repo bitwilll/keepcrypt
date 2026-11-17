@@ -107,7 +107,7 @@ struct ScanScreen: View {
         KitScreen(Screen.scan.id, testRegistry: testRegistry) {
             Heading(Screen.scan.title)
             KitText(CheckTexts.scanGuide)
-            KitText(line, style: line == CheckTexts.scanning ? .small : .warning, id: "scan_line", live: true)
+            KitText(line, style: line == CheckTexts.scanning ? .small : .warning, id: "scan_line")
         } actions: {
             if state.scanStop == .refused {
                 KitButton(CheckTexts.openSettings, id: "open_settings") { OpenSettings.show() }
@@ -144,7 +144,7 @@ struct CodeEntryScreen: View {
             KitText(CheckTexts.codeHow, style: .small)
         } actions: {
             if state.codeRefused {
-                KitText(CheckTexts.codeRefused, style: .warning, id: "code_refused", live: true)
+                KitText(CheckTexts.codeRefused, style: .warning, id: "code_refused")
             }
             Text(codeShown(code))
                 .font(.system(size: 48, weight: .bold, design: .monospaced))
@@ -228,6 +228,7 @@ struct CollisionReportScreen: View {
                     .frame(maxWidth: .infinity)
                     .accessibilityElement()
                     .accessibilityLabel(QrKind.collisionReport.spoken)
+                    .spoken(.qrCode)
                 }
                 Gap(8)
                 KitText(CheckTexts.reportNote, style: .small)

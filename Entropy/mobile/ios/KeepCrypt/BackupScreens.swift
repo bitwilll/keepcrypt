@@ -53,7 +53,7 @@ struct BackupPassphraseScreen: View {
                 KitScreen(Screen.backupPassphrase.id, testRegistry: testRegistry) {
                     Heading(Screen.backupPassphrase.title)
                     if state.wrongConfirm {
-                        KitText(BackupTexts.wrongConfirm, style: .warning, id: "wrong_confirm", live: true)
+                        KitText(BackupTexts.wrongConfirm, style: .warning, id: "wrong_confirm")
                     }
                     KitText(BackupTexts.passphraseNote, style: .small)
                     KitText(passphrasePageText(state.page), style: .small, id: "passphrase_page")
@@ -168,7 +168,7 @@ struct BackupSaveScreen: View {
             KitScreen(Screen.backupSave.id, testRegistry: testRegistry) {
                 Heading(Screen.backupSave.title)
                 if let failure {
-                    KitText(saveFailureText(failure), style: .warning, id: "save_failure", live: true)
+                    KitText(saveFailureText(failure), style: .warning, id: "save_failure")
                     KitText(BackupTexts.saveAgainNote, style: .small)
                 }
                 KitText(BackupTexts.theFile, style: .small)
@@ -219,7 +219,7 @@ struct BackupCheckEntryScreen: View {
                 Heading(Screen.backupCheckEntry.title)
                 KitText(entryWordText(state.page), style: .small, id: "entry_word")
                 if let refusal = state.entryRefusal {
-                    KitText(backupRefusalText(refusal) ?? "", style: .warning, id: "entry_refusal", live: true)
+                    KitText(backupRefusalText(refusal) ?? "", style: .warning, id: "entry_refusal")
                 }
                 KitText(CheckBackupTexts.firstFours, style: .small)
             } actions: {

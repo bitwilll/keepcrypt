@@ -54,6 +54,10 @@ final class ScanUITests: XCTestCase {
         pastPressGuard()
         app.buttons["show_check_qr"].tap()
         XCTAssertTrue(app.element("check_qr").waitForExistence(timeout: 10), "the check QR")
+        // D8: a QR code is an image named by its kind, never by its data.
+        let request = app.element("check_request")
+        XCTAssertEqual(request.label, "Check QR code", "the check QR's VoiceOver label is its kind")
+        XCTAssertEqual(request.elementType, .image, "the check QR is an image to VoiceOver")
         pastPressGuard()
         app.buttons["scan_qr"].tap()
         XCTAssertTrue(app.element("scan").waitForExistence(timeout: 10), "the scan screen")
