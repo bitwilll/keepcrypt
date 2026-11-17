@@ -18142,6 +18142,138 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   them, M5-70 (b): each leg job's budget is its measured time plus 25%, re-measured when Stage U adds journeys. U1a
   made them six, M5-73 (b); their budgets from run 40903211202 are in the Budgets entry.)
 
+## M6: iPhone app (`mobile/ios`, the iPhone boundary under `ffi/`)
+
+Gate (docs/build-plan.md:300): "Words hide during recording and mirroring; a screenshot discards the session; App
+Privacy Report shows no network use; snapshot import and Sparrow watch-only import work; a go-ahead QR from the test
+registry reveals the words and a Stop wipes them". Deliverables: "Screens and binding chosen when M6 starts (Q73),
+capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses the shared screens.
+
+### Inputs from M5 and earlier
+- M5 merged 2026-11-17 as d5c1a3a6 (PR bitwilll/keepcrypt#9, the owner's "approve M5 gate, merge it"); `m6-iphone`
+  is cut from it. Main's push runs at d5c1a3a6: Entropy CI 44004400421, Entropy Android 44004400403, Entropy Pi image
+  44004400523 (results recorded when read).
+- Main's weekly Pi image run failed on 2026-11-02, 11-09 and 11-16 (runs 41444141646, 42620364124, 43869162827), all at
+  95c43598 (M4's merge): the scan's Kconfig compare, "CONFIG_RUSTC_VERSION=109900" against 109901 in that tree's
+  expected/linux.config, the kernel's probe of the runner's own rustc after a runner-image update. M4b's probe fix
+  (74b80be, cherry-picked into M5 as 8y 79c75de, M5-34; expected/linux.config now pins 0) reached main only with
+  d5c1a3a6, so the scheduled runs built the old tree. The push run at d5c1a3a6 is the check; the next weekly run on
+  main is the closing bar (tasks/lessons.md 2026-10-31: the fix's own path, not a green run alone).
+- From M5 for the iPhone: core, keepcrypt-ffi (the safe layer, its wire protocol and every rule) and keepcrypt-guard
+  (the one panic catch) are platform-free; the cross legs already build and scan core for aarch64-apple-ios and
+  aarch64-apple-ios-sim (`_CCRandomGenerateBytes` imported, no other RNG symbol). The screens' flow and every
+  Protected/Public rule live in `:screens`' CeremonyModel (Kotlin); the JVM walk (Walk.kt, 48 screens) and the U-pass
+  edge cases pin them.
+- M5's Q65-Q72 iPhone plan (shared screens through Kotlin/Native, `keepcrypt-capi` over cinterop, konan-deps.sh's
+  signed fetch) was dropped by Q73 when two of the three Kotlin/Native archives failed their own JetBrains signatures.
+- Facts read 2026-11-17 from published sources (no tool was run on the owner's Mac; lessons 2026-10-20):
+  - Kotlin 2.4.21 (2026-10-08) and 2.5.0-RC still fetch `lldb-4-macos` and `libffi-3.3-1-macos-arm64` at build time
+    (konan.properties, no checksum property), and Kotlin/Native's DependencyDownloader checks only the byte count, no
+    hash or signature. No JetBrains issue or release note acknowledges Q73's BADSIG or the shared `.sha256`.
+  - GitHub's macOS runners: macos-26 (Xcode 26.0.1-26.6, default 26.6; iOS 26.2, 26.4, 26.5 simulators) and macos-15
+    (Xcode 16.0-16.4 and 26.x; iOS 18.5, 18.6 and 26.x simulators). No iOS 17 simulator on any runner image. iOS 27 is
+    current (2026-09-14).
+  - Capture: `sceneCaptureState` (UIKit) and `isSceneCaptured` (SwiftUI), iOS 17+, not deprecated; `UIScreen.isCaptured`
+    marked 11.0-27.0 and reported reading true with nothing recording on iOS 26; `userDidTakeScreenshotNotification`
+    fires after the screenshot is saved. Apple DTS (forum thread 824922, Apr-May 2026): no public API prevents
+    screenshots, and a secure text field used as a container is "not its intended purpose" (Guideline 2.5.1), with no
+    guarantee; one third-party report says the trick no longer works on iOS 26 (unconfirmed).
+  - Installing on the owner's iPhone: a free Personal Team (Xcode on the owner's Mac) gives 7-day profiles, 3 apps per
+    device; the paid Developer Program adds Ad Hoc and TestFlight. App Privacy Report (Settings, Privacy & Security,
+    iOS 15.2+) lists each app's network activity over 7 days, from when it is turned on.
+  - Bindings: UniFFI 0.32.2 (BP:78 rules it out: a banned random crate, a second getrandom user, MPL-2.0 and a logging
+    crate in its generator), swift-bridge 0.1.59 (pre-1.0), cbindgen 0.29.4 (a header generator, a new dependency).
+
+### Questions for the owner (Q86-Q92, asked 2026-11-17)
+86. **The iPhone's screens** (BP:300 "Screens and binding chosen when M6 starts"; MA:17, MA:21)
+    Recommended: native SwiftUI screens in `mobile/ios`, over the same core through a C bridge. Only Apple's
+    toolchain and SDK; no JetBrains download, so Q73's unverifiable archives never reach a build; VoiceOver and its
+    braille displays work natively (MA:31); each capture layer sits on the views it protects. Two of MA:17's four
+    iPhone residuals go (the Kotlin/Native runtime's unwipeable memory, Skia's cache of drawn texts); Swift's own
+    strings and a crash report on an unexpected Swift trap stay, and the MA:17 paragraph is rewritten to say so. The
+    cost: the flow and the Protected/Public rules are written a second time in Swift, so a Swift CeremonyModel is
+    pinned by its own tests that mirror the JVM walk (every screen, Back, leaving, idle, refusals), and the two must
+    agree screen for screen (one shared table of screen ids, titles and kinds, read by both test suites).
+    Otherwise: reuse the Compose Multiplatform screens through Kotlin/Native, pinning `lldb-4-macos` and
+    `libffi-3.3-1-macos-arm64` by our own SHA-256 with two independent fetches as cross-checks (Q73's first option),
+    and accepting MA:17's four residuals.
+87. **The iPhone's binding** (BP:35, BP:37, BP:78; Q66)
+    Recommended: `keepcrypt-capi` (`ffi/capi`), a hand-written C ABI crate over keepcrypt-guard, built as a
+    `staticlib` for aarch64-apple-ios and aarch64-apple-ios-sim: one `kc_call(request bytes) -> response bytes` and
+    one `kc_free`, the same wire protocol keepcrypt-jni carries, so every rule stays in keepcrypt-ffi; a hand-written
+    `keepcrypt.h` that a test compares with the library's exported symbols; the Swift side decodes the wire bytes. No
+    new crate (no cbindgen, no UniFFI, no swift-bridge). The gate's FFI rule gains capi as the second boundary over the
+    one catch.
+    Otherwise: cbindgen generating the header (a new build dependency, cargo vet entry).
+88. **Secure-layer rendering** (MA:86, MA:100: the words drawn inside an `isSecureTextEntry` field's layer)
+    Apple says it is not an intended use and may break, and App Review guideline 2.5.1 may refuse it; a third-party
+    report says it no longer hides content on iOS 26. MA:86 already calls it undocumented and never the only layer.
+    Recommended: build it as MA:100 shows, as the fourth layer, and test on the owner's iPhone whether a screenshot
+    and a recording of a words page show the words blank (I1); if it does not hide them on current iOS, drop it with
+    a doc edit (MA:86, MA:100) and say so in the gate report. The other three layers (capture-state redaction, the
+    screenshot discard, the app-switcher cover) carry the gate either way.
+    Otherwise: drop it now (doc edit), three layers only.
+89. **The owner's iPhone and how the app reaches it** (MA:116; the gate's App Privacy Report item)
+    Needed: the iPhone model and iOS version. Recommended: a free Personal Team in Xcode on the owner's Mac, the
+    owner pressing Run with the phone attached (a 7-day profile is enough for a gate session; no App Store, no
+    TestFlight, no paid program); the lead prepares the project and the steps, and runs no Xcode tool on the Mac
+    itself unless Q90 allows it.
+    Otherwise: the paid Developer Program, with an Ad Hoc build from CI or TestFlight.
+90. **Xcode on the owner's Mac for the local loop** (tasks/lessons.md 2026-10-20; Q76's Android analogue)
+    Recommended: yes, as Q76 did for Android: the lead may run `xcodebuild`, `xcrun simctl` and the iOS simulator on
+    the owner's Mac for local builds and tests, installing one iOS simulator runtime (iOS 26.x, several GB) once, with
+    every run reported as local and CI the gate. Nothing else on the Mac is changed; no device command runs without
+    the owner at the phone.
+    Otherwise: CI only (each change waits for a macOS run).
+91. **CI for the iPhone** (Q55's Android model; BP:322-323)
+    Recommended: a new non-required workflow `entropy-ios.yml` on `macos-26` (Xcode 26.6, the iOS 26.5 simulator) with
+    a second leg on `macos-15` (Xcode 16.4, iOS 18.6), the same hardening as the other three (read-only token, the
+    three approved actions pinned by SHA); the 14 required checks keep their names. It builds keepcrypt-capi for both
+    iOS targets and scans them (`--artifact`), builds the app with `xcodebuild` and no third-party package, scans the
+    built app (no networking symbol, `URLSession`, `NWConnection`, `CFNetwork`, `UIPasteboard`; the RNG and marker scan
+    on the linked binary), and runs XCTest and XCUITest on the simulator: every screen's walk, the capture layers
+    driven by test hooks (a simulator cannot record its own screen), the screenshot discard by posting the
+    notification, the document picker save and open, and the test-registry drills. The deployment target stays iOS 17
+    (BP:77); no runner has an iOS 17 simulator, so iOS 17 itself is untested in CI and named in the gate report.
+    Otherwise: macos-26 alone.
+92. **The doc edits these answers need** (Q72's pattern: each exact edit listed for approval before it lands)
+    BP:35, BP:37, BP:58, BP:77, BP:78 and BP:300; MA:17, MA:21, MA:23, MA:24, MA:31 and, by Q88, MA:86 and MA:100.
+    Recommended: the lead lists each sentence's exact old and new text in this file after Q86-Q91 are answered, and
+    they land as one docs commit only after the owner approves that list.
+
+### Plan (provisional, for the recommended answers; refined into items once Q86-Q92 are answered)
+- **Stage A, docs and rules:** Q92's edits; CLAUDE.md rule 9's iOS sentence checked against the choice; the gate's
+  Swift rules (banned RNG everywhere in Swift: `arc4random*`, `SecRandomCopyBytes`, `SystemRandomNumberGenerator`,
+  `.random(`, since only core draws randomness; network: `URLSession`, `NWConnection`, `CFNetwork`, `Network` framework imports outside
+  the one `NWPathMonitor` offline check; clipboard: `UIPasteboard`; logging: `print`, `NSLog`, `os_log`, `Logger`;
+  no third-party Swift package) with hit and clean fixtures before any Swift exists, and their canaries.
+- **Stage B, the bridge:** `ffi/capi` (staticlib, `kc_call`, `kc_free`, the header test, the one-catch rule), its
+  Rust tests in both configurations, the cross legs building and scanning `libkeepcrypt_capi.a`.
+- **Stage C, the app shell and CI:** the Xcode project (no packages), the Swift wire codec over the vectors, the
+  self-test at start, `entropy-ios.yml` with its scans; the capture layers (`isSceneCaptured` cover, screenshot
+  discard, app-switcher cover, and Q88's secure layer) and the offline check (`NWPathMonitor`, no usable path).
+- **Stage D, the screens:** the shared screen table; the Swift CeremonyModel and its tests mirroring the JVM walk; the
+  48 screens in SwiftUI with the pads (no system keyboard), VoiceOver labels and the 30-second cover, the idle rules,
+  the document picker backup (`.fileExporter`, read back and verified) and the `.age`/`.kcr` import, the camera
+  go-ahead scan (AVFoundation's QR reader, permission asked only at the scan).
+- **Stage U, the end-to-end pass:** XCUITest journeys through the UI alone on both simulators, edge cases, a UX audit
+  against the docs and the Android app.
+- **Stage F, evidence:** CLAUDE.md Commands, the CI proof at the final head, the owner's I0-I5 issued (todo.md,
+  "iPhone phone checklists"), the Review and the gate report.
+
+### Verification (each maps to a gate item; refined with the plan)
+- [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest
+  with the capture hook on both simulators); I1 on the owner's iPhone (a Control Center recording, AirPlay mirroring,
+  iPhone Mirroring).
+- [ ] A screenshot discards the session: the notification wipes it and explains why (XCTest and XCUITest); I1's
+  hardware screenshot on each sensitive screen.
+- [ ] App Privacy Report shows no network use: the app's scan (no networking code or SDK); I5's report after I2-I4.
+- [ ] Snapshot import works: `with-dice-50` through the document picker with its Stale warning (simulator and I4).
+- [ ] Sparrow watch-only import works: I3 (Sparrow and Bitcoin Core, the same first address).
+- [ ] A go-ahead QR from the test registry reveals the words, and a Stop wipes them: the decoder on canned frames in
+  CI; I4 by the iPhone's camera.
+- [ ] The 14 required checks green with names unchanged; `entropy-ios.yml` green at the final head.
+
 ## Review
 _Added after completion, with pasted proof for every ticked item._
 
