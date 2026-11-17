@@ -19529,7 +19529,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   size refused before any byte, the re-check QR, the entry's line) passing in all four; CheckBackupUITests passing
   in TestHooks on both legs (59 s and 55 s), every other UI test too. The jobs took 1364 s and 1620 s, inside the
   34-minute budget (1620 s x 1.25 = 2025 s). Entropy CI 44153503873 (14 jobs) and Entropy Pi image 44153504767 green.
-- [ ] D8. VoiceOver: each screen's title read as it opens, headings, live lines, every QR named by its kind and never its
+- [x] D8. VoiceOver: each screen's title read as it opens, headings, live lines, every QR named by its kind and never its
   data, each Protected pad key reading its letter; reading counts as input for the idle rule (Q80 (b)'s answer on
   Android). iOS has no accessibility-data-sensitive mark, so VoiceOver reads the words as any screen reader would:
   named as an iPhone residual for the owner's I5 check.
@@ -19583,6 +19583,15 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
   checks ran" (1014 s in all).
 
+  CI proof (2026-11-18): Entropy iPhone run 44159274507 at 61b24aec green: "Executed 128 tests, with 0 failures" in
+  Shipping and WithTestRegistry on macos-15 (Xcode 16.4, iPhone 16 iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17
+  iOS 26.5); VoiceOverTests' three tests in all four; ScanUITests (the check QR an image labelled "Check QR code")
+  and WordsUITests (insert 1's SeedBook line, drawn inside SecureLayer, in the accessibility tree; the 26 letter keys
+  buttons labelled by their letters) passing on both legs, every other UI test too. So M6-16 is settled: what
+  SecureLayer hosts is offered to VoiceOver in the field's place, and a screen-reader user reads the words as on
+  Android; the residual (no accessibility-data-sensitive mark on iOS) stands for I5. The jobs took 1264 s and 1836 s
+  (macos-26 near its 34 minutes: U5 splits the job). Entropy CI 44159274470, Entropy Android 44159274518 (all nine
+  jobs, both API 34 jobs included) and Entropy Pi image 44159274514 green.
 ### Stage U: the end-to-end pass (M6 commits U1-U5, after Stage D; refined 2026-11-18)
 - [ ] U5. CI room for the journeys, first: entropy-ios.yml's one job per leg (about 27 of its 34 minutes at 3a13ac60)
   cannot hold U1-U2's UI-alone journeys. Each leg becomes jobs of its own on the same two images, as Entropy Android's
