@@ -18329,6 +18329,18 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   global unmangled symbols of the workspace's own keepcrypt_* members are exactly `_kc_call` and `_kc_max_out`
   (secp256k1-sys's four may appear from its own members), with a selftest that a planted extra export fails.
 
+- M6-5 (2026-11-17, from A1's report): test hooks for the UI tests. XCUITest drives the app as its own process, so
+  a flag set on the test targets never reaches the app. The app gains a third build configuration, `TestHooks`,
+  used only by the UI-test scheme and never archived; `KC_TEST_HOOKS` may be set there alone (the gate's SwTestHook
+  rule is narrowed to that configuration's build settings in C5). The hook code embeds `KC_TEST_HOOKS_DO_NOT_SHIP`,
+  and C4's `--ios-app` scan requires that marker absent from both shipped configurations' apps, so a build that sets
+  the flag by an `xcodebuild` argument is still caught (rule 10's pattern).
+- M6-6 (2026-11-17, from A1's report): before the first Swift file, A2 adds the Swift fail-closed rule (rule 3:
+  `try?` and `try!` refused under mobile/ios; a `catch` must end in the halt path, as KtFailOpen requires of
+  Kotlin's) and limits URL opening to `UIApplication.openSettingsURLString` in one file (the camera prompt's "Open
+  Settings"); M5's rule that flags any tracked file under mobile/ios/ is retired in C2's commit, replaced by A1's
+  rules.
+
 ### Stage B: the bridge (M6 commits 2-4)
 - [x] B1. `ffi/capi` (`keepcrypt-capi`): `[lib] name = "keepcrypt_capi"`, `crate-type = ["staticlib", "rlib"]`,
   dependencies keepcrypt-guard alone (as keepcrypt-jni, M5-35; no new crates.io crate), the workspace's lints and
@@ -18543,6 +18555,11 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   `sh scripts/banned-api-faults.sh` "669 runs (3 ways): 669 passed, 0 failed" (scan: 169 places at 134 lines);
   `scripts/canaries.sh` "all 102 checks ran", 0 FAIL (new: ios-swift-rules, eleven hits, the three allowed files
   clean); `cargo fmt --all --check` clean.
+
+- [ ] A2. SwFailOpen and SwOpenURL (M6-6): `try?` and `try!` are hits under mobile/ios; a `catch` block that does not
+  end in the halt call (the CeremonyModel's halt, named in C3) is a hit, as KtFailOpen's catch list; `open(`,
+  `openURL`, `UIApplication.shared.open` and SwiftUI's `Link(` are hits except `UIApplication.openSettingsURLString`
+  opened from `mobile/ios/KeepCrypt/OpenSettings.swift`. Hit and clean fixtures; selftest, fault check, canaries.
 
 ### Stage C: the app shell and its CI (M6 commits C1-C5, after Stage A)
 - [ ] C1. `scripts/ios-rust.sh FLAVOUR` (shipping or withTestRegistry): plain `cargo build --release --locked` of
