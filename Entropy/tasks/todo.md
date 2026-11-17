@@ -18306,6 +18306,59 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
 - **Stage F, evidence:** CLAUDE.md Commands, the CI proof at the final head, the owner's I0-I5 issued (todo.md,
   "iPhone phone checklists"), the Review and the gate report.
 
+### Lead decisions (M6-n, dated; each for the owner's review at the gate)
+- M6-1 (2026-11-17): the C ABI has no `kc_free`, unlike Q87's wording: Swift passes its own output buffer, so no Rust
+  memory crosses the boundary and Swift wipes the one buffer it owns (M5's 8p design, kept from before Q73).
+  `kc_max_out()` gives that buffer's size, a fixed bound the ffi tests show every reply fits under; a reply past
+  `out_cap` halts the slot (fail closed). Two exports, `kc_call` and `kc_max_out`.
+- M6-2 (2026-11-17): Stage B (the bridge) runs before Stage A's Swift rules, since no Swift exists before Stage C and
+  B's own gate change (capi as the second boundary over the one catch) is the FFI rule's; the Swift rules and their
+  fixtures land before the first Swift file (Stage C's first commit needs them green).
+
+### Stage B: the bridge (M6 commits 2-4)
+- [ ] B1. `ffi/capi` (`keepcrypt-capi`): `[lib] name = "keepcrypt_capi"`, `crate-type = ["staticlib", "rlib"]`,
+  dependencies keepcrypt-guard alone (as keepcrypt-jni, M5-35; no new crates.io crate), the workspace's lints and
+  clippy.toml as jni's, `[profile.release.package.keepcrypt-capi]` `overflow-checks = true`. `src/lib.rs` exports:
+  - `kc_max_out() -> usize`: `MAX_OUT`, the reply bound;
+  - `kc_call(op: u32, input: *const u8, input_len: usize, out: *mut u8, out_cap: usize) -> i64`: a slice from `input`
+    only when `input_len > 0` (null allowed then), under jni's `MAX_INPUT`; `keepcrypt_guard::guarded(op, bytes)`; the
+    reply copied once into `out` and dropped (wiped); returns the reply's length. Halts the slot through `guarded`'s
+    `HALT` op and returns -1 on: a null pointer with a non-zero length, `input_len > MAX_INPUT`, a null `out`,
+    `out_cap < reply length` (the reply wiped unread), an op past i32's range is not possible (u32 in);
+  - no callback, no thread, no `static mut`; every unsafe block one operation with a SAFETY: line.
+  Proof: `ffi/capi/tests/` call the two functions by Rust path over vectors/ (self-test, a dice-only 50-roll ceremony to
+  Ready and its words page reply, every halt case above, a short `out_cap`, a planted panic under the guard's test
+  op), in both configurations (release and `--features keepcrypt-core/test-registry`).
+- [ ] B2. `MAX_OUT`: a test in keepcrypt-ffi drives every op over the vectors and records the longest reply (the age
+  backup's armored file, the QR matrices, the watch-only export), and asserts it is under `MAX_OUT` with room; the
+  bound and the measured longest are named in the Proof.
+- [ ] B3. `ffi/capi/include/keepcrypt.h`, hand-written: exactly the two prototypes; a test (macOS and Linux hosts)
+  builds the staticlib, reads its defined `kc_*` symbols with `llvm-nm` (the toolchain's) and compares them with the
+  header's two names; a planted extra export fails it.
+- [ ] B4. The gate: capi becomes the second boundary. `#[no_mangle]`/`extern "C"` exports only in ffi/jni/src/lib.rs and
+  ffi/capi/src/lib.rs; a capi export needs the guard's one catch (as jni's); unsafe only in keepcrypt-jni and
+  keepcrypt-capi; JNI names never in capi; the thread ban, Rule1's hashing and FailOpen over ffi/capi/src. Fixtures for
+  each placement (hit and clean), the canaries' crate pins (members, direct dependencies, identical clippy.toml and
+  lint tables) grown by capi, check-path-deps' member list.
+  Proof: the gate's --selftest and canaries.sh green, each new fixture named.
+- [ ] B5. CI: entropy-ci.yml's two iOS cross legs build `-p keepcrypt-capi` as a staticlib (release and
+  test-registry, as the Android legs build jni) and scan `libkeepcrypt_capi.a` with `--artifact`
+  (`_CCRandomGenerateBytes` imported, no other RNG symbol; the test-registry build exactly its marker and the test
+  key); the exports check allows exactly `_kc_call` and `_kc_max_out` beside secp256k1-sys's four. The test job runs
+  `cargo test -p keepcrypt-capi` in both configurations.
+  Proof: the run IDs; the legs' scan lines.
+
+### Stage A: the Swift rules (M6 commit 5, before the first Swift file)
+- [ ] A1. The gate's Swift category over `mobile/ios/` (`.swift`, `.h`, `.m`, `.plist`, `.pbxproj`, `.entitlements`):
+  banned RNG (`arc4random`, `SecRandomCopyBytes`, `SystemRandomNumberGenerator`, `.random(`, `drand48`, `rand(`),
+  network (`URLSession`, `NWConnection`, `NWListener`, `CFNetwork`, `CFStream`, `URLRequest`, `import Network` outside
+  the one offline-check file, which may use `NWPathMonitor` alone), clipboard (`UIPasteboard`), logging (`print(`,
+  `NSLog`, `os_log`, `Logger(`, `OSLog`, `debugPrint`), persistence (`UserDefaults`, `FileManager` writes outside the
+  document picker file, `NSKeyedArchiver`, `@AppStorage`, `@SceneStorage`, Core Data, Keychain), the system keyboard
+  (`TextField`, `SecureField`, `TextEditor`, `UITextField` outside Q88's secure-layer file, `UITextView`), and any
+  Swift package (`Package.swift`, `XCRemoteSwiftPackageReference` in the project file).
+  Proof: a hit and a clean fixture per rule; --selftest and canaries green.
+
 ### Verification (each maps to a gate item; refined with the plan)
 - [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest
   with the capture hook on both simulators); I1 on the owner's iPhone (a Control Center recording, AirPlay mirroring,
