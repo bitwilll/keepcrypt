@@ -1,6 +1,7 @@
 // The iPhone app (tasks/todo.md, M6 items C2 and C3; Q86): in Stage C a shell that runs the start-up
 // self-test (docs/mobile-apps.md, step 2) and shows its outcome, "Self-test passed" or the stop screen.
-// The ceremony's screens come in Stage D, the capture layers and the offline check in C5.
+// The ceremony's screens come in Stage D, the capture layers and the offline check in C5; the TestHooks
+// build (C5, M6-5) draws the UI tests' hook panel under every screen.
 
 import SwiftUI
 
@@ -8,7 +9,12 @@ import SwiftUI
 struct KeepCryptApp: App {
     var body: some Scene {
         WindowGroup {
+            #if KC_TEST_HOOKS
             StartView()
+                .safeAreaInset(edge: .bottom) { TestHookPanel() }
+            #else
+            StartView()
+            #endif
         }
     }
 }

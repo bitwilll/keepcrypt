@@ -1009,15 +1009,21 @@
 #              MXMetricManager), an import or include line naming an analytics, crash or ad SDK in
 #              any letter case (sw_sdk: firebase, crashlytics, sentry, bugsnag and the rest), and in
 #              the one module map link, extern, umbrella and framework as words.
-#   SwTestHook the compilation condition KC_TEST_HOOKS, the capture layers' test hooks (rule 10's
-#              Swift form; C5): in a .swift file (lower case) it passes (#if KC_TEST_HOOKS); in a
-#              .pbxproj only inside the buildSettings of an XCBuildConfiguration that only test
-#              targets' lists hold (PBXNativeTargets of product type bundle.unit-test or
-#              bundle.ui-testing; the project's own configurations, the app's and any other
-#              target's hit), read as a property list without a parser (sw_hooks_pbxproj; a file it
-#              cannot follow allows none), and every line holding more of it than those allowed
-#              strings hits, a comment's too; in any other file (an .xcconfig, a header's #define,
-#              a plist, a scheme) every line that names it hits.
+#   SwTestHook the compilation condition KC_TEST_HOOKS, the UI tests' hooks into the app (rule 10's
+#              Swift form; C5, lead decision M6-5): in a .swift file (lower case) it passes (#if
+#              KC_TEST_HOOKS); in a .pbxproj only inside the buildSettings of an XCBuildConfiguration
+#              that only test targets' lists hold (PBXNativeTargets of product type
+#              bundle.unit-test or bundle.ui-testing), or of the one named TestHooks that only the
+#              app target's list holds, once (the one PBXNativeTarget of product type application);
+#              the project's own configurations, the app's others and any other target's hit, read
+#              as a property list without a parser (sw_hooks_pbxproj; a file it cannot follow allows
+#              none), and every line holding more of it than those allowed strings hits, a
+#              comment's too; in any other file (an .xcconfig, a header's #define, a plist, a
+#              scheme) every line that names it hits. And the TestHooks configuration is the
+#              UI-test scheme's alone, never archived: the word TestHooks in a scheme (.xcscheme in
+#              any letter case) other than mobile/ios/KeepCrypt.xcodeproj/xcshareddata/xcschemes/
+#              KeepCrypt-TestHooks.xcscheme, and there inside its ArchiveAction, hits
+#              (sw_hooks_schemes).
 #   SwRoot     ("SwRoot: <file>: <detail>"): a .swift, .m, .mm or .modulemap file, or a file
 #              under a .xcodeproj or .xcworkspace directory, outside mobile/ios/, in any letter case:
 #              the app's code and project live under mobile/ios/, the one Xcode root, as Kotlin
@@ -1326,7 +1332,8 @@ there, logging and printing and trap messages built from values, persistence and
 directories, file writes outside the document picker's file, the system keyboard (UITextField
 outside the secure layer's file, which must set isSecureTextEntry = true), Swift packages,
 CocoaPods, Carthage, SDKs and tracking, a module map but the one, KC_TEST_HOOKS outside Swift
-files and the test targets' build settings, try? and try!, a catch that does not end in
+files, the test targets' build settings and the app's TestHooks configuration, that configuration
+in a scheme but the UI-test one or in its archive action, try? and try!, a catch that does not end in
 Ceremony.halt( or a throw, Combine's error eaters, crash handlers and unstructured tasks, another
 Ceremony or halt outside Ceremony.swift, and opening a URL or another app but the settings page
 from OpenSettings.swift; and Swift, Objective-C, module maps and Xcode projects
@@ -3355,13 +3362,14 @@ sw_module_lines() {
   grep -n -a -E -e "${L}(link|extern|umbrella|framework)$R" -- "$1"
 }
 
-# SwTestHook (rule 10's Swift form: the test hooks never ship; tasks/todo.md, M6 item C5), under
-# mobile/ios: the compilation condition KC_TEST_HOOKS, which turns the capture layers' test hooks
-# on, may appear in a .swift file (as #if KC_TEST_HOOKS) and, in a .pbxproj, only inside the
-# buildSettings of a build configuration of a test target (sw_hooks_pbxproj); every other line
-# that names it, in any other file (an .xcconfig, a header's #define, a plist, a scheme), is a hit
-# (sw_hooks). So no shipping or app configuration, and no settings file an app configuration could
-# take as its base, defines it.
+# SwTestHook (rule 10's Swift form: the test hooks never ship; tasks/todo.md, M6 item C5 and lead
+# decision M6-5), under mobile/ios: the compilation condition KC_TEST_HOOKS, which compiles the UI
+# tests' hooks into the app, may appear in a .swift file (as #if KC_TEST_HOOKS) and, in a .pbxproj,
+# only inside the buildSettings of a build configuration of a test target or of the app target's
+# TestHooks configuration (sw_hooks_pbxproj); every other line that names it, in any other file (an
+# .xcconfig, a header's #define, a plist, a scheme), is a hit (sw_hooks). So no shipping
+# configuration of the app (Shipping, WithTestRegistry), no project-wide one, and no settings file
+# an app configuration could take as its base, defines it.
 sw_hooks() {
   grep -n -a -F -e 'KC_TEST_HOOKS' -- "$1"
 }
@@ -3372,12 +3380,17 @@ sw_hooks() {
 # string ([A-Za-z0-9_$+/:.-]) is a token, and { } ( ) = ; , are read as a dictionary's and an
 # array's punctuation, in order. A KC_TEST_HOOKS in a string (a key or a value, alone or inside a
 # longer one such as "$(inherited) KC_TEST_HOOKS" or -DKC_TEST_HOOKS) is allowed only inside
-# objects / ID / buildSettings, where ID is an XCBuildConfiguration defined once, listed only in
-# the buildConfigurations of XCConfigurationLists each defined once and each the
+# objects / ID / buildSettings, where ID is an XCBuildConfiguration defined once, and either listed
+# only in the buildConfigurations of XCConfigurationLists each defined once and each the
 # buildConfigurationList of nothing but PBXNativeTargets, each defined once, whose productType is
-# com.apple.product-type.bundle.unit-test or com.apple.product-type.bundle.ui-testing. So a
-# configuration of the app target, of the project (whose settings every target takes), of a list
-# shared with the app or of any other target, and one listed nowhere, all hit. Every line holding
+# com.apple.product-type.bundle.unit-test or com.apple.product-type.bundle.ui-testing; or named
+# TestHooks (one name key) and listed once, in one XCConfigurationList defined once and the
+# buildConfigurationList of the app target alone: the one object whose productType is
+# com.apple.product-type.application, a PBXNativeTarget defined once (M6-5). So the app's Shipping
+# and WithTestRegistry configurations, a TestHooks one of the project (whose settings every target
+# takes) or of any other target, a TestHooks one also listed elsewhere or named twice, any of a
+# project with a second application target, a configuration of a list shared with the app or of any
+# other target, and one listed nowhere, all hit. Every line holding
 # more KC_TEST_HOOKS than its allowed strings is a hit, so one in a comment hits too; and a file
 # the reading cannot follow (a character no token takes, a brace or a ; out of place, a dictionary,
 # a string or a comment still open at the end, a second top-level dictionary) allows none. FILE is
@@ -3424,6 +3437,10 @@ sw_hooks_pbxproj() {
             if (ck[3] == "isa") isa[pk[3]] = v
             else if (ck[3] == "buildConfigurationList") bcl[pk[3]] = v
             else if (ck[3] == "productType") ptype[pk[3]] = v
+            else if (ck[3] == "name") {
+              cname[pk[3]] = v
+              cnames[pk[3]]++
+            }
           }
           st[d] = 3
         } else {
@@ -3549,18 +3566,25 @@ sw_hooks_pbxproj() {
       if (instr || incomment || d != 0 || !done) bad = 1
       ut = "com.apple.product-type.bundle.unit-test"
       ui = "com.apple.product-type.bundle.ui-testing"
+      at = "com.apple.product-type.application"
+      napps = 0
+      for (o in ptype) if (ptype[o] == at) napps++
       for (o in bcl) {
         if (isa[o] == "PBXNativeTarget" && defs[o] == 1 && (ptype[o] == ut || ptype[o] == ui)) towner[bcl[o]]++
+        else if (isa[o] == "PBXNativeTarget" && defs[o] == 1 && ptype[o] == at && napps == 1) aowner[bcl[o]]++
         else oowner[bcl[o]]++
       }
       for (k = 1; k <= nm; k++) {
         l = mlist[k]
-        if (isa[l] == "XCConfigurationList" && defs[l] == 1 && (l in towner) && !(l in oowner)) tref[mcfg[k]]++
+        if (isa[l] == "XCConfigurationList" && defs[l] == 1 && (l in towner) && !(l in oowner) && !(l in aowner)) tref[mcfg[k]]++
+        else if (isa[l] == "XCConfigurationList" && defs[l] == 1 && (l in aowner) && aowner[l] == 1 && !(l in oowner) && !(l in towner)) aref[mcfg[k]]++
         else oref[mcfg[k]]++
       }
       for (k = 1; k <= nc; k++) {
         o = cobj[k]
-        if (!bad && isa[o] == "XCBuildConfiguration" && defs[o] == 1 && (o in tref) && !(o in oref)) ok[cline[k]] += cn[k]
+        if (bad || isa[o] != "XCBuildConfiguration" || defs[o] != 1 || (o in oref)) continue
+        if ((o in tref) && !(o in aref)) ok[cline[k]] += cn[k]
+        else if ((o in aref) && aref[o] == 1 && !(o in tref) && (o in cnames) && cnames[o] == 1 && cname[o] == "TestHooks") ok[cline[k]] += cn[k]
       }
       for (ln = 1; ln <= NR; ln++) {
         if ((ln in raw) && raw[ln] > ok[ln] + 0) {
@@ -3570,6 +3594,45 @@ sw_hooks_pbxproj() {
       }
       exit !found
     }'
+}
+
+# SwTestHook, in a scheme (lead decision M6-5): TestHooks, the app's one configuration that sets
+# KC_TEST_HOOKS, is the UI-test scheme's alone and is never archived. The word TestHooks in a scheme
+# (a .xcscheme in any letter case) other than $sw_hooks_scheme is a hit on every line that names it;
+# in that scheme, a line inside its ArchiveAction is (from the line that opens <ArchiveAction to the
+# end of the element: the start tag's own /> or </ArchiveAction>; one never closed runs to the end of
+# the file). So no other scheme builds, runs, tests or archives the hooks, and archiving the UI-test
+# scheme cannot take them. A build that names the configuration on xcodebuild's command line is the
+# app scan's (--ios-app refuses the hooks' marker in both shipped configurations).
+sw_hooks_scheme=mobile/ios/KeepCrypt.xcodeproj/xcshareddata/xcschemes/KeepCrypt-TestHooks.xcscheme
+sw_hooks_schemes() {
+  grep -q -a -E -e "${L}TestHooks$R" -- "$1"
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  if [ "$1" != "$sw_hooks_scheme" ]; then
+    grep -n -a -E -e "${L}TestHooks$R" -- "$1"
+    return
+  fi
+  ktext=$(kt_text "$1") || return 2
+  printf '%s\n' "$ktext" | awk '
+    {
+      line = $0
+      if (!arch && (p = index(line, "<ArchiveAction")) > 0) {
+        arch = 1
+        tag = 1
+        line = substr(line, p)
+      }
+      if (arch && match($0, /(^|[^A-Za-z0-9_])TestHooks([^A-Za-z0-9_]|$)/)) {
+        print NR ":" $0
+        found = 1
+      }
+      if (arch && tag && (p = index(line, ">")) > 0) {
+        tag = 0
+        if (p > 1 && substr(line, p - 1, 1) == "/") arch = 0
+        line = substr(line, p + 1)
+      }
+      if (arch && !tag && index(line, "</ArchiveAction>") > 0) arch = 0
+    }
+    END { exit !found }'
 }
 
 # SwFailOpen (rule 3: no fallback, no catch-and-continue; tasks/todo.md, M6 item A2 and lead decision
@@ -4563,6 +4626,9 @@ EOF
           *.swift) ;;
           *.pbxproj) report SwTestHook sw_hooks_pbxproj "$rel" ;;
           *) report SwTestHook sw_hooks "$rel" ;;
+        esac
+        case $rel in
+          *.[Xx][Cc][Ss][Cc][Hh][Ee][Mm][Ee]) report SwTestHook sw_hooks_schemes "$rel" ;;
         esac
         report SwFailOpen swfailopen "$rel"
         report SwFailOpen sw_catch "$rel"

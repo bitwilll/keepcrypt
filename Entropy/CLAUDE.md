@@ -175,8 +175,9 @@ scripts/banned-api-check.sh          # grep gate for banned RNG, network and cli
                                      # mobile/ios (M6 A1: RNG, network, clipboard, logging, storage, keyboard and
                                      # package APIs refused, the offline check's import and monitor, the secure
                                      # layer's UITextField and the document picker's writes each in its one file;
-                                     # KC_TEST_HOOKS only in Swift and the test targets' settings; Swift,
-                                     # Objective-C and Xcode projects only under mobile/ios)
+                                     # KC_TEST_HOOKS only in Swift, the test targets' settings and the app's
+                                     # TestHooks configuration, which only the UI-test scheme names and never
+                                     # archives; Swift, Objective-C and Xcode projects only under mobile/ios)
 scripts/banned-api-check.sh --workflows ../.github/workflows   # every entropy-*.yml keeps the hardening: read-only
                                      # token, the three actions pinned by SHA, no secret, no fork-trusting trigger,
                                      # no expression in a run step (the path is the monorepo's, as CI's gates job runs it)
@@ -242,9 +243,13 @@ sh scripts/ios-rust.sh shipping
 sh scripts/ios-rust.sh withTestRegistry
 xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-Shipping -configuration Shipping -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test
 xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-WithTestRegistry -configuration WithTestRegistry -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test
+# The UI tests with the app's test hooks (M6-5: the TestHooks configuration, shipping's library, the hooks compiled
+# in; never archived, never scanned as a shipped app; its binary must hold KC_TEST_HOOKS_DO_NOT_SHIP):
+xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test
 # CI: .github/workflows/entropy-ios.yml (not a required check) runs these on macos-26 (Xcode 26.6, iOS 26.5) and
 # macos-15 (Xcode 16.4, iOS 18.6): both libraries, --selftest-ios-app, build-for-testing and test-without-building of
-# each scheme on a simulator found by name, --ios-app on each simulator app and on an unsigned Shipping device build.
+# each scheme on a simulator found by name, --ios-app on the Shipping and WithTestRegistry simulator apps and on an
+# unsigned Shipping device build, and the TestHooks app's hooks marker required.
 sh scripts/ios-rust.sh --selftest    # 12 cases on a stand-in cargo, uname and shasum (CI's gates job)
 scripts/banned-api-check.sh --ios-app CONFIG APP mobile/ios/expected   # CONFIG Shipping or WithTestRegistry: a built
                                      # .app's Info.plist and privacy manifest against expected/, its own files alone, its

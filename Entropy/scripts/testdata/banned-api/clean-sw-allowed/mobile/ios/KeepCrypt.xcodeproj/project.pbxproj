@@ -216,6 +216,16 @@
 			};
 			name = WithTestRegistry;
 		};
+		KC0000000000000000000813 /* TestHooks */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = TestHooks;
+		};
 		KC0000000000000000000821 /* Shipping */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -239,6 +249,19 @@
 				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/KeepCryptCore";
 			};
 			name = WithTestRegistry;
+		};
+		KC0000000000000000000823 /* TestHooks */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				INFOPLIST_FILE = KeepCrypt/Info.plist;
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/build/rust/shipping/$(PLATFORM_NAME)";
+				OTHER_LDFLAGS = "-lkeepcrypt_capi";
+				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.testhooks;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS;
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/KeepCryptCore";
+			};
+			name = TestHooks;
 		};
 		KC0000000000000000000831 /* Shipping */ = {
 			isa = XCBuildConfiguration;
@@ -278,6 +301,15 @@
 			};
 			name = WithTestRegistry;
 		};
+		KC0000000000000000000843 /* TestHooks */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.uitests;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS;
+				TEST_TARGET_NAME = KeepCrypt;
+			};
+			name = TestHooks;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -286,6 +318,7 @@
 			buildConfigurations = (
 				KC0000000000000000000811 /* config */,
 				KC0000000000000000000812 /* config */,
+				KC0000000000000000000813 /* config */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Shipping;
@@ -295,6 +328,7 @@
 			buildConfigurations = (
 				KC0000000000000000000821 /* config */,
 				KC0000000000000000000822 /* config */,
+				KC0000000000000000000823 /* config */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Shipping;
@@ -313,6 +347,7 @@
 			buildConfigurations = (
 				KC0000000000000000000841 /* config */,
 				KC0000000000000000000842 /* config */,
+				KC0000000000000000000843 /* config */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Shipping;

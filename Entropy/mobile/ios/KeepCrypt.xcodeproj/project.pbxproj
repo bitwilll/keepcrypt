@@ -341,6 +341,35 @@
 			};
 			name = WithTestRegistry;
 		};
+		AC0000000000000000000813 /* TestHooks */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ARCHS = arm64;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEAD_CODE_STRIPPING = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = "";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = NO;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_OPTIMIZATION_LEVEL = s;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = TestHooks;
+		};
 		AC0000000000000000000821 /* Shipping */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -370,6 +399,21 @@
 			};
 			name = WithTestRegistry;
 		};
+		AC0000000000000000000823 /* TestHooks */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = KeepCrypt/Info.plist;
+				KC_DISPLAY_NAME = "KeepCrypt TEST HOOKS";
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = "\"$(SRCROOT)/build/rust/shipping/aarch64-apple-ios/libkeepcrypt_capi.a\"";
+				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = "\"$(SRCROOT)/build/rust/shipping/aarch64-apple-ios-sim/libkeepcrypt_capi.a\"";
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/KeepCryptCore";
+				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.testhooks;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS;
+			};
+			name = TestHooks;
+		};
 		AC0000000000000000000831 /* Shipping */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -394,6 +438,18 @@
 			};
 			name = WithTestRegistry;
 		};
+		AC0000000000000000000833 /* TestHooks */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				"OTHER_LDFLAGS[sdk=iphoneos*]" = "\"$(SRCROOT)/build/rust/shipping/aarch64-apple-ios/libkeepcrypt_capi.a\"";
+				"OTHER_LDFLAGS[sdk=iphonesimulator*]" = "\"$(SRCROOT)/build/rust/shipping/aarch64-apple-ios-sim/libkeepcrypt_capi.a\"";
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/KeepCryptCore";
+				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.tests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = TestHooks;
+		};
 		AC0000000000000000000841 /* Shipping */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -415,6 +471,17 @@
 			};
 			name = WithTestRegistry;
 		};
+		AC0000000000000000000843 /* TestHooks */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				GENERATE_INFOPLIST_FILE = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS;
+				TEST_TARGET_NAME = KeepCrypt;
+			};
+			name = TestHooks;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -423,6 +490,7 @@
 			buildConfigurations = (
 				AC0000000000000000000811 /* Shipping */,
 				AC0000000000000000000812 /* WithTestRegistry */,
+				AC0000000000000000000813 /* TestHooks */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Shipping;
@@ -432,6 +500,7 @@
 			buildConfigurations = (
 				AC0000000000000000000821 /* Shipping */,
 				AC0000000000000000000822 /* WithTestRegistry */,
+				AC0000000000000000000823 /* TestHooks */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Shipping;
@@ -441,6 +510,7 @@
 			buildConfigurations = (
 				AC0000000000000000000831 /* Shipping */,
 				AC0000000000000000000832 /* WithTestRegistry */,
+				AC0000000000000000000833 /* TestHooks */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Shipping;
@@ -450,6 +520,7 @@
 			buildConfigurations = (
 				AC0000000000000000000841 /* Shipping */,
 				AC0000000000000000000842 /* WithTestRegistry */,
+				AC0000000000000000000843 /* TestHooks */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Shipping;

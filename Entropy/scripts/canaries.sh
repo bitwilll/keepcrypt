@@ -1648,8 +1648,11 @@ fi
 # import of Network outside the offline check, a paste control, a print, the defaults store, a
 # file write outside the document picker, a SwiftUI text field and a UITextField outside the secure
 # layer, and from A2 a try?, a URL opened and a catch that does not halt), a Package.swift and a
-# settings file defining KC_TEST_HOOKS there, and a Swift file outside mobile/ios must fail
-# scripts/banned-api-check.sh with exactly these fourteen hits, while the five allowed files, four
+# settings file defining KC_TEST_HOOKS there, and a Swift file outside mobile/ios, and from C5 (lead
+# decision M6-5) the condition set in the app's Shipping configuration of the copy's real project
+# file and a second scheme naming the TestHooks configuration, must fail
+# scripts/banned-api-check.sh with exactly these sixteen hits, while the real project's TestHooks
+# configuration and UI-test scheme, the real hook file, the five allowed files, four
 # planted with what each may hold (the offline check's import and monitor, the secure layer's
 # field with isSecureTextEntry = true, the document picker's write in a catch that halts, the
 # settings page opened) and the real tree's own Ceremony.swift (C3's halt returning Never), pass,
@@ -1688,6 +1691,18 @@ echo 'do { try sealed.write(to: url) } catch { Ceremony.halt(.backup) }' > "$tmp
 echo '// swift-tools-version: 5.9' > "$tmp/mobile/ios/Package.swift" || exit 1
 echo 'SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS' > "$tmp/mobile/ios/Config/KcGateCanary.xcconfig" || exit 1
 echo 'let pad = 6' > "$tmp/tools/KcGateCanary.swift" || exit 1
+sproj=mobile/ios/KeepCrypt.xcodeproj/project.pbxproj
+sschemes=mobile/ios/KeepCrypt.xcodeproj/xcshareddata/xcschemes
+[ -f "$tmp/$sschemes/KeepCrypt-TestHooks.xcscheme" ] || { echo "FAIL: $name: the copy has no UI-test scheme"; exit 1; }
+[ -f "$tmp/$si/TestHooks.swift" ] || { echo "FAIL: $name: the copy has no $si/TestHooks.swift"; exit 1; }
+replace "$tmp/$sproj" '				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy;
+' '				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS;
+'
+shook=$(grep -n -x -F -e '				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy;' "$tmp/$sproj") || exit 1
+shook=$((${shook%%:*} + 1))
+splanted="$splanted $sschemes/KcGateCanary.xcscheme"
+echo '      buildConfiguration = "TestHooks"' > "$tmp/$sschemes/KcGateCanary.xcscheme" || exit 1
 expect_failure "$name" sh "$root/scripts/banned-api-check.sh" "$tmp"
 need "RNG: $si/KcGateCanary.swift:1: "
 need "Network: $si/KcGateCanary.swift:2: "
@@ -1703,14 +1718,19 @@ need "SwRoot: tools/KcGateCanary.swift: "
 need "SwFailOpen: $si/KcGateCanary.swift:9: "
 need "SwOpenURL: $si/KcGateCanary.swift:10: "
 need "SwFailOpen: $si/KcGateCanary.swift:13: "
+need "SwTestHook: $sproj:$shook: "
+need "SwTestHook: $sschemes/KcGateCanary.xcscheme:1: "
+never "$sschemes/KeepCrypt-TestHooks.xcscheme"
+never "$si/TestHooks.swift"
 never "$si/OfflineCheck.swift"
 never "$si/SecureLayer.swift"
 never "$si/DocumentPicker.swift"
 never "$si/Ceremony.swift"
 never "$si/OpenSettings.swift"
-need "banned-api-check: 14 hit(s) in "
+need "banned-api-check: 16 hit(s) in "
 verdict
 unplant $splanted
+cp "$root/$sproj" "$tmp/$sproj" || exit 1
 
 # The workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): a copy of the real
 # entropy-ci.yml with every rule broken once (the top-level token widened to write, which also

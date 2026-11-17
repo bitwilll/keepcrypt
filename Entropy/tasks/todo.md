@@ -18773,6 +18773,48 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   usable path, re-read on every change, going online wiping a session as on Android. XCTest and XCUITest through test
   hooks that the shipping configuration compiles out (`#if KC_TEST_HOOKS`, set only in the test targets), and the
   gate refusing the hook flag in the shipping configuration.
+  As built (M6 commit C5a, the TestHooks configuration, M6-5, which replaces "set only in the test targets" above):
+  a third configuration, TestHooks, in all four lists of project.pbxproj: the project's a copy of Shipping's; the
+  app's links shipping's archive, bundle id com.keepcrypt.entropy.testhooks, display name "KeepCrypt TEST HOOKS"
+  and `SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS`; the unit tests' as Shipping's (no condition); the UI
+  tests' with the condition. The shared scheme KeepCrypt-TestHooks: the app built for testing and running only
+  (buildForProfiling, -Archiving and -Analyzing NO), TestAction and LaunchAction in TestHooks with KeepCryptUITests
+  alone (the unit tests run in the two other schemes), Profile, Analyze and Archive in Shipping, so archiving it
+  builds nothing. KeepCrypt/TestHooks.swift, all under `#if KC_TEST_HOOKS`: `TestHooks` with `static let marker =
+  "KC_TEST_HOOKS_DO_NOT_SHIP"`, drawn as the hook panel's identifier (so every hooks build holds it); the panel under
+  every screen in the TestHooks build. StartUpUITests: the marker's panel present under KC_TEST_HOOKS, absent
+  otherwise. The gate's SwTestHook: in the project file the condition is allowed in test targets' configurations
+  (as before) and in the one XCBuildConfiguration named TestHooks (one name key) listed once, in the one list of the
+  app target alone (the project's single PBXNativeTarget of type application); and, new, in any .xcscheme (any
+  letter case) the word TestHooks hits outside xcshareddata/xcschemes/KeepCrypt-TestHooks.xcscheme and inside that
+  scheme's ArchiveAction (sw_hooks_schemes). `--ios-app` unchanged: its Marker rule refuses the hooks marker in
+  Shipping and WithTestRegistry. entropy-ios.yml: a TestHooks step (build-for-testing and test-without-building
+  of KeepCrypt-TestHooks, then `grep -c -a KC_TEST_HOOKS_DO_NOT_SHIP` on its app's binary, a failure if none; it is
+  never given to --ios-app); the two shipped schemes' steps and scans unchanged; the budget 30 minutes until the
+  third scheme's first run is measured (M5-30's rule then sets it). CLAUDE.md's Commands: the TestHooks xcodebuild
+  line and the gate's summary.
+  Proof (M6 commit C5a, partial: local, Xcode 27.2; CI at the next push): 13 new fixtures, each exactly one
+  SwTestHook hit at its line: swtesthook-app-configuration-named-otherwise (testhooks), -named-twice,
+  swtesthook-app-testhooks-also-in-the-project-list, -listed-twice, swtesthook-project-testhooks-configuration,
+  swtesthook-testhooks-of-a-framework-target, swtesthook-testhooks-with-a-second-app-target,
+  swtesthook-testhooks-scheme-archived, -archive-self-closing, -archive-unclosed, swtesthook-testhooks-in-the-
+  shipping-scheme, swtesthook-testhooks-scheme-elsewhere, swtesthook-uppercase-scheme-extension; clean-sw-allowed's
+  project gains TestHooks configurations as the real one's (the app's and the UI tests' with the condition) and the
+  UI-test scheme (its ArchiveAction first, so the archive region's end is read), clean-sw-near-misses a scheme with
+  TestHooksLegacy, MyTestHooks and other non-words; the existing app-target-configuration fixture (the app's Shipping)
+  still hits. Before the rule changed, the real tree gave exactly 1 hit (the app's TestHooks line); after,
+  `scripts/banned-api-check.sh` "clean, 448 files scanned"; `--selftest` 4 shards of 486, "486 passed, 0 failed" each
+  (1944 = 1931 + 13); `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed" (its tree gains the
+  UI-test scheme and the shipping-scheme fixture, reaching sw_hooks_schemes' awk and its second grep; scan: 182
+  places at 143 lines); `scripts/canaries.sh` "PASS: all 102 checks ran" (ios-swift-rules now sixteen hits: the
+  condition planted in the copy's app Shipping configuration and a second scheme naming TestHooks, with the real
+  UI-test scheme and TestHooks.swift clean); `--workflows ../.github/workflows` clean, 4 workflows (a first `grep -F`
+  in the step was a hit, Gradle's -F; the plain grep needs no option); `cargo fmt --all --check` clean. Local builds
+  (generic simulator, CODE_SIGNING_ALLOWED=NO): build-for-testing "TEST BUILD SUCCEEDED" for all three schemes, the
+  Shipping device build "BUILD SUCCEEDED"; `--ios-app Shipping` on the simulator and device apps and `--ios-app
+  WithTestRegistry` on its simulator app clean; the marker on 1 line of the TestHooks app's binary, 0 in the
+  Shipping, WithTestRegistry and device binaries; the TestHooks app given to `--ios-app Shipping` 3 hits (its id,
+  its summary, the marker); `--selftest-ios-app` 33 passed, 0 failed. Not run here: any simulator test (CI).
 
 ### Verification (each maps to a gate item; refined with the plan)
 - [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest

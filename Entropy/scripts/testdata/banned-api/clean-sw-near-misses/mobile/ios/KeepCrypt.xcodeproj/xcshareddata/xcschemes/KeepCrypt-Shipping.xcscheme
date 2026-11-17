@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Scheme
+   LastUpgradeVersion = "1640"
+   version = "1.7">
+   <TestAction
+      buildConfiguration = "TestHooksLegacy"
+      shouldUseLaunchSchemeArgsEnv = "YES">
+   </TestAction>
+   <LaunchAction
+      buildConfiguration = "MyTestHooks"
+      launchStyle = "0">
+   </LaunchAction>
+    <ArchiveAction
+      buildConfiguration = "Shipping"
+      revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
+   <!-- Test_Hooks, testhooks and TestHook are other words -->
+</Scheme>

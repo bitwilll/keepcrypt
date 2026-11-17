@@ -14,8 +14,10 @@
 # in its Shipping configuration, KeepCrypt-WithTestRegistry in WithTestRegistry), xcodebuild
 # build-for-testing and test-without-building on that simulator (the unit tests over the real kc_call
 # and vectors/, and the UI test of the start-up self-test), and the app scan of the built simulator
-# app (scripts/banned-api-check.sh --ios-app against mobile/ios/expected/); and a device build of
-# Shipping (generic iOS, unsigned), scanned the same way. Every build passes CODE_SIGNING_ALLOWED=NO:
+# app (scripts/banned-api-check.sh --ios-app against mobile/ios/expected/); the UI-test scheme,
+# KeepCrypt-TestHooks in its TestHooks configuration (the UI tests' hooks compiled into the app, M6-5),
+# built for testing and tested the same way, its app required to hold the hooks' marker and never
+# scanned as a shipped one; and a device build of Shipping (generic iOS, unsigned), scanned the same way. Every build passes CODE_SIGNING_ALLOWED=NO:
 # nothing is signed here, no certificate or profile exists, and nothing is uploaded. Xcode resolves no
 # Swift package (the project has none, and the gate refuses one).
 #
@@ -84,8 +86,9 @@ jobs:
     runs-on: ${{ matrix.os }}
     # Budget (lead decision M5-30's rule): the measured whole job plus 25%, rounded up. The first green
     # run, 44049143630 at ab3e8ab0, took 826 s on macos-26 and 857 s on macos-15: 857 s x 1.25 is
-    # 1071 s, so 18 minutes (tasks/todo.md, M6 item C4). A commit that adds tests re-measures it.
-    timeout-minutes: 18
+    # 1071 s, so 18 minutes (tasks/todo.md, M6 item C4). A commit that adds tests re-measures it: M6
+    # item C5 adds a third scheme's build and UI tests, so 30 minutes until its first run is measured.
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -189,6 +192,20 @@ jobs:
               -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO "$verb"
           done
           sh scripts/banned-api-check.sh --ios-app WithTestRegistry "$dd/Build/Products/WithTestRegistry-iphonesimulator/KeepCrypt.app" mobile/ios/expected
+      # The UI tests' hooks (M6 item C5, lead decision M6-5): the KeepCrypt-TestHooks scheme builds the app
+      # in its TestHooks configuration, the one that compiles the hooks in (KC_TEST_HOOKS), and runs the UI
+      # tests on it. That app must hold the hooks' marker, so the shipped apps' scans, which refuse it,
+      # are known to look for something every hooks build holds; it is never scanned as a shipped app.
+      - name: TestHooks (build-for-testing, test-without-building, the hooks' marker)
+        run: |
+          dd=$RUNNER_TEMP/dd
+          for verb in build-for-testing test-without-building; do
+            xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
+              -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO "$verb"
+          done
+          exe=$dd/Build/Products/TestHooks-iphonesimulator/KeepCrypt.app/KeepCrypt
+          n=$(grep -c -a KC_TEST_HOOKS_DO_NOT_SHIP "$exe") || { echo "FAIL: no KC_TEST_HOOKS_DO_NOT_SHIP in $exe" >&2; exit 1; }
+          echo "$exe: KC_TEST_HOOKS_DO_NOT_SHIP on $n line(s)"
       # The device build of the shipping app (generic iOS, unsigned), scanned the same way.
       - name: Shipping for the device (build, --ios-app)
         run: |
