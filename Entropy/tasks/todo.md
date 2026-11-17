@@ -19049,6 +19049,30 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   `--workflows` clean, `cargo fmt --all --check` clean; on the commit's tree (a worktree): `--selftest` 4 x "486
   passed, 0 failed", `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed",
   `scripts/canaries.sh` "PASS: all 102 checks ran" (566 s).
+  As built (M6 commit D2d, a discard never waits): Core gains a second, 16-byte reply buffer and a lock of its own
+  for DISCARD and WIPE_ALL alone (`callAside`), so either reaches the slot from the main thread while a long call
+  holds the main lock on the model's worker (keepcrypt-ffi's ffi_discard_during_call rule, C3's open note): the slot
+  drops the call's result and the call returns discarded. A reply past that buffer or not its layout halts the
+  slot through it; it is wiped with memset_s after each call; `replyBufferIsWiped` reads both buffers.
+  CoreDiscardTests (1, over the real kc_call, named to run before CoreTests' halts): Check a backup's opening of
+  SavedBackup (openBackup at home, scrypt) timed once, then run on a thread of its own, and a discard, then a
+  wipe, made a third of that time into it: each done while the call still runs and in under half its time, the
+  call discarded, both buffers wiped, the slot at home.
+  Proof (M6 commit D2d, partial: local; CI at the next push): on the D2c Core (one lock) the test fails 5 times:
+  the discard took 199 ms and the wipe 192 ms of a 310 ms call, waiting for it, and the call was not discarded;
+  with the second buffer it passes, five runs in a row, the call 314 ms and each cut 0 ms (a probe line in a
+  copy). The macOS stand-in "Executed 74 tests, with 0 failures" over the host's release archive and the same
+  over its test-registry archive. Local builds: all three schemes built for testing and the Shipping device
+  build, no Swift warning; `--ios-app` clean on the three shipped apps; the hooks marker 1 line in TestHooks, 0
+  elsewhere; `--selftest-ios-app` 33 passed; the gate clean (477 files; its first run refused two semaphore
+  `signal()` calls in the test as SwFailOpen's `signal(`, replaced by dispatch groups), `--workflows` clean,
+  `cargo fmt --all --check` clean; on the commit's tree (a worktree): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (573 s).
+  For the lead (D2): not run here, the simulator: on CI KeepCryptTests grows from 18 to 76 tests a scheme (the 74 here and CaptureLayerTests' 2) (two
+  schemes), about 35-37 s on this Mac's host; the iPhone job's 19-minute budget may need remeasuring. XCTest's
+  name order is relied on (the slot's users before CoreTests' latching halt); a run in another order fails by name
+  (assertLiveSlot), not silently.
 - [ ] D3. The kit and the start: SwiftUI's fixed text, headings and pane titles; the pads (dice 1-6 with undo, letters
   for the first four letters, the go-ahead code, the BIP39 passphrase) as buttons only, never the system keyboard;
   First launch, Self-test, Go offline, Home, Length, Device entropy (Core Motion's accelerometer and gyroscope and

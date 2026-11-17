@@ -11,9 +11,14 @@
 //   reply that does not fit its layout is the bridge's bug, on which Core halts the slot (the op the
 //   table does not hold, Wire.Op.halt). Either way the call gives halted, with the reason the slot
 //   latched. An argument out of its range is the app's own bug, and ends the app (Ceremony.halt).
-// - **One call at a time.** A lock holds the buffer for the whole call. A long call (start, finish,
-//   the backup's scrypt, a snapshot's load, the self-test) blocks a second call until it returns, so
-//   a discard during one waits for it; Stage D's model runs long calls off the main thread.
+// - **One call at a time, but a discard never waits** (keepcrypt-ffi's ffi_discard_during_call rule;
+//   tasks/todo.md, M6 item D2). A lock holds the reply buffer for the whole call, and a long call (start,
+//   finish, the backup's scrypt, a snapshot's load, the self-test) blocks a second call until it
+//   returns. DISCARD and WIPE_ALL alone use a second, small reply buffer under a lock of its own, so
+//   either reaches the slot at once from the main thread while a long call runs on the model's worker:
+//   the slot drops the call's result and the call returns discarded. Their replies are one status byte,
+//   or two for a halt, so the small buffer is 16 bytes; it is wiped with memset_s after each call as
+//   the main one is.
 
 import Foundation
 import KeepCryptCore
@@ -42,10 +47,49 @@ final class Core: @unchecked Sendable {
     private let capacity: Int
     private let buffer: UnsafeMutablePointer<UInt8>
 
+    /// The small buffer's lock: DISCARD's and WIPE_ALL's alone, never taken with the main one held.
+    private let asideLock = NSLock()
+    /// The small buffer's size: room for a discard's or a wipe's reply, a status byte or a halt's two.
+    private static let asideCapacity = 16
+    private let aside: UnsafeMutablePointer<UInt8>
+
     private init() {
         capacity = kc_max_out()
         buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: capacity)
         buffer.initialize(repeating: 0, count: capacity)
+        aside = UnsafeMutablePointer<UInt8>.allocate(capacity: Core.asideCapacity)
+        aside.initialize(repeating: 0, count: Core.asideCapacity)
+    }
+
+    /// DISCARD or WIPE_ALL (no input, a status-only reply) through the small buffer, under its own lock
+    /// alone, so a long call holding the main lock never makes it wait. A reply past the buffer or not
+    /// its layout halts the slot (through the small buffer too) and gives halted, as call does.
+    private func callAside(_ op: Wire.Op) -> Reply<Void> {
+        asideLock.lock()
+        defer { asideLock.unlock() }
+        let length = kc_call(op.rawValue, nil, 0, aside, Core.asideCapacity)
+        var decoded: Decoded<Void> = .malformed
+        if length >= 0, length <= Int64(Core.asideCapacity) {
+            decoded = Wire.decode(UnsafeRawBufferPointer(start: aside, count: Int(length))) { $0.nothing() }
+        }
+        guard wipeAside() else { Ceremony.halt(.bridge) }
+        switch decoded {
+        case .reply(let reply):
+            return reply
+        case .malformed:
+            let halt = kc_call(Wire.Op.halt.rawValue, nil, 0, aside, Core.asideCapacity)
+            var reason = HaltReason.internal
+            if halt == 2, aside[0] == Wire.halted {
+                reason = HaltReason.of(aside[1])
+            }
+            guard wipeAside() else { Ceremony.halt(.bridge) }
+            return .halted(reason)
+        }
+    }
+
+    /// Zeroes the whole small buffer with memset_s; false if it did not.
+    private func wipeAside() -> Bool {
+        memset_s(aside, Core.asideCapacity, 0, Core.asideCapacity) == 0
     }
 
     /// op with input, which is wiped once the call returns (passed inout, so the caller's one copy is
@@ -119,12 +163,17 @@ final class Core: @unchecked Sendable {
         return .halted(haltSlot())
     }
 
-    /// Whether the reply buffer holds nothing but zeros: what every call leaves, which KeepCryptTests
-    /// reads after each call. It shows nothing of what the buffer held.
+    /// Whether both reply buffers hold nothing but zeros: what every call leaves, which KeepCryptTests
+    /// reads after each call. It shows nothing of what the buffers held.
     func replyBufferIsWiped() -> Bool {
         lock.lock()
         defer { lock.unlock() }
+        asideLock.lock()
+        defer { asideLock.unlock() }
         for index in 0..<capacity where buffer[index] != 0 {
+            return false
+        }
+        for index in 0..<Core.asideCapacity where aside[index] != 0 {
             return false
         }
         return true
@@ -171,9 +220,11 @@ final class Core: @unchecked Sendable {
 
     func end() -> Reply<Void> { status(.end) }
 
-    func discard() -> Reply<Void> { status(.discard) }
+    /// The discard, at once even during a long call (the small buffer, callAside).
+    func discard() -> Reply<Void> { callAside(.discard) }
 
-    func wipeAll() -> Reply<Void> { status(.wipeAll) }
+    /// The wipe of everything, at once even during a long call (the small buffer, callAside).
+    func wipeAll() -> Reply<Void> { callAside(.wipeAll) }
 
     func deviceProgress() -> Reply<DeviceProgress> { call(.deviceProgress) { $0.deviceProgress() } }
 
