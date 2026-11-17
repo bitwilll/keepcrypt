@@ -19088,6 +19088,55 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   for the first four letters, the go-ahead code, the BIP39 passphrase) as buttons only, never the system keyboard;
   First launch, Self-test, Go offline, Home, Length, Device entropy (Core Motion's accelerometer and gyroscope and
   touch timing as zero-credit extras, M5's encoding), Commitment, Dice.
+  As built (plan, 2026-11-17): the screens mirror :screens' Kit.kt, Screens.kt, FirstLaunch.kt, StartScreens.kt
+  and HomeScreens.kt in wording, order and test tags (each screen's root its id, each control Android's tag), and
+  a KeepCryptTests case pins every fixed text to those Kotlin sources (bundled as file references, as wire.rs
+  is), so a wording change on either side fails until both agree; each screen's title is Screen.swift's, posted
+  to VoiceOver as the screen opens (Android's pane title; the rest of VoiceOver is D8). Where the iPhone cannot
+  do what Android does, the platform decides, and each is named here: (1) Go offline shows the offline check's
+  one reading (C5's two lines) instead of airplane mode's and Wi-Fi's, and has no "Open airplane-mode settings"
+  (iOS opens no settings page but the app's own, and rule 9 keeps that to OpenSettings.swift's camera prompt);
+  its note under a disabled Start names the path. (2) Home's Check a backup, Load registry snapshot and About lead
+  to D4's and D7's screens and pickers, so until those land they are drawn disabled (no control leads nowhere,
+  M5-48). (3) The press guard (PressGuard.swift, D2) is a UIKit gesture recognizer on the window, judging each
+  touch by UITouch's own timestamp (the uptime clock, as Android's pointer events carry) and cancelling a refused
+  touch before any control gets it, as Android's root pointer handler consumes it; every touch down is the
+  model's input and, on Device entropy, its touched. The TestHooks panel sits outside the guarded screens. (4)
+  Core Motion's accelerometer and gyroscope at 50 Hz, each update one sample in Android's layout (PhoneMotion:
+  the sensor's type, Android's numbers 1 and 4, 4 bytes; the timestamp in nanoseconds, 8; each value's IEEE
+  float bits, 4 each; big-endian), Core Motion's own units (g, rad/s), zero credit either way; raw
+  accelerometer and gyroscope updates need no NSMotionUsageDescription (that key is for motion activity and
+  fitness), so Info.plist is unchanged. (5) The stop and "Working..." screens are drawn with the kit now, as
+  Screens.kt draws them (D7 keeps its other screens). Screens past Dice stay the shell's title until D4-D7.
+  As built (M6 commit D3a, the kit, the pads and the start screens): `Texts.swift` (every fixed text, Android's,
+  and the laid-out values: diceText, registryDate, homeSnapshotLine, fileRefusalText, paneTitle(of:),
+  actionsScroll), `Kit.swift` (KitColors, KitType, KitScreen with its actions under the column or, past half the
+  screen, scrolling with it, and "More below"; Heading, Title, KitText, KitButton, NoticeBar,
+  TestRegistryStrip), `PadViews.swift` (the dice, letter, Crockford and ASCII pads as buttons, 44-point keys,
+  public keys identified key_ and their label), `StartScreens.swift` (First launch to Dice), `Screens.swift` (the
+  switch over the model's state, the notice bar, the real cover and idle warning replacing D2b's placeholder
+  buttons and hiding the screen under them from VoiceOver, the kit's Working and stop screens, each state's pane
+  title posted to VoiceOver as it opens, the press guard told of each view as it is shown); Pads.swift gains
+  keyLabel and the pads' columns. The TestHooks panel sits under the screens (safeAreaInset), no longer over
+  their actions. The UI tests find each screen by its root identifier (Android's tags: first_launch,
+  first_launch_continue, go_offline, home, notice, stop) and wait 500 ms past a new screen before a deliberate
+  press (UITestSupport.swift). The unit bundle gains :screens' FirstLaunch.kt, StartScreens.kt, Screens.kt,
+  HomeScreens.kt, Kit.kt and BackupScreens.kt as file references; entropy-ios.yml's path filters gain
+  Entropy/mobile/android/screens/src/commonMain/**. The macOS stand-in now reads the unit-test target's
+  compilation conditions from `xcodebuild -target KeepCryptTests -configuration X -showBuildSettings`.
+  Tests: ScreenTextsTests (4: every shared text a literal of those Kotlin sources, the iPhone's own lines none,
+  the dice line and C's groups against StartScreensTest.kt's specimens, Home's lines), PadsTests (7, PadsTest.kt's
+  but Compose's snapshot test), ScreenTitlesTests (3, ScreenTitlesTest.kt's and KitTest.kt's, and D3's screens
+  Public and titled by Screen.swift), CeremonyStartScreensTests (6, StartScreensTest.kt's dice, faces, 256 and
+  Back, PadPressTest.kt's dice-under-cover and code-entry cases).
+  Proof (M6 commit D3a, partial: local; CI at the next push): the macOS stand-in "Executed 94 tests, with 0
+  failures" over the host's release archive (Shipping's conditions: none) and the same over its test-registry
+  archive (WithTestRegistry's: KC_WITH_TEST_REGISTRY, from Xcode's settings); with the 256-roll line reworded in
+  Texts.swift (a copy), ScreenTextsTests fails naming it (restored). Local builds (Xcode 27.2, generic simulator,
+  CODE_SIGNING_ALLOWED=NO): build-for-testing of all three schemes and the Shipping device build succeeded, no
+  Swift warning, the six Kotlin files in the unit bundle; `--ios-app` clean on the three shipped apps (Info.plist
+  unchanged); the hooks marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate clean
+  (487 files), `--workflows` clean, `cargo fmt --all --check` clean. Not run: the simulator (CI).
 - [ ] D4. The collision check: the prompt, Skip's confirm, the seal card and its check QR, the scan screen (AVFoundation's
   QR reader, the camera asked for only there), the code entry, Match found's and Cannot check's confirms, the
   collision result, its report QR, the result before the words; Load registry snapshot through the document picker

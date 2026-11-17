@@ -25,7 +25,8 @@
 # skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that touches
 # these paths merges without a green run of this workflow on its final head. They name every input of
 # the app: the project and its Swift, the Rust library's crates, manifests and toolchain, the vectors
-# and the shared screen table the tests read, the scripts it runs and this file.
+# and the shared screen table the tests read, the Android screens' sources whose texts they pin (D3),
+# the scripts it runs and this file.
 #
 # Hardening, as in entropy-ci.yml, whose gates job checks this file too (banned-api-check.sh
 # --workflows): read-only token and no secret; only actions/checkout and actions/cache, pinned by
@@ -40,6 +41,7 @@ on:
     paths:
       - 'Entropy/mobile/ios/**'
       - 'Entropy/mobile/screens.json'
+      - 'Entropy/mobile/android/screens/src/commonMain/**'
       - 'Entropy/ffi/**'
       - 'Entropy/core/**'
       - 'Entropy/Cargo.toml'
@@ -54,6 +56,7 @@ on:
     paths:
       - 'Entropy/mobile/ios/**'
       - 'Entropy/mobile/screens.json'
+      - 'Entropy/mobile/android/screens/src/commonMain/**'
       - 'Entropy/ffi/**'
       - 'Entropy/core/**'
       - 'Entropy/Cargo.toml'

@@ -11,48 +11,45 @@ import XCTest
 final class CaptureUITests: XCTestCase {
     private func launched() -> XCUIApplication {
         let app = XCUIApplication()
-        app.launch()
-        XCTAssertTrue(app.buttons["continue"].waitForExistence(timeout: 30), "First launch's Continue")
-        app.buttons["continue"].tap()
-        XCTAssertTrue(app.staticTexts["self_test_passed"].waitForExistence(timeout: 60), "Self-test passed")
+        app.launchedToGoOffline()
         return app
     }
 
     func testTheCaptureCoverReplacesTheSceneWhileCaptured() {
         let app = launched()
-        XCTAssertFalse(app.staticTexts["capture_cover"].exists)
+        XCTAssertFalse(app.element("capture_cover").exists)
         app.buttons["hook_capture"].tap()
-        XCTAssertTrue(app.staticTexts["capture_cover"].waitForExistence(timeout: 10), "the capture cover")
-        XCTAssertFalse(app.staticTexts["self_test_passed"].exists, "nothing of the screen under it")
+        XCTAssertTrue(app.element("capture_cover").waitForExistence(timeout: 10), "the capture cover")
+        XCTAssertFalse(app.element("go_offline").exists, "nothing of the screen under it")
         XCTAssertFalse(app.buttons["start"].exists, "nor its Start")
         app.buttons["hook_capture"].tap()
-        XCTAssertTrue(app.staticTexts["self_test_passed"].waitForExistence(timeout: 10), "the screen again")
-        XCTAssertFalse(app.staticTexts["capture_cover"].exists)
+        XCTAssertTrue(app.element("go_offline").waitForExistence(timeout: 10), "the screen again")
+        XCTAssertFalse(app.element("capture_cover").exists)
     }
 
     func testThePrivacyCoverReplacesTheSceneWhileInactive() {
         let app = launched()
         app.buttons["hook_inactive"].tap()
-        XCTAssertTrue(app.staticTexts["privacy_cover"].waitForExistence(timeout: 10), "the privacy cover")
-        XCTAssertFalse(app.staticTexts["self_test_passed"].exists, "nothing of the screen under it")
+        XCTAssertTrue(app.element("privacy_cover").waitForExistence(timeout: 10), "the privacy cover")
+        XCTAssertFalse(app.element("go_offline").exists, "nothing of the screen under it")
         app.buttons["hook_capture"].tap()
-        XCTAssertTrue(app.staticTexts["capture_cover"].waitForExistence(timeout: 10), "capture first")
+        XCTAssertTrue(app.element("capture_cover").waitForExistence(timeout: 10), "capture first")
         app.buttons["hook_capture"].tap()
-        XCTAssertTrue(app.staticTexts["privacy_cover"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.element("privacy_cover").waitForExistence(timeout: 10))
         app.buttons["hook_inactive"].tap()
-        XCTAssertTrue(app.staticTexts["self_test_passed"].waitForExistence(timeout: 10), "the screen again")
-        XCTAssertFalse(app.staticTexts["privacy_cover"].exists)
+        XCTAssertTrue(app.element("go_offline").waitForExistence(timeout: 10), "the screen again")
+        XCTAssertFalse(app.element("privacy_cover").exists)
     }
 
     func testAScreenshotDiscardsTheSessionAndSaysWhy() {
         let app = launched()
-        XCTAssertFalse(app.staticTexts["notice_screenshot"].exists)
+        XCTAssertFalse(app.element("notice").exists)
         app.buttons["hook_screenshot"].tap()
-        let notice = app.staticTexts["notice_screenshot"]
+        let notice = app.element("notice")
         XCTAssertTrue(notice.waitForExistence(timeout: 10), "the discard's notice")
         XCTAssertTrue(notice.label.hasPrefix("The session was wiped: a screenshot was taken."), notice.label)
-        XCTAssertTrue(app.staticTexts["self_test_passed"].exists, "the app goes on, on its start screen")
-        XCTAssertFalse(app.staticTexts["stopped"].exists, "Core's discard was done, not halted")
+        XCTAssertTrue(app.element("go_offline").exists, "the app goes on, on its start screen")
+        XCTAssertFalse(app.element("stop").exists, "Core's discard was done, not halted")
     }
 }
 #endif

@@ -12,6 +12,12 @@
 		AC0000000000000000000223 /* wire.rs in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000213 /* wire.rs */; };
 		AC0000000000000000000224 /* screens.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000214 /* screens.json */; };
 		AC0000000000000000000225 /* backup.json in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000215 /* backup.json */; };
+		AC0000000000000000000251 /* FirstLaunch.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000241 /* FirstLaunch.kt */; };
+		AC0000000000000000000252 /* StartScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000242 /* StartScreens.kt */; };
+		AC0000000000000000000253 /* Screens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000243 /* Screens.kt */; };
+		AC0000000000000000000254 /* HomeScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000244 /* HomeScreens.kt */; };
+		AC0000000000000000000255 /* Kit.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000245 /* Kit.kt */; };
+		AC0000000000000000000256 /* BackupScreens.kt in Resources */ = {isa = PBXBuildFile; fileRef = AC0000000000000000000246 /* BackupScreens.kt */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -33,6 +39,12 @@
 		AC0000000000000000000213 /* wire.rs */ = {isa = PBXFileReference; lastKnownFileType = text; name = wire.rs; path = ../../ffi/src/wire.rs; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000214 /* screens.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = screens.json; path = ../screens.json; sourceTree = SOURCE_ROOT; };
 		AC0000000000000000000215 /* backup.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; name = backup.json; path = ../../vectors/backup.json; sourceTree = SOURCE_ROOT; };
+		AC0000000000000000000241 /* FirstLaunch.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = FirstLaunch.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/FirstLaunch.kt; sourceTree = SOURCE_ROOT; };
+		AC0000000000000000000242 /* StartScreens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = StartScreens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/StartScreens.kt; sourceTree = SOURCE_ROOT; };
+		AC0000000000000000000243 /* Screens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = Screens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/Screens.kt; sourceTree = SOURCE_ROOT; };
+		AC0000000000000000000244 /* HomeScreens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = HomeScreens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/HomeScreens.kt; sourceTree = SOURCE_ROOT; };
+		AC0000000000000000000245 /* Kit.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = Kit.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/Kit.kt; sourceTree = SOURCE_ROOT; };
+		AC0000000000000000000246 /* BackupScreens.kt */ = {isa = PBXFileReference; lastKnownFileType = text; name = BackupScreens.kt; path = ../android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/BackupScreens.kt; sourceTree = SOURCE_ROOT; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -54,6 +66,7 @@
 				Screen.swift,
 				Seams.swift,
 				SecureLayer.swift,
+				Texts.swift,
 				Timers.swift,
 				Wire.swift,
 			);
@@ -137,6 +150,12 @@
 				AC0000000000000000000213 /* wire.rs */,
 				AC0000000000000000000214 /* screens.json */,
 				AC0000000000000000000215 /* backup.json */,
+				AC0000000000000000000241 /* FirstLaunch.kt */,
+				AC0000000000000000000242 /* StartScreens.kt */,
+				AC0000000000000000000243 /* Screens.kt */,
+				AC0000000000000000000244 /* HomeScreens.kt */,
+				AC0000000000000000000245 /* Kit.kt */,
+				AC0000000000000000000246 /* BackupScreens.kt */,
 			);
 			name = TestVectors;
 			sourceTree = "<group>";
@@ -253,6 +272,12 @@
 				AC0000000000000000000223 /* wire.rs in Resources */,
 				AC0000000000000000000224 /* screens.json in Resources */,
 				AC0000000000000000000225 /* backup.json in Resources */,
+				AC0000000000000000000251 /* FirstLaunch.kt in Resources */,
+				AC0000000000000000000252 /* StartScreens.kt in Resources */,
+				AC0000000000000000000253 /* Screens.kt in Resources */,
+				AC0000000000000000000254 /* HomeScreens.kt in Resources */,
+				AC0000000000000000000255 /* Kit.kt in Resources */,
+				AC0000000000000000000256 /* BackupScreens.kt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

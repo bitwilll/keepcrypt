@@ -70,7 +70,7 @@ struct CaptureShield<Content: View>: View {
             model.tick()
         }
         #if KC_TEST_HOOKS
-        .overlay(alignment: .bottom) { TestHookPanel() }
+        .safeAreaInset(edge: .bottom, spacing: 0) { TestHookPanel() }
         #endif
     }
 

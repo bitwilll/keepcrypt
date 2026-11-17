@@ -35,7 +35,7 @@ final class TestHooks: ObservableObject {
     var offlineCheck: OfflineCheck?
 }
 
-/// The hook panel, drawn over the bottom of the scene in the TestHooks build, covers included.
+/// The hook panel, drawn under the scene in the TestHooks build (outside the press guard), covers included.
 struct TestHookPanel: View {
     @ObservedObject private var hooks = TestHooks.shared
 

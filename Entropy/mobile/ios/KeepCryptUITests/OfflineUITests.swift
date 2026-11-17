@@ -15,24 +15,22 @@ final class OfflineUITests: XCTestCase {
 
     func testStartOnlyOfflineAndGoingOnlineBringsGoOfflineBack() {
         let app = XCUIApplication()
-        app.launch()
-        XCTAssertTrue(app.buttons["continue"].waitForExistence(timeout: 30), "First launch's Continue")
-        app.buttons["continue"].tap()
-        XCTAssertTrue(app.staticTexts["self_test_passed"].waitForExistence(timeout: 60), "Self-test passed")
+        app.launchedToGoOffline()
         let start = app.buttons["start"]
         app.buttons["hook_path_usable"].tap()
         XCTAssertTrue(enabled(start, false), "Start disabled while a path is usable")
         start.tap()
-        XCTAssertFalse(app.staticTexts["home"].exists, "and a press does nothing")
+        XCTAssertFalse(app.element("home").exists, "and a press does nothing")
         app.buttons["hook_path_none"].tap()
         XCTAssertTrue(enabled(start, true), "Start enabled with no usable path")
+        pastPressGuard()
         start.tap()
-        XCTAssertTrue(app.staticTexts["home"].waitForExistence(timeout: 10), "Home")
+        XCTAssertTrue(app.element("home").waitForExistence(timeout: 10), "Home")
         app.buttons["hook_path_usable"].tap()
         XCTAssertTrue(start.waitForExistence(timeout: 10), "Go offline again")
         XCTAssertTrue(enabled(start, false))
-        XCTAssertFalse(app.staticTexts["home"].exists)
-        XCTAssertFalse(app.staticTexts["notice_offline"].exists, "nothing was held, so nothing to say")
+        XCTAssertFalse(app.element("home").exists)
+        XCTAssertFalse(app.element("notice").exists, "nothing was held, so nothing to say")
     }
 }
 #endif

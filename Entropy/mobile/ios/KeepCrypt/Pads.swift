@@ -1,7 +1,7 @@
 // What the in-app pads type (tasks/todo.md, M6 items D2 and D3; Android's Pads.kt; docs/mobile-apps.md,
 // "Text entry"): the system keyboard never opens. Each pad's keys come in a fixed order, and each press
 // goes to the model (padKey), which types it into a PadEntry, never a String, that hands it to Core as a
-// Secret. The pads' views come in D3.
+// Secret. Their views are PadViews.swift's (D3).
 
 import Combine
 import Foundation
@@ -131,6 +131,25 @@ final class PadEntry: ObservableObject {
         guard wiped else { Ceremony.halt(.bridge) }
     }
 }
+
+/// A key's label: the space key says so (Android's keyLabel).
+func keyLabel(_ key: Character) -> String {
+    key == " " ? "space" : String(key)
+}
+
+/// Each pad's columns (Android's): at most narrowestRow / keyPoints, so a key is keyPoints wide or more on
+/// any phone (M5-83).
+let diceColumns = 3
+let letterColumns = 6
+let crockfordColumns = 6
+let asciiColumns = 6
+
+/// The narrowest row a pad is given: the narrowest iPhone iOS 17 runs on (375 points, the iPhone SE of 2020
+/// and 2022) inside the kit's 24-point margins (Android's 360 dp phone gives 312 dp).
+let narrowestRow = 327
+
+/// A key's least touch target each way: Apple's accessibility minimum (44 points), and a key's height.
+let keyPoints = 44
 
 /// A pick on the dice pad: one face, until it is confirmed (and pushed) or picked again.
 func dicePadEntry() -> PadEntry { PadEntry(keys: diceKeys, capacity: 1) }
