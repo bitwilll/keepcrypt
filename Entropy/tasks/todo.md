@@ -19533,6 +19533,9 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps; the hooks marker 1 line
   in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate clean (507 files), `cargo fmt --all
   --check` clean.
+  Proof (M6 commit D8b, on the final tree, a worktree at D8a): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1014 s in all).
 
 ### Verification (each maps to a gate item; refined with the plan)
 - [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest
