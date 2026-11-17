@@ -18908,7 +18908,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   content on both iOS versions in CaptureLayerTests; whether it hides that content from a screenshot is I1's (Q88).
   The job's budget: 874 s x 1.25, 19 minutes (M5-30).
 ### Stage D: the screens (M6 commits D1-D8)
-- [ ] D1. One screen table, `mobile/screens.json`: each of the 49 screens of `:screens`' `Screen` enum, in its order,
+- [x] D1. One screen table, `mobile/screens.json`: each of the 49 screens of `:screens`' `Screen` enum, in its order,
   with its id, its fixed title (screenTitle) and its kind (Protected or Public, isProtected). A JVM test in :screens'
   commonTest holds the Kotlin enum, screenTitle and isProtected to the table, and an XCTest holds the Swift `Screen`
   enum and its title and kind to it, so the two apps cannot drift (MA:17, MA:34).
@@ -18939,7 +18939,9 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   `cargo fmt --all --check` clean; on the commit's tree (a worktree): `--selftest` 4 x "486 passed, 0 failed", `sh
   scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
   checks ran" (612 s).
-- [ ] D2. `Ceremony.swift`'s CeremonyModel, the Swift port of `:screens`' CeremonyModel.kt: the same states, screens,
+  CI proof (2026-11-17): ScreenTableTests passes in both schemes on both legs of Entropy iPhone run 44091376732 at
+  ac11013e; ScreenTableTest in Entropy Android run 44085800147 at 964154d1 (green).
+- [x] D2. `Ceremony.swift`'s CeremonyModel, the Swift port of `:screens`' CeremonyModel.kt: the same states, screens,
   gate, overlays (the 30-second cover, the idle warning at 9 minutes and the wipe at 10), leaving rules (Protected:
   discard at once; Public: the privacy cover and a wipe after 60 s away), the press guard (300 ms after a new view),
   every refusal table, the offline rule and the halt path, over Core and Wire. XCTest mirroring the JVM walk
@@ -19073,6 +19075,15 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   schemes), about 35-37 s on this Mac's host; the iPhone job's 19-minute budget may need remeasuring. XCTest's
   name order is relied on (the slot's users before CoreTests' latching halt); a run in another order fails by name
   (assertLiveSlot), not silently.
+  CI proof (2026-11-17): Entropy iPhone run 44085800258 at 964154d1 failed in the WithTestRegistry scheme alone, 30
+  failures on both legs: KeepCryptTests' WithTestRegistry configuration lacked KC_WITH_TEST_REGISTRY (the app's and
+  the UI tests' had it), so the unit bundle, which compiles the app's sources itself, built the model and the tests
+  as the shipping build over the test-registry core; D2's tests are the first to read the flag. Fixed at ac11013e
+  (the setting added to that configuration alone; TestHooks' scheme runs no unit tests). Run 44091376732 at ac11013e
+  green: "Executed 76 tests, with 0 failures" in Shipping and WithTestRegistry on macos-15 (Xcode 16.4, iPhone 16
+  iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17 iOS 26.5), the UI tests passing in all three schemes; the jobs took
+  1036 s and 1117 s, so entropy-ios.yml's budget is 24 minutes (1117 s x 1.25 = 1397 s, M5-30's rule). Entropy CI
+  run 44091376237 green (14 jobs), Entropy Android 44085800147 and Entropy Pi image 44085800177 green at 964154d1.
 - [ ] D3. The kit and the start: SwiftUI's fixed text, headings and pane titles; the pads (dice 1-6 with undo, letters
   for the first four letters, the go-ahead code, the BIP39 passphrase) as buttons only, never the system keyboard;
   First launch, Self-test, Go offline, Home, Length, Device entropy (Core Motion's accelerometer and gyroscope and
