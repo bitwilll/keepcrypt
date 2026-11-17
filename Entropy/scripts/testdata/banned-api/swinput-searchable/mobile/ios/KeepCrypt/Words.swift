@@ -1,0 +1,1 @@
+    .searchable(text: $query)

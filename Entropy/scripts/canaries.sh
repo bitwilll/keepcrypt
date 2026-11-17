@@ -1643,6 +1643,58 @@ else
     unplant $kplanted $kdef
 fi
 
+# The Swift and iPhone rules on the real tree (tasks/todo.md, M6 item A1), before any Swift file is
+# committed: one planted line per rule in a Swift file of the copy's mobile/ios (a random UUID, an
+# import of Network outside the offline check, a paste control, a print, the defaults store, a
+# file write outside the document picker, a SwiftUI text field and a UITextField outside the secure
+# layer), a Package.swift and a settings file defining KC_TEST_HOOKS there, and a Swift file
+# outside mobile/ios must fail scripts/banned-api-check.sh with exactly these eleven hits, while
+# the three allowed files, planted with what each may hold (the offline check's import and
+# monitor, the secure layer's field with isSecureTextEntry = true, the document picker's write),
+# pass. So a dropped rule, a widened allowance or a scope that stops reaching mobile/ios turns CI
+# red. Each planted file has a name the real tree does not use, and unplant removes it.
+name=ios-swift-rules
+si=mobile/ios/KeepCrypt
+splanted="$si/KcGateCanary.swift $si/OfflineCheck.swift $si/SecureLayer.swift $si/DocumentPicker.swift
+mobile/ios/Package.swift mobile/ios/Config/KcGateCanary.xcconfig tools/KcGateCanary.swift"
+for p in $splanted; do
+    mkdir -p "$tmp/${p%/*}" || exit 1
+done
+cat > "$tmp/$si/KcGateCanary.swift" <<'EOF' || exit 1
+let kcGateCanaryId = UUID()
+import Network
+let kcGateCanaryPaste = PasteButton(payloadType: String.self) { strings in }
+print(kcGateCanaryId)
+UserDefaults.standard.set(1, forKey: "kc")
+try Data().write(to: kcGateCanaryURL)
+let kcGateCanaryEntry = TextField("kc", text: $kc)
+let kcGateCanaryField = UITextField()
+EOF
+printf '%s\n' 'import Network' 'let monitor = NWPathMonitor()' > "$tmp/$si/OfflineCheck.swift" || exit 1
+printf '%s\n' 'let field = UITextField()' 'field.isSecureTextEntry = true' > "$tmp/$si/SecureLayer.swift" || exit 1
+echo 'try sealed.write(to: url)' > "$tmp/$si/DocumentPicker.swift" || exit 1
+echo '// swift-tools-version: 5.9' > "$tmp/mobile/ios/Package.swift" || exit 1
+echo 'SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS' > "$tmp/mobile/ios/Config/KcGateCanary.xcconfig" || exit 1
+echo 'let pad = 6' > "$tmp/tools/KcGateCanary.swift" || exit 1
+expect_failure "$name" sh "$root/scripts/banned-api-check.sh" "$tmp"
+need "RNG: $si/KcGateCanary.swift:1: "
+need "Network: $si/KcGateCanary.swift:2: "
+need "Clipboard: $si/KcGateCanary.swift:3: "
+need "SwLog: $si/KcGateCanary.swift:4: "
+need "SwStorage: $si/KcGateCanary.swift:5: "
+need "SwStorage: $si/KcGateCanary.swift:6: "
+need "SwInput: $si/KcGateCanary.swift:7: "
+need "SwInput: $si/KcGateCanary.swift:8: "
+need "SwPackage: mobile/ios/Package.swift: "
+need "SwTestHook: mobile/ios/Config/KcGateCanary.xcconfig:1: "
+need "SwRoot: tools/KcGateCanary.swift: "
+never "$si/OfflineCheck.swift"
+never "$si/SecureLayer.swift"
+never "$si/DocumentPicker.swift"
+need "banned-api-check: 11 hit(s) in "
+verdict
+unplant $splanted
+
 # The workflow hardening check (tasks/todo.md, M4 group 11; Q38 (d)): a copy of the real
 # entropy-ci.yml with every rule broken once (the top-level token widened to write, which also
 # loses contents: read, and a job that runs on workflow_run, uses an action by tag, pastes an
@@ -1916,7 +1968,7 @@ cp "$root/core/examples/release_probe.rs" "$tmp/core/examples/release_probe.rs" 
 
 # The number of checks above, pinned, so a canary that is deleted, or skipped by a broken branch,
 # turns CI red too. A real change to the canaries updates this pin in the same reviewed change.
-want_checks=101
+want_checks=102
 if [ "$checks" -ne "$want_checks" ]; then
     echo "FAIL: $checks checks ran; scripts/canaries.sh pins $want_checks"
     status=1

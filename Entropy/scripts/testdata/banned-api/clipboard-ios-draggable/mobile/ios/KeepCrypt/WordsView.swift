@@ -1,0 +1,1 @@
+Text(word).draggable(word)

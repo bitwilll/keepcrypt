@@ -1,0 +1,330 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		KC0000000000000000000101 /* KeepCrypt */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = KeepCrypt;
+			sourceTree = "<group>";
+		};
+		KC0000000000000000000102 /* KeepCryptTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = KeepCryptTests;
+			sourceTree = "<group>";
+		};
+		KC0000000000000000000103 /* KeepCryptUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = KeepCryptUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileReference section */
+		KC0000000000000000000201 /* KeepCrypt.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = KeepCrypt.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		KC0000000000000000000202 /* KeepCryptTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeepCryptTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		KC0000000000000000000203 /* KeepCryptUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = KeepCryptUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		KC0000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				KC0000000000000000000101 /* KeepCrypt */,
+				KC0000000000000000000102 /* KeepCryptTests */,
+				KC0000000000000000000103 /* KeepCryptUITests */,
+				KC0000000000000000000002 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		KC0000000000000000000002 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				KC0000000000000000000201 /* KeepCrypt.app */,
+				KC0000000000000000000202 /* KeepCryptTests.xctest */,
+				KC0000000000000000000203 /* KeepCryptUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		KC0000000000000000000301 /* KeepCrypt */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = KC0000000000000000000401 /* Build configuration list for PBXNativeTarget "KeepCrypt" */;
+			buildPhases = (
+				KC0000000000000000000501 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				KC0000000000000000000101 /* KeepCrypt */,
+			);
+			name = KeepCrypt;
+			productName = KeepCrypt;
+			productReference = KC0000000000000000000201 /* KeepCrypt */;
+			productType = "com.apple.product-type.application";
+		};
+		KC0000000000000000000302 /* KeepCryptTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = KC0000000000000000000402 /* Build configuration list for PBXNativeTarget "KeepCryptTests" */;
+			buildPhases = (
+				KC0000000000000000000502 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				KC0000000000000000000601 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				KC0000000000000000000102 /* KeepCryptTests */,
+			);
+			name = KeepCryptTests;
+			productName = KeepCryptTests;
+			productReference = KC0000000000000000000202 /* KeepCryptTests */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		KC0000000000000000000303 /* KeepCryptUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = KC0000000000000000000403 /* Build configuration list for PBXNativeTarget "KeepCryptUITests" */;
+			buildPhases = (
+				KC0000000000000000000503 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				KC0000000000000000000602 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				KC0000000000000000000103 /* KeepCryptUITests */,
+			);
+			name = KeepCryptUITests;
+			productName = KeepCryptUITests;
+			productReference = KC0000000000000000000203 /* KeepCryptUITests */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		KC0000000000000000000900 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1600;
+				LastUpgradeCheck = 1600;
+			};
+			buildConfigurationList = KC0000000000000000000400 /* Build configuration list for PBXProject "KeepCrypt" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = KC0000000000000000000001;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = KC0000000000000000000002 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				KC0000000000000000000301 /* KeepCrypt */,
+				KC0000000000000000000302 /* KeepCryptTests */,
+				KC0000000000000000000303 /* KeepCryptUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		KC0000000000000000000501 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		KC0000000000000000000502 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		KC0000000000000000000503 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		KC0000000000000000000601 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = KC0000000000000000000301 /* KeepCrypt */;
+			targetProxy = KC0000000000000000000701 /* PBXContainerItemProxy */;
+		};
+		KC0000000000000000000602 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = KC0000000000000000000301 /* KeepCrypt */;
+			targetProxy = KC0000000000000000000702 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin PBXContainerItemProxy section */
+		KC0000000000000000000701 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = KC0000000000000000000900 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = KC0000000000000000000301;
+			remoteInfo = KeepCrypt;
+		};
+		KC0000000000000000000702 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = KC0000000000000000000900 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = KC0000000000000000000301;
+			remoteInfo = KeepCrypt;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin XCBuildConfiguration section */
+		KC0000000000000000000811 /* Shipping */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Shipping;
+		};
+		KC0000000000000000000812 /* WithTestRegistry */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = WithTestRegistry;
+		};
+		KC0000000000000000000821 /* Shipping */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				INFOPLIST_FILE = KeepCrypt/Info.plist;
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/build/rust/shipping/$(PLATFORM_NAME)";
+				OTHER_LDFLAGS = "-lkeepcrypt_capi";
+				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/KeepCryptCore";
+			};
+			name = Shipping;
+		};
+		KC0000000000000000000822 /* WithTestRegistry */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				INFOPLIST_FILE = KeepCrypt/Info.plist;
+				LIBRARY_SEARCH_PATHS = "$(SRCROOT)/build/rust/withTestRegistry/$(PLATFORM_NAME)";
+				OTHER_LDFLAGS = "-lkeepcrypt_capi";
+				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.testregistry;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_INCLUDE_PATHS = "$(SRCROOT)/KeepCryptCore";
+			};
+			name = WithTestRegistry;
+		};
+		KC0000000000000000000831 /* Shipping */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.tests;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) KC_TEST_HOOKS";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/KeepCrypt.app/KeepCrypt";
+			};
+			name = Shipping;
+		};
+		KC0000000000000000000832 /* WithTestRegistry */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.tests;
+				OTHER_SWIFT_FLAGS = "$(inherited) -DKC_TEST_HOOKS";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/KeepCrypt.app/KeepCrypt";
+			};
+			name = WithTestRegistry;
+		};
+		KC0000000000000000000841 /* Shipping */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.uitests;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS;
+				TEST_TARGET_NAME = KeepCrypt;
+			};
+			name = Shipping;
+		};
+		KC0000000000000000000842 /* WithTestRegistry */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy.uitests;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS;
+				TEST_TARGET_NAME = KeepCrypt;
+			};
+			name = WithTestRegistry;
+		};
+		KC0000000000000000000851 /* Shipping */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS;
+			};
+			name = Shipping;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		KC0000000000000000000400 /* Build configuration list for PBXProject "KeepCrypt" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				KC0000000000000000000811 /* config */,
+				KC0000000000000000000812 /* config */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Shipping;
+		};
+		KC0000000000000000000401 /* Build configuration list for PBXNativeTarget "KeepCrypt" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				KC0000000000000000000821 /* config */,
+				KC0000000000000000000822 /* config */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Shipping;
+		};
+		KC0000000000000000000402 /* Build configuration list for PBXNativeTarget "KeepCryptTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				KC0000000000000000000831 /* config */,
+				KC0000000000000000000832 /* config */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Shipping;
+		};
+		KC0000000000000000000403 /* Build configuration list for PBXNativeTarget "KeepCryptUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				KC0000000000000000000841 /* config */,
+				KC0000000000000000000842 /* config */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Shipping;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = KC0000000000000000000900 /* Project object */;
+}

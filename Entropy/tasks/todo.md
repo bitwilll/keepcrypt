@@ -18506,7 +18506,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   path did not survive -dead_strip, and the registry marker did.
 
 ### Stage A: the Swift rules (M6 commit 5, before the first Swift file)
-- [ ] A1. The gate's Swift category over `mobile/ios/` (`.swift`, `.h`, `.m`, `.plist`, `.pbxproj`, `.entitlements`):
+- [x] A1. The gate's Swift category over `mobile/ios/` (`.swift`, `.h`, `.m`, `.plist`, `.pbxproj`, `.entitlements`):
   banned RNG (`arc4random`, `SecRandomCopyBytes`, `SystemRandomNumberGenerator`, `.random(`, `drand48`, `rand(`),
   network (`URLSession`, `NWConnection`, `NWListener`, `CFNetwork`, `CFStream`, `URLRequest`, `import Network` outside
   the one offline-check file, which may use `NWPathMonitor` alone), clipboard (`UIPasteboard`), logging (`print(`,
@@ -18515,6 +18515,34 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   (`TextField`, `SecureField`, `TextEditor`, `UITextField` outside Q88's secure-layer file, `UITextView`), and any
   Swift package (`Package.swift`, `XCRemoteSwiftPackageReference` in the project file).
   Proof: a hit and a clean fixture per rule; --selftest and canaries green.
+  As built (the gate's header, "Swift and the iPhone", holds the full lists): every scanned file under `mobile/ios/`
+  (comments and strings counting, as everywhere), RNG, Network and Clipboard keeping their names, and new categories
+  SwLog, SwStorage, SwInput, SwPackage, SwTestHook and SwRoot. The allowed files, one path each, which Stage C writes
+  at exactly these paths: `mobile/ios/KeepCrypt/OfflineCheck.swift` (C5's offline check: `import Network` as the
+  exact line, and `NWPathMonitor` alone of the framework's names), `mobile/ios/KeepCrypt/SecureLayer.swift` (Q88:
+  `UITextField`, with a line `field.isSecureTextEntry = true`; no `becomeFirstResponder` there either),
+  `mobile/ios/KeepCrypt/DocumentPicker.swift` (the `.fileExporter` backup and its read back: the only file that may
+  write, `FileDocument`, `FileWrapper`, `write(to:`) and `mobile/ios/KeepCryptCore/module.modulemap` (C2's one module
+  map; no `link`, `extern`, `umbrella` or `framework`). `KC_TEST_HOOKS` passes in `.swift` files and, in a `.pbxproj`,
+  only inside the build settings of configurations that only unit-test or UI-test targets' lists hold (read as a
+  property list by the gate's own awk); in any other file under `mobile/ios` (an `.xcconfig`, a header, a plist, a
+  scheme) it is a hit. Beyond A1's list, from the same rules: `RandomNumberGenerator` conformances, `UUID()`,
+  CryptoKit, iOS 26's `NetworkConnection` names, BSD sockets, Bonjour, Multipeer and CoreBluetooth, the paste, copy,
+  drag and drop APIs, trap messages built with `\(`, `CustomStringConvertible`, SwiftData, CloudKit, state
+  restoration and the app's directories, focus and search fields, CocoaPods, Carthage, SDK imports, AdSupport,
+  tracking and MetricKit; and SwRoot: `.swift`, `.m`, `.mm`, `.modulemap` and Xcode projects outside `mobile/ios/`.
+  Left for Stage C: KtRoot's M5 clause (any tracked file under `mobile/ios/` is a hit) stays until the app's first
+  file, whose commit retires it. And for C5: the condition set in the test targets compiles the test bundles' code
+  only, never the app's, so a hook that an XCUITest needs inside the app process cannot come from it; such a hook
+  needs its own design (and the gate's rule with it) before C5.
+  Proof (local, 2026-11-17, the Mac's sh; long runs on a scratch copy of the tree): 201 new fixtures (199 hit, one
+  per rule shape, each exactly one hit; clean-sw-allowed, clean-sw-near-misses; clean-near-misses' offline file moved
+  to OfflineCheck.swift) and one built case (a NUL before the condition in the project file);
+  `scripts/banned-api-check.sh` "clean, 427 files scanned"; `--workflows ../.github/workflows` clean, 3 workflows;
+  `--selftest` "1882 passed, 0 failed" (the Network fixtures' registry/ copies of Swift files are SwRoot's one hit);
+  `sh scripts/banned-api-faults.sh` "669 runs (3 ways): 669 passed, 0 failed" (scan: 169 places at 134 lines);
+  `scripts/canaries.sh` "all 102 checks ran", 0 FAIL (new: ios-swift-rules, eleven hits, the three allowed files
+  clean); `cargo fmt --all --check` clean.
 
 ### Stage C: the app shell and its CI (M6 commits C1-C5, after Stage A)
 - [ ] C1. `scripts/ios-rust.sh FLAVOUR` (shipping or withTestRegistry): plain `cargo build --release --locked` of

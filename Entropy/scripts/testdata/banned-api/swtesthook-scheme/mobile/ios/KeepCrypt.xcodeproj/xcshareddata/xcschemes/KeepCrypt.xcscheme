@@ -1,0 +1,1 @@
+            <CommandLineArgument argument = "-DKC_TEST_HOOKS" isEnabled = "YES"></CommandLineArgument>

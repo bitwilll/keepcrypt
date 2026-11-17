@@ -171,7 +171,12 @@ scripts/banned-api-check.sh          # grep gate for banned RNG, network and cli
                                      # clock in the games, game_random only in core and the games, one Session::new
                                      # in pi/app, and the release probe's game_random call; and the Device category:
                                      # pi/app's path literals only in device/paths.rs, file APIs, rppal and nix only
-                                     # under device/, no process, thread or BufReader
+                                     # under device/, no process, thread or BufReader; and the Swift rules under
+                                     # mobile/ios (M6 A1: RNG, network, clipboard, logging, storage, keyboard and
+                                     # package APIs refused, the offline check's import and monitor, the secure
+                                     # layer's UITextField and the document picker's writes each in its one file;
+                                     # KC_TEST_HOOKS only in Swift and the test targets' settings; Swift,
+                                     # Objective-C and Xcode projects only under mobile/ios)
 scripts/banned-api-check.sh --workflows ../.github/workflows   # every entropy-*.yml keeps the hardening: read-only
                                      # token, the three actions pinned by SHA, no secret, no fork-trusting trigger,
                                      # no expression in a run step (the path is the monorepo's, as CI's gates job runs it)
@@ -255,7 +260,7 @@ sh scripts/android-handoff.sh --selftest
 sh scripts/android-local.sh --selftest
 sh scripts/banned-api-faults.sh      # the gate's fault check (CI's lint job): every tool the gate runs, faulted at every
                                      # place that runs it, must stop it with exit 2; run it after any change to the gate
-scripts/canaries.sh                  # 101 checks: proves every gate still fires, the scan's positive controls included
+scripts/canaries.sh                  # 102 checks: proves every gate still fires, the scan's positive controls included
 ```
 
 ## Definition of done (every task)

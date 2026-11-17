@@ -2,7 +2,8 @@
 # Banned-API grep gate: CLAUDE.md security rules 1, 3, 5 and 9 (plan: tasks/todo.md, M0; the Shell
 # category and the hash ban: M3 group 13; the Kotlin, Android and FFI categories: M5 group 3; the
 # Kotlin Multiplatform, iPhone and bridge rules: M5's re-plan for Compose Multiplatform, "Gate
-# changes"), and the release-artifact scan for rules 1 and 10 (tasks/todo.md, M1 group 11).
+# changes"; the Swift and iPhone rules: M6 item A1), and the release-artifact scan for rules 1 and
+# 10 (tasks/todo.md, M1 group 11).
 #
 #   scripts/banned-api-check.sh             scan the repo this script lives in
 #   scripts/banned-api-check.sh DIR         scan DIR as if it were the repo root
@@ -452,8 +453,9 @@
 #              path segment (rustfmt puts "    net::TcpListener," on its own line), TcpStream,
 #              TcpListener, UdpSocket, and (tasks/todo.md, M5 group 3) android.webkit, WebView,
 #              javax.net, Socket(, DatagramSocket, java.net.http, ConnectivityManager, Cronet and
-#              DownloadManager. Not banned: "import Network" and NWPathMonitor (the offline
-#              check), and reading back a picked .age or .kcr file (rule 8):
+#              DownloadManager. Not banned here: "import Network" and NWPathMonitor, which the
+#              Swift rules (below) allow in the offline check's one file alone, and reading back
+#              a picked .age or .kcr file (rule 8):
 #              Data(contentsOf: URL(fileURLWithPath: path)), Data(contentsOf: pickedURL).
 #              In a .py file (tasks/todo.md M2 group 2, Q23; completed by the stage-A review,
 #              2026-10-10, and by M3's Q31 (h)), an import of socket, ssl (or their C modules
@@ -837,8 +839,9 @@
 #              M5, so a KtIos hit there comes with one of its.
 #   KtRoot     (lead decisions M5-19 and M5-25; "KtRoot: <file>: <detail>"): a .kt or .kts file
 #              under mobile/ outside mobile/android/, and any tracked file under mobile/ios/ (read
-#              from git ls-files as the Build rule reads it), which stays empty until M6 brings the
-#              Swift and Xcode rules.
+#              from git ls-files as the Build rule reads it), which stays empty until the app's
+#              first file (M6's Stage C, whose first commit retires this clause); the Swift and
+#              Xcode rules (below) are in place before it (M6 item A1).
 #   KtCinterop (the re-plan's C bridge): mobile/android/core-ffi/src/nativeInterop/cinterop/
 #              keepcrypt.def holds exactly the lines headers = keepcrypt.h, headerFilter =
 #              keepcrypt.h and package = com.keepcrypt.native, each once, and no other (no ---
@@ -882,6 +885,83 @@
 #              a joined thread would turn a panic into a value, and the shared clippy.toml cannot ban
 #              thread spawning (core/tests/panic_wipe.rs joins one). A test thread turns no shipped
 #              panic into a value, and ffi_discard_during_call needs one.
+#   Swift and the iPhone (tasks/todo.md, M6 item A1; Q86-Q92; rules 1, 3, 5, 8, 9, 10 and 11), on
+#              every scanned file under mobile/ios/ (Swift, Objective-C, C and headers, the module
+#              map, the project file, schemes, plists, settings files), comments and string
+#              literals counting, as everywhere: RNG, Network and Clipboard keep their names and
+#              add the Swift rules below to what they refuse everywhere. Four files are allowed
+#              more, each one path ($sw_app is mobile/ios/KeepCrypt; a file of the same name
+#              anywhere else gets every rule): $sw_app/OfflineCheck.swift (the offline check, Stage
+#              C's C5: import Network as the exact line, and NWPathMonitor), $sw_app/SecureLayer.swift
+#              (Q88's secure layer: UITextField, with isSecureTextEntry = true), $sw_app/
+#              DocumentPicker.swift (the .fileExporter backup and its read back: the writes) and
+#              mobile/ios/KeepCryptCore/module.modulemap (the one module map, C2). The full lists are
+#              at each check function.
+#   RNG        under mobile/ios also (swrng): RandomNumberGenerator as the start of a word (a
+#              hand-written PRNG's conformance), UUID( and NSUUID( and UUID.init and CFUUIDCreate (a
+#              random UUID from the OS), CryptoKit, SecKeyCreateRandomKey and SecKeyGeneratePair.
+#   Network    under mobile/ios also: a name that starts Network and a capital (iOS 26's
+#              NetworkConnection, NetworkListener, NetworkBrowser; NetworkExtension), CFStream,
+#              CFSocket, socket(, getaddrinfo(, gethostbyname(, getnameinfo(, NetService,
+#              MultipeerConnectivity and its MC classes, CoreBluetooth and its managers
+#              (sw_network); an import of Network, plain or of one declaration, outside the offline
+#              check, and there any but the exact line "import Network" (sw_network_import,
+#              sw_network_import_offline); and any word that starts NW and a capital or nw_ outside
+#              the offline check, and there any but NWPathMonitor (sw_nw, sw_nw_offline;
+#              NWConnection, NWListener and NWBrowser are network()'s).
+#   Clipboard  under mobile/ios also (swclipboard): PasteButton, UIPasteControl, SwiftUI's
+#              copy, cut, paste, drag and drop modifiers, UIKit's edit menu
+#              (UIEditMenuInteraction, UIMenuController, UIResponderStandardEditActions,
+#              canPerformAction), a func copy(, cut( or paste( and a #selector of one, and UIKit's
+#              drag and drop (UIDragInteraction, UIDropInteraction, NSItemProvider).
+#   SwLog      print(, debugPrint(, dump(, NSLog(, os_log(, os_signpost(, syslog( and C's
+#              printf family, puts( and fputs(; OSLog and OSSignpost names, Logger as a word, an
+#              import of os or OSLog; standardError, standardOutput, stderr and stdout;
+#              CustomStringConvertible and CustomDebugStringConvertible; and an interpolation \( in
+#              a string after a call of fatalError(, precondition(, preconditionFailure(, assert( or
+#              assertionFailure( on its line (KtLog's template rule in Swift).
+#   SwStorage  in every file: UserDefaults, @AppStorage, @SceneStorage, NSKeyedArchiver and
+#              NSKeyedUnarchiver, Core Data, SwiftData, CloudKit and Core Spotlight and their
+#              classes, the Keychain (SecItem*, kSecClass, kSecAttr*, kSecValue*, kSecReturn*,
+#              kSecMatch*), NSUbiquitousKeyValueStore, user activities and state restoration, the
+#              app's own directories (documentsDirectory, temporaryDirectory, NSTemporaryDirectory,
+#              containerURL and the rest) and C's fopen family; and, outside DocumentPicker.swift,
+#              every write: write(to:, write(toFile:, FileManager's createFile(, copyItem(,
+#              moveItem(, removeItem( and the rest, a FileHandle forWriting or forUpdating,
+#              OutputStream, FileWrapper, FileDocument, UIDocument, NSFileCoordinator, .fileExporter,
+#              .fileMover and forExporting.
+#   SwInput    TextField and every name it starts, SecureField, TextEditor, UITextView,
+#              becomeFirstResponder and canBecomeFirstResponder (in SecureLayer.swift too),
+#              UIKeyInput, UITextInput, UISearch*, .searchable, addTextField, @FocusState and
+#              .focused; UITextField outside SecureLayer.swift; and there every isSecureTextEntry
+#              but an assignment of the literal true, and, once it names UITextField, a statement
+#              isSecureTextEntry = true on a line of its own is required ("missing ..." at line 1).
+#   SwPackage  by path ("SwPackage: <file>: <detail>"): a file named Package.swift,
+#              Package.resolved, Podfile, Podfile.lock, Cartfile, Cartfile.resolved or
+#              Cartfile.private, a .podspec, a file under a .swiftpm/, swiftpm/, Pods/ or Carthage/
+#              directory, and a .modulemap other than mobile/ios/KeepCryptCore/module.modulemap; by
+#              text: any word holding SwiftPackage (XCRemoteSwiftPackageReference,
+#              XCLocalSwiftPackageReference, XCSwiftPackageProductDependency),
+#              packageProductDependencies, packageReferences, CocoaPods' [CP] phases, Pods- and
+#              Pods_ names, Manifest.lock, Carthage, Apple's advertising, tracking and diagnostics
+#              frameworks (AdSupport, ASIdentifierManager, AppTrackingTransparency,
+#              ATTrackingManager, advertisingIdentifier, identifierForVendor, MetricKit,
+#              MXMetricManager), an import or include line naming an analytics, crash or ad SDK in
+#              any letter case (sw_sdk: firebase, crashlytics, sentry, bugsnag and the rest), and in
+#              the one module map link, extern, umbrella and framework as words.
+#   SwTestHook the compilation condition KC_TEST_HOOKS, the capture layers' test hooks (rule 10's
+#              Swift form; C5): in a .swift file (lower case) it passes (#if KC_TEST_HOOKS); in a
+#              .pbxproj only inside the buildSettings of an XCBuildConfiguration that only test
+#              targets' lists hold (PBXNativeTargets of product type bundle.unit-test or
+#              bundle.ui-testing; the project's own configurations, the app's and any other
+#              target's hit), read as a property list without a parser (sw_hooks_pbxproj; a file it
+#              cannot follow allows none), and every line holding more of it than those allowed
+#              strings hits, a comment's too; in any other file (an .xcconfig, a header's #define,
+#              a plist, a scheme) every line that names it hits.
+#   SwRoot     ("SwRoot: <file>: <detail>"): a .swift, .m, .mm or .modulemap file, or a file
+#              under a .xcodeproj or .xcworkspace directory, outside mobile/ios/, in any letter case:
+#              the app's code and project live under mobile/ios/, the one Xcode root, as Kotlin
+#              lives under mobile/android/ (KtRoot), so no Swift rule's scope can be stepped round.
 #
 # Fail-closed noise, not bypasses (rename or spell it out instead): a named format argument called
 # path that rustfmt wraps onto its own line ("        path = \"seed.age\",") is an Include hit in
@@ -915,7 +995,18 @@
 # "Kotlin's uuid package"). A catch of a qualified type (java.io.IOException) in Documents.kt is a
 # hit (import it), and so is a DialogProperties(securePolicy = ...) wrapped over lines (keep the
 # call on one line); a removal of a manifest component is written on one line, tools:node="remove"
-# with the tag.
+# with the tag. Under mobile/ios, a comment or a string that names a Swift rule's word is a hit
+# like code (write "the offline check's monitor", not NWPathMonitor, outside its file; "the
+# system's defaults store", not UserDefaults); a function of our own named print, dump or puts, a
+# property named stdout or a type named Logger is a SwLog hit, a parse of a UUID (UUID(uuidString:))
+# an RNG hit, a method named copy, cut or paste a Clipboard hit, and a type or variable whose name
+# starts Network and a capital or NW and a capital a Network hit (rename it); NWPathMonitor twice
+# with one character between them, as in NWPathMonitor,NWPathMonitor, is a hit in the offline check
+# (write a blank after the comma); import Network with a comment after it there is a hit (put the
+# comment on its own line); the secure layer's statement is written field.isSecureTextEntry = true,
+# on its own line (an optional chain, field?.isSecureTextEntry, is no such line); and
+# KC_TEST_HOOKS in a project file that does not read as the property list it must be, or in a
+# configuration the reading cannot tie to a test target alone, is a hit wherever it stands.
 #
 # Portable on purpose: POSIX sh, POSIX ERE (no \b \s \< \>, no -P -w), POSIX sed (BRE, in
 # selectable() and textselection(); ERE with -E, which BSD and GNU sed share, in threads_by_path())
@@ -1126,8 +1217,16 @@ macro_rules and macro_export in ffi/src, ffi/guard/src, ffi/jni/src and ffi/capi
 ffi/guard/src but fn guarded's one line, a first statement of guarded other than the input's
 Zeroizing wrap, a JNI name outside ffi/jni/, a C-ABI export in jni's lib.rs or another ABI than "C"
 in capi's, a second Session::new or one
-outside ffi/src/ceremony.rs, and thread or JoinHandle outside ffi/tests/. A directory symlink is
-refused. Exit 0 clean, 1 hits, 2 usage or read error.
+outside ffi/src/ceremony.rs, and thread or JoinHandle outside ffi/tests/. Under mobile/ios, the
+Swift rules: more RNG, network and clipboard names (a hand-written generator, UUIDs, CryptoKit,
+iOS 26's Network names, BSD sockets, Bonjour, Multipeer, Bluetooth, the paste, copy, drag and drop
+APIs), the Network framework outside the offline check's file and anything but NWPathMonitor
+there, logging and printing and trap messages built from values, persistence and the app's
+directories, file writes outside the document picker's file, the system keyboard (UITextField
+outside the secure layer's file, which must set isSecureTextEntry = true), Swift packages,
+CocoaPods, Carthage, SDKs and tracking, a module map but the one, and KC_TEST_HOOKS outside Swift
+files and the test targets' build settings; and Swift, Objective-C, module maps and Xcode projects
+outside mobile/ios. A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
 
@@ -2896,6 +2995,479 @@ kt_def() {
     }' "$1"
 }
 
+# --- Swift and the iPhone (tasks/todo.md, M6 item A1; Q86-Q92; rules 1, 5, 8, 9, 10 and 11) -------
+
+# The allowed files: each is one path, and a file of the same name anywhere else gets every rule.
+# The offline check (Stage C's C5) is the one file that may import Network, and it may name
+# NWPathMonitor alone; Q88's secure layer is the one file that may name UITextField, and must then
+# set isSecureTextEntry = true; the document picker (Stage D's .fileExporter backup and its read
+# back) is the one file that may write a file; the module map is the one way C reaches Swift
+# (keepcrypt.h's kc_call and kc_max_out, C2).
+sw_app=mobile/ios/KeepCrypt
+sw_offline=$sw_app/OfflineCheck.swift
+sw_secure=$sw_app/SecureLayer.swift
+sw_picker=$sw_app/DocumentPicker.swift
+sw_modulemap=mobile/ios/KeepCryptCore/module.modulemap
+
+# RNG (rule 1), under mobile/ios on top of rng() and osrng(), which already refuse arc4random*,
+# SecRandomCopyBytes, SystemRandomNumberGenerator, .random(, .randomElement(, .shuffled(, GameplayKit,
+# drand48 and the rest of the rand48 family, rand(, srand( and random( there as everywhere: a type
+# that conforms to RandomNumberGenerator (a hand-written PRNG; SystemRandomNumberGenerator is rng()'s,
+# so the word must start here), UUID() and NSUUID() and CFUUIDCreate (a random version 4 UUID from
+# the OS; UUID(uuidString:) hits too), CryptoKit (its keys and nonces draw from the OS, and core does
+# all crypto, rule 11) and SecKeyCreateRandomKey and SecKeyGeneratePair.
+swrng() {
+  grep -n -a -E \
+    -e "${L}RandomNumberGenerator" \
+    -e "${L}(NS)?UUID[[:space:]]*([(]|[.][[:space:]]*init$R)" \
+    -e 'CFUUIDCreate' \
+    -e 'CryptoKit' \
+    -e 'SecKeyCreateRandomKey|SecKeyGeneratePair' \
+    -- "$1"
+}
+
+# Network (rule 9), under mobile/ios on top of network(), which already refuses URLSession,
+# URLRequest, NWConnection, NWListener, NWBrowser, CFNetwork, WKWebView and the rest there as
+# everywhere: iOS 26's NetworkConnection, NetworkListener and NetworkBrowser and any other name that
+# starts Network and a capital (NetworkExtension), CFStream and CFSocket, the BSD calls socket(,
+# getaddrinfo(, gethostbyname( and getnameinfo(, Bonjour's NetService and NSNetService,
+# MultipeerConnectivity and its MC classes, and CoreBluetooth and its central and peripheral
+# managers (the app talks to no other device; a braille display is the system's, not ours).
+sw_network() {
+  grep -n -a -E \
+    -e "${L}Network[A-Z]" \
+    -e 'CFStream|CFSocket' \
+    -e "${L}(socket|getaddrinfo|gethostbyname|getnameinfo)[[:space:]]*[(]" \
+    -e "${L}(NS)?NetService" \
+    -e 'MultipeerConnectivity' \
+    -e "${L}MC(Session|NearbyService|AdvertiserAssistant|BrowserViewController)" \
+    -e 'CoreBluetooth' \
+    -e "${L}CB(Central|Peripheral)Manager" \
+    -- "$1"
+}
+
+# Network, under mobile/ios: an import of the Network framework, plain or of one declaration
+# (import struct Network.NWPathMonitor), in any file but the offline check (sw_network_import); and
+# there any such line but exactly "import Network" (blanks around it aside), so an @_exported or
+# @testable import, one of a single declaration and an import with a comment after it all hit
+# (sw_network_import_offline).
+sw_network_import_ere="${L}import[[:space:]]+((typealias|struct|class|enum|protocol|let|var|func)[[:space:]]+)?Network$R"
+sw_network_import() {
+  grep -n -a -E -e "$sw_network_import_ere" -- "$1"
+}
+sw_network_import_offline() {
+  t=$(grep -n -a -E -e "$sw_network_import_ere" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "$sw_network_import_ere" -e 's/^([0-9]+:)[[:space:]]*import[[:space:]]+Network[[:space:]]*$/\1/'
+}
+
+# Network, under mobile/ios: a name of the Network framework, a word that starts NW and a capital
+# (NWPathMonitor, NWPath, NWEndpoint, NWParameters, NWProtocolTCP) or nw_ (its C API,
+# nw_path_monitor_create), in any file but the offline check (sw_nw), and there any but
+# NWPathMonitor (sw_nw_offline), so the offline check reads the monitor's path through the closure's
+# own parameter and names no other type. NWConnection, NWListener and NWBrowser (with any ending)
+# are network()'s everywhere, so they are left to it here.
+sw_nw_ere="${L}(NW[A-Z]|nw_)"
+sw_nw() {
+  t=$(grep -n -a -E -e "$sw_nw_ere" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "$sw_nw_ere" -e 's/(^|[^A-Za-z0-9_])NW(Connection|Listener|Browser)[A-Za-z0-9_]*/\1/g'
+}
+sw_nw_offline() {
+  t=$(grep -n -a -E -e "$sw_nw_ere" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "$sw_nw_ere" -e 's/(^|[^A-Za-z0-9_])NW(Connection|Listener|Browser)[A-Za-z0-9_]*/\1/g' \
+    -e 's/(^|[^A-Za-z0-9_])NWPathMonitor([^A-Za-z0-9_]|$)/\1\2/g'
+}
+
+# Clipboard (rule 5; docs/mobile-apps.md, "Never offered: share sheet, copy"), under mobile/ios on top
+# of clipboard() and textselection(), which already refuse UIPasteboard, ShareLink,
+# UIActivityViewController and any .textSelection( but .textSelection(.disabled) there as
+# everywhere: the paste controls (PasteButton, UIPasteControl), SwiftUI's copy, cut, paste, drag
+# and drop modifiers (.copyable, .cuttable, .pasteDestination, .onCopyCommand, .onCutCommand,
+# .onPasteCommand, .draggable, .onDrag, .onDrop, .dropDestination, with a parenthesis or a
+# trailing closure), UIKit's edit menu (UIEditMenuInteraction, UIMenuController,
+# UIResponderStandardEditActions, canPerformAction), a responder's own copy, cut or paste action
+# (func copy(, #selector(paste(_:))), and UIKit's drag and drop (UIDragInteraction,
+# UIDropInteraction, NSItemProvider).
+swclipboard() {
+  grep -n -a -E \
+    -e "${L}PasteButton$R" \
+    -e 'UIPasteControl' \
+    -e "[.][[:space:]]*(copyable|cuttable|pasteDestination|onCopyCommand|onCutCommand|onPasteCommand|draggable|onDrag|onDrop|dropDestination)$R" \
+    -e 'UIEditMenuInteraction|UIMenuController|UIResponderStandardEditActions|canPerformAction' \
+    -e "${L}func[[:space:]]+(copy|cut|paste|pasteAndMatchStyle|pasteAndGo|pasteAndSearch)[[:space:]]*[(]" \
+    -e '#selector[[:space:]]*[(][[:space:]]*([A-Za-z0-9_]+[.])*(copy|cut|paste|pasteAndMatchStyle)[[:space:]]*[(]' \
+    -e 'UIDragInteraction|UIDropInteraction|NSItemProvider' \
+    -- "$1"
+}
+
+# SwLog (rules 3 and 5: nothing is logged or printed, and no trap message is built from runtime
+# values), under mobile/ios: print(, debugPrint(, dump(, NSLog( and NSLogv(, os_log( and
+# os_signpost(, syslog(, and C's puts(, printf(, fprintf(, vprintf(, fputs( and CFShow(; OSLog,
+# OSLogStore and OSSignposter (a word that starts OSLog or OSSignpost), Logger as a word (os's
+# logger, Logger(subsystem:) and Logger.init), an import of os or OSLog (import os.log too); the
+# standard streams (standardError, standardOutput, stderr, stdout); a conformance to
+# CustomStringConvertible or CustomDebugStringConvertible (what print and string interpolation
+# show, so no type gives its value a text form, as rule 5 bars Debug and Display); and a string
+# interpolation, \(, in a string after a call of fatalError(, precondition(, preconditionFailure(,
+# assert( or assertionFailure( on its line (the message lands in the crash report; KtLog's
+# template rule's Swift form). A message written on a line of its own, under the call, is not seen.
+swlog() {
+  grep -n -a -E \
+    -e "${L}(print|debugPrint|dump|NSLog|NSLogv|os_log|os_signpost|syslog|puts|printf|fprintf|vprintf|fputs|CFShow)[[:space:]]*[(]" \
+    -e "${L}OS(Log|Signpost)" \
+    -e "${L}Logger$R" \
+    -e "${L}import[[:space:]]+(os|OSLog)$R" \
+    -e "${L}(standardError|standardOutput|stderr|stdout)$R" \
+    -e "${L}Custom(Debug)?StringConvertible$R" \
+    -e '(^|[^A-Za-z0-9_])(fatalError|preconditionFailure|precondition|assertionFailure|assert)[[:space:]]*[(].*"[^"]*\\[(]' \
+    -- "$1"
+}
+
+# SwStorage (rule 8: nothing is persisted; the backup the document picker hands the system is the
+# one file written), under mobile/ios, in every file: UserDefaults (NSUserDefaults too),
+# @AppStorage and @SceneStorage, NSKeyedArchiver and NSKeyedUnarchiver, Core Data, SwiftData,
+# CloudKit and Core Spotlight by name (their imports) and their classes (NSPersistent*,
+# NSManagedObject*, ModelContainer, ModelContext, .modelContainer, @Model, CKContainer,
+# CKDatabase, CKRecord), the Keychain (SecItem*, kSecClass, kSecAttr*, kSecValue*, kSecReturn*,
+# kSecMatch*), NSUbiquitousKeyValueStore, user activities and state restoration (NSUserActivity,
+# .userActivity, .onContinueUserActivity, restorationIdentifier, restorationClass,
+# stateRestorationActivity, encodeRestorableState and the rest, shouldSaveApplicationState), the
+# app's own directories (documentDirectory and documentsDirectory, cachesDirectory,
+# applicationSupportDirectory, libraryDirectory, temporaryDirectory, downloadsDirectory,
+# homeDirectory, NSTemporaryDirectory, NSHomeDirectory, NSSearchPathForDirectoriesInDomains,
+# containerURL), and C's fopen(, freopen(, fwrite(, mkstemp( and tmpfile(. The document picker
+# file gets this list too: it writes where the user picks, never into the app's own storage.
+swstorage() {
+  grep -n -a -E \
+    -e 'UserDefaults' \
+    -e "${L}(AppStorage|SceneStorage)$R" \
+    -e 'NSKeyed(Archiver|Unarchiver)' \
+    -e "${L}(CoreData|SwiftData|CloudKit|CoreSpotlight)$R" \
+    -e 'NSPersistent|NSManagedObject' \
+    -e "${L}(ModelContainer|ModelContext)$R|[.][[:space:]]*modelContainer$R|@[[:space:]]*Model$R" \
+    -e "${L}(SecItem|kSec(Class|Attr|Value|Return|Match))" \
+    -e 'NSUbiquitousKeyValueStore' \
+    -e "${L}CK(Container|Database|Record)" \
+    -e 'NSUserActivity' \
+    -e "[.][[:space:]]*(userActivity|onContinueUserActivity)$R" \
+    -e '[Rr]estoration(Identifier|Class)|stateRestorationActivity|RestorableState|[Ss]houldSave(Secure)?ApplicationState' \
+    -e "${L}(documents?Directory|cachesDirectory|applicationSupportDirectory|libraryDirectory|temporaryDirectory|downloadsDirectory|homeDirectory|NSTemporaryDirectory|NSHomeDirectory|NSSearchPathForDirectoriesInDomains|containerURL)$R" \
+    -e "${L}(fopen|freopen|fwrite|mkstemp|tmpfile)[[:space:]]*[(]" \
+    -- "$1"
+}
+
+# SwStorage, under mobile/ios but the document picker file: a file written, by a write(to:,
+# write(toFile: or write(toURL: (Data's, String's and NSData's), FileManager's createFile(,
+# createDirectory(, copyItem(, moveItem(, replaceItem( and replaceItemAt(, removeItem(, trashItem(,
+# linkItem(, createSymbolicLink( and setAttributes(, a FileHandle forWriting or forUpdating,
+# OutputStream and NSOutputStream, and the document picker's own types and modifiers
+# (FileWrapper and fileWrapper, FileDocument, ReferenceFileDocument, UIDocument,
+# NSFileCoordinator, .fileExporter, .fileMover and UIDocumentPickerViewController's
+# forExporting:). Reading a picked file back (Data(contentsOf:)) is not a write, and passes.
+swstorage_write() {
+  grep -n -a -E \
+    -e "${L}write[[:space:]]*[(][[:space:]]*(to|toFile|toURL)[[:space:]]*:" \
+    -e "${L}(createFile|createDirectory|copyItem|moveItem|replaceItem|replaceItemAt|removeItem|trashItem|linkItem|createSymbolicLink|setAttributes)[[:space:]]*[(]" \
+    -e 'forWriting|forUpdating' \
+    -e "${L}(NS)?OutputStream$R" \
+    -e "${L}(FileWrapper|fileWrapper|FileDocument|ReferenceFileDocument|UIDocument|NSFileCoordinator)$R" \
+    -e "[.][[:space:]]*(fileExporter|fileMover)$R" \
+    -e 'forExporting' \
+    -- "$1"
+}
+
+# SwInput (docs/mobile-apps.md: never the system keyboard; in-app pads only), under mobile/ios:
+# SwiftUI's text fields and editors (TextField and every name it starts, SecureField, TextEditor),
+# UITextView, becoming first responder (becomeFirstResponder and canBecomeFirstResponder, in the
+# secure-layer file too: its field never takes focus), UIKit's text input protocols (UIKeyInput,
+# UITextInput; UITextInputTraits passes), search (UISearchBar, UISearchController,
+# UISearchTextField, .searchable), an alert's text field (addTextField) and SwiftUI focus
+# (@FocusState, .focused; VoiceOver's AccessibilityFocusState and .accessibilityFocused pass).
+swinput() {
+  grep -n -a -E \
+    -e "${L}(TextField|SecureField|TextEditor)" \
+    -e 'UITextView' \
+    -e '[Bb]ecomeFirstResponder' \
+    -e "${L}(UIKeyInput|UITextInput)$R" \
+    -e 'UISearch' \
+    -e "[.][[:space:]]*searchable$R" \
+    -e 'addTextField' \
+    -e "${L}FocusState$R" \
+    -e "[.][[:space:]]*focused$R" \
+    -- "$1"
+}
+
+# SwInput, under mobile/ios but the secure-layer file: UITextField (Q88's secure layer draws the
+# words inside a secure field's layer, in that file alone).
+sw_uitextfield() {
+  grep -n -a -E -e 'UITextField' -- "$1"
+}
+
+# SwInput, in the secure-layer file: every isSecureTextEntry but an assignment of the literal true
+# (isSecureTextEntry = true), so false, a variable, a comparison (== true) and a read all hit. The
+# file must also hold such an assignment as a statement of its own line whenever it names
+# UITextField, checked in scan() after the loop ("missing ..." at line 1).
+sw_secure_entry() {
+  t=$(grep -n -a -E -e 'isSecureTextEntry' -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits 'isSecureTextEntry' -e 's/isSecureTextEntry[[:space:]]*=[[:space:]]*true([^A-Za-z0-9_]|$)/\1/g'
+}
+sw_secure_entry_line='[[:space:]]*([A-Za-z_][A-Za-z0-9_]*[[:space:]]*[.][[:space:]]*)*isSecureTextEntry[[:space:]]*=[[:space:]]*true[[:space:]]*'
+
+# SwPackage (Q86, Q91: no third-party Swift package; rule 9: no analytics, crash or ad SDKs; rule
+# 11), under mobile/ios, by text: a Swift package in a project file (XCRemoteSwiftPackageReference,
+# XCLocalSwiftPackageReference and XCSwiftPackageProductDependency, any word holding
+# SwiftPackage; packageProductDependencies, packageReferences), CocoaPods' and Carthage's marks
+# ([CP] build phases, a Pods- or Pods_ name, Manifest.lock, Carthage), Apple's advertising,
+# tracking and diagnostics frameworks (AdSupport, ASIdentifierManager, AppTrackingTransparency,
+# ATTrackingManager, advertisingIdentifier, identifierForVendor, MetricKit and MXMetricManager,
+# which hands crash and diagnostic reports to the app); and, by sw_sdk, an import or include line
+# (Swift's import, Objective-C's #import and @import, C's #include) that names, in any letter case,
+# one of the SDKs KtSdk refuses on Android or another (firebase, crashlytics, sentry, bugsnag,
+# appcenter, datadog, newrelic, mixpanel, amplitude, flurry, googlemobileads, admob, fbsdk,
+# facebook, instabug, onesignal, appsflyer). The path rules (Package.swift, Package.resolved, a
+# Podfile, a Cartfile, a .podspec, a .swiftpm/, swiftpm/, Pods/ or Carthage/ directory, and a
+# module map other than the one) are in scan().
+swpackage() {
+  grep -n -a -E \
+    -e 'SwiftPackage|packageProductDependencies|packageReferences' \
+    -e '[[]CP[]]|Pods[-_]|Manifest[.]lock|Carthage' \
+    -e "${L}(AdSupport|ASIdentifierManager|AppTrackingTransparency|ATTrackingManager|advertisingIdentifier|identifierForVendor|MetricKit|MXMetricManager)" \
+    -- "$1"
+}
+sw_sdk() {
+  grep -n -a -i -E \
+    -e "${L}(import|include)[[:space:]].*(firebase|crashlytics|sentry|bugsnag|appcenter|datadog|newrelic|mixpanel|amplitude|flurry|googlemobileads|admob|fbsdk|facebook|instabug|onesignal|appsflyer)" \
+    -- "$1"
+}
+
+# SwPackage, in the one module map ($sw_modulemap): link (a library linked by name), extern (another
+# module map read in), umbrella (every header of a directory) and framework, as words, so the module
+# map names keepcrypt.h's declarations and nothing more (the project links the prebuilt
+# libkeepcrypt_capi.a by path, C2).
+sw_module_lines() {
+  grep -n -a -E -e "${L}(link|extern|umbrella|framework)$R" -- "$1"
+}
+
+# SwTestHook (rule 10's Swift form: the test hooks never ship; tasks/todo.md, M6 item C5), under
+# mobile/ios: the compilation condition KC_TEST_HOOKS, which turns the capture layers' test hooks
+# on, may appear in a .swift file (as #if KC_TEST_HOOKS) and, in a .pbxproj, only inside the
+# buildSettings of a build configuration of a test target (sw_hooks_pbxproj); every other line
+# that names it, in any other file (an .xcconfig, a header's #define, a plist, a scheme), is a hit
+# (sw_hooks). So no shipping or app configuration, and no settings file an app configuration could
+# take as its base, defines it.
+sw_hooks() {
+  grep -n -a -F -e 'KC_TEST_HOOKS' -- "$1"
+}
+
+# sw_hooks_pbxproj FILE: the project file is read as the old-style property list it is, with no
+# parser beyond this one (a new dependency, rule 11): every comment (/* */ over lines, and // to
+# the end of a line), every quoted string (with backslash escapes, over lines) and every bare
+# string ([A-Za-z0-9_$+/:.-]) is a token, and { } ( ) = ; , are read as a dictionary's and an
+# array's punctuation, in order. A KC_TEST_HOOKS in a string (a key or a value, alone or inside a
+# longer one such as "$(inherited) KC_TEST_HOOKS" or -DKC_TEST_HOOKS) is allowed only inside
+# objects / ID / buildSettings, where ID is an XCBuildConfiguration defined once, listed only in
+# the buildConfigurations of XCConfigurationLists each defined once and each the
+# buildConfigurationList of nothing but PBXNativeTargets, each defined once, whose productType is
+# com.apple.product-type.bundle.unit-test or com.apple.product-type.bundle.ui-testing. So a
+# configuration of the app target, of the project (whose settings every target takes), of a list
+# shared with the app or of any other target, and one listed nowhere, all hit. Every line holding
+# more KC_TEST_HOOKS than its allowed strings is a hit, so one in a comment hits too; and a file
+# the reading cannot follow (a character no token takes, a brace or a ; out of place, a dictionary,
+# a string or a comment still open at the end, a second top-level dictionary) allows none. FILE is
+# read through kt_text, so a NUL byte hides nothing from the Mac's awk.
+sw_hooks_pbxproj() {
+  grep -q -a -F -e 'KC_TEST_HOOKS' -- "$1"
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  ktext=$(kt_text "$1") || return 2
+  printf '%s\n' "$ktext" | awk '
+    function count(s,    n, p) {
+      n = 0
+      while ((p = index(s, "KC_TEST_HOOKS")) > 0) {
+        n++
+        s = substr(s, p + 13)
+      }
+      return n
+    }
+    # A string that holds the condition is a candidate when it is inside the buildSettings of an
+    # object: depth 4 is the dictionary under that key of the object, at depth 3.
+    function note(v, ln,    k) {
+      k = count(v)
+      if (k == 0) return
+      if (d >= 4 && pk[2] == "objects" && type[2] == "D" && pk[4] == "buildSettings" && type[4] == "D") {
+        nc++
+        cline[nc] = ln
+        cobj[nc] = pk[3]
+        cn[nc] = k
+      }
+    }
+    # st[d]: in a dictionary 0 a key is due, 1 its =, 2 its value, 3 its ;; in an array 0 a value is
+    # due, 1 its , or the ).
+    function emit(v, ln) {
+      note(v, ln)
+      if (d == 0) {
+        bad = 1
+        return
+      }
+      if (type[d] == "D") {
+        if (st[d] == 0) {
+          ck[d] = v
+          st[d] = 1
+        } else if (st[d] == 2) {
+          if (d == 3 && pk[2] == "objects" && type[2] == "D") {
+            if (ck[3] == "isa") isa[pk[3]] = v
+            else if (ck[3] == "buildConfigurationList") bcl[pk[3]] = v
+            else if (ck[3] == "productType") ptype[pk[3]] = v
+          }
+          st[d] = 3
+        } else {
+          bad = 1
+        }
+        return
+      }
+      if (st[d] == 0) {
+        if (d == 4 && pk[2] == "objects" && pk[4] == "buildConfigurations") {
+          nm++
+          mlist[nm] = pk[3]
+          mcfg[nm] = v
+        }
+        st[d] = 1
+      } else {
+        bad = 1
+      }
+    }
+    function push(c) {
+      if (d == 0) {
+        if (c != "{" || done) {
+          bad = 1
+          return
+        }
+        d = 1
+        type[1] = "D"
+        st[1] = 0
+        pk[1] = ""
+        return
+      }
+      if (type[d] == "D" && st[d] == 2) st[d] = 3
+      else if (type[d] == "A" && st[d] == 0) st[d] = 1
+      else {
+        bad = 1
+        return
+      }
+      d++
+      type[d] = (c == "{") ? "D" : "A"
+      st[d] = 0
+      pk[d] = (type[d - 1] == "D") ? ck[d - 1] : ""
+      if (d == 3 && pk[2] == "objects" && type[2] == "D" && type[3] == "D") defs[pk[3]]++
+    }
+    function pop(c) {
+      if (d == 0 || (c == "}" && (type[d] != "D" || st[d] != 0)) || (c == ")" && type[d] != "A")) {
+        bad = 1
+        return
+      }
+      d--
+      if (d == 0) done = 1
+    }
+    function punct(c) {
+      if (c == "=" && d > 0 && type[d] == "D" && st[d] == 1) st[d] = 2
+      else if (c == ";" && d > 0 && type[d] == "D" && st[d] == 3) st[d] = 0
+      else if (c == "," && d > 0 && type[d] == "A" && st[d] == 1) st[d] = 0
+      else bad = 1
+    }
+    {
+      line = $0
+      k = count(line)
+      if (k) {
+        raw[NR] = k
+        text[NR] = line
+      }
+      n = length(line)
+      i = 1
+      while (i <= n) {
+        c = substr(line, i, 1)
+        if (incomment) {
+          if (substr(line, i, 2) == "*/") {
+            incomment = 0
+            i += 2
+          } else {
+            i++
+          }
+          continue
+        }
+        if (instr) {
+          if (c == "\\") {
+            s = s substr(line, i, 2)
+            i += 2
+          } else if (c == "\"") {
+            instr = 0
+            emit(s, sline)
+            i++
+          } else {
+            s = s c
+            i++
+          }
+          continue
+        }
+        two = substr(line, i, 2)
+        if (two == "//") break
+        if (two == "/*") {
+          incomment = 1
+          i += 2
+        } else if (c == " " || c == "\t" || c == "\r") {
+          i++
+        } else if (c == "\"") {
+          instr = 1
+          s = ""
+          sline = NR
+          i++
+        } else if (c == "{" || c == "(") {
+          push(c)
+          i++
+        } else if (c == "}" || c == ")") {
+          pop(c)
+          i++
+        } else if (c == "=" || c == ";" || c == ",") {
+          punct(c)
+          i++
+        } else if (match(substr(line, i), /^[A-Za-z0-9_$+\/:.-]+/)) {
+          emit(substr(line, i, RLENGTH), NR)
+          i += RLENGTH
+        } else {
+          bad = 1
+          i++
+        }
+      }
+      if (instr) s = s "\n"
+    }
+    END {
+      if (instr || incomment || d != 0 || !done) bad = 1
+      ut = "com.apple.product-type.bundle.unit-test"
+      ui = "com.apple.product-type.bundle.ui-testing"
+      for (o in bcl) {
+        if (isa[o] == "PBXNativeTarget" && defs[o] == 1 && (ptype[o] == ut || ptype[o] == ui)) towner[bcl[o]]++
+        else oowner[bcl[o]]++
+      }
+      for (k = 1; k <= nm; k++) {
+        l = mlist[k]
+        if (isa[l] == "XCConfigurationList" && defs[l] == 1 && (l in towner) && !(l in oowner)) tref[mcfg[k]]++
+        else oref[mcfg[k]]++
+      }
+      for (k = 1; k <= nc; k++) {
+        o = cobj[k]
+        if (!bad && isa[o] == "XCBuildConfiguration" && defs[o] == 1 && (o in tref) && !(o in oref)) ok[cline[k]] += cn[k]
+      }
+      for (ln = 1; ln <= NR; ln++) {
+        if ((ln in raw) && raw[ln] > ok[ln] + 0) {
+          print ln ":" text[ln]
+          found = 1
+        }
+      }
+      exit !found
+    }'
+}
+
 # --- FFI (tasks/todo.md, M5 groups 3 and 7; Q53; Q66's keepcrypt-guard and, after Q73, M5-32: the
 # guard and the JNI boundary; M6 item B4: keepcrypt-capi, the second boundary), .rs files under ffi/ -
 
@@ -3627,6 +4199,61 @@ EOF
       mobile/android/app/src/androidTest/* | scripts/android-age-check.py) ;;
       *) report KtTestChannel kt_test_channel "$rel" ;;
     esac
+    # Swift and the iPhone (tasks/todo.md, M6 item A1): every scanned file under mobile/ios/ gets every
+    # rule but where one of the four allowed files ($sw_offline, $sw_secure, $sw_picker and
+    # $sw_modulemap, one path each) is named; the path rules (SwPackage's package files and module
+    # maps) are reported without a line. SwRoot: Swift, Objective-C, a module map and an Xcode
+    # project or workspace live under mobile/ios/, the one Xcode root, and nowhere else.
+    case $rel in
+      mobile/ios/*)
+        report RNG swrng "$rel"
+        report Network sw_network "$rel"
+        case $rel in
+          "$sw_offline") report Network sw_network_import_offline "$rel"; report Network sw_nw_offline "$rel" ;;
+          *) report Network sw_network_import "$rel"; report Network sw_nw "$rel" ;;
+        esac
+        report Clipboard swclipboard "$rel"
+        report SwLog swlog "$rel"
+        report SwStorage swstorage "$rel"
+        [ "$rel" = "$sw_picker" ] || report SwStorage swstorage_write "$rel"
+        report SwInput swinput "$rel"
+        case $rel in
+          "$sw_secure") report SwInput sw_secure_entry "$rel" ;;
+          *) report SwInput sw_uitextfield "$rel" ;;
+        esac
+        report SwPackage swpackage "$rel"
+        report SwPackage sw_sdk "$rel"
+        swpkg=
+        case ${rel##*/} in
+          Package.swift | Package.resolved | Podfile | Podfile.lock | Cartfile | Cartfile.resolved | Cartfile.private | *.podspec)
+            swpkg="a Swift package, CocoaPods or Carthage file (no third-party package, Q86 and Q91)"
+            ;;
+        esac
+        case $rel in
+          */.swiftpm/* | */swiftpm/* | */Pods/* | */Carthage/*)
+            swpkg="inside a Swift package, CocoaPods or Carthage directory (no third-party package, Q86 and Q91)"
+            ;;
+        esac
+        case $rel in
+          "$sw_modulemap") report SwPackage sw_module_lines "$rel" ;;
+          *.modulemap) swpkg="a module map other than $sw_modulemap, the one way C reaches Swift" ;;
+        esac
+        if [ -n "$swpkg" ]; then
+          echo "SwPackage: $rel: $swpkg"
+          hits=$((hits + 1))
+        fi
+        case $rel in
+          *.swift) ;;
+          *.pbxproj) report SwTestHook sw_hooks_pbxproj "$rel" ;;
+          *) report SwTestHook sw_hooks "$rel" ;;
+        esac
+        ;;
+      *.[Ss][Ww][Ii][Ff][Tt] | *.[Mm] | *.[Mm][Mm] | *.[Mm][Oo][Dd][Uu][Ll][Ee][Mm][Aa][Pp] | \
+        *.[Xx][Cc][Oo][Dd][Ee][Pp][Rr][Oo][Jj]/* | *.[Xx][Cc][Ww][Oo][Rr][Kk][Ss][Pp][Aa][Cc][Ee]/*)
+        echo "SwRoot: $rel: Swift, Objective-C, a module map or an Xcode project outside mobile/ios/, the one Xcode root (M6 item A1)"
+        hits=$((hits + 1))
+        ;;
+    esac
     # FFI: one catch_unwind, the path call in fn guarded in ffi/guard/src/lib.rs; exports only in
     # the two boundaries' lib.rs, ffi/jni/src/lib.rs and ffi/capi/src/lib.rs, each calling
     # keepcrypt_guard::guarded, JNI names only under ffi/jni/, only the JNI ABI in its lib.rs and
@@ -3706,6 +4333,14 @@ EOF
     found grep -q -a -x -E -e '[[:space:]]*lockAllConfigurations[(][)][[:space:]]*' "$kroot" &&
     found grep -q -a -x -E -e '[[:space:]]*lockMode[.]set[(]LockMode[.]STRICT[)][[:space:]]*' "$kroot"; }; then
     echo "KtSdk: $kroot:1: missing the lines lockAllConfigurations() and lockMode.set(LockMode.STRICT)"
+    hits=$((hits + 1))
+  fi
+  # SwInput (Q88): the secure-layer file, once it names UITextField, sets isSecureTextEntry = true in
+  # a statement of its own line (sw_secure_entry_line), so a commented-out one is not one.
+  on=$sw_secure
+  if [ -f "$sw_secure" ] && found grep -q -a -F -e UITextField "$sw_secure" &&
+    ! found grep -q -a -x -E -e "$sw_secure_entry_line" "$sw_secure"; then
+    echo "SwInput: $sw_secure:1: missing a line that sets isSecureTextEntry = true, which its UITextField needs (Q88)"
     hits=$((hits + 1))
   fi
   # Build: no tracked file under mobile/**/build/, mobile/**/.gradle/ or mobile/**/.konan/, read
@@ -3899,7 +4534,7 @@ expect() {
       alsook=no
     fi
   fi
-  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell|Device|Build|KtLog|KtFailOpen|KtWindow|KtInput|KtStorage|KtIntent|KtDevice|KtSdk|KtBinary|KtManifest|KtTestChannel|KtSourceSet|KtIos|KtRoot|KtCinterop|FFI): '
+  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell|Device|Build|KtLog|KtFailOpen|KtWindow|KtInput|KtStorage|KtIntent|KtDevice|KtSdk|KtBinary|KtManifest|KtTestChannel|KtSourceSet|KtIos|KtRoot|KtCinterop|FFI|SwLog|SwStorage|SwInput|SwPackage|SwTestHook|SwRoot): '
   hit=$(printf '%s\n' "$out" | grep -E "$cats")
   count=$(printf '%s\n' "$out" | grep -c -E "$cats")
   ok=no
@@ -4005,6 +4640,12 @@ selftest() {
       ktroot-*) want=KtRoot ;;
       ktcinterop-*) want=KtCinterop ;;
       ffi-*) want=FFI ;;
+      swlog-*) want=SwLog ;;
+      swstorage-*) want=SwStorage ;;
+      swinput-*) want=SwInput ;;
+      swpackage-*) want=SwPackage ;;
+      swtesthook-*) want=SwTestHook ;;
+      swroot-*) want=SwRoot ;;
       clean-*) want=clean ;;
       *) fail=$((fail + 1)); printf 'FAIL %s: unknown prefix\n' "$name"; continue ;;
     esac
@@ -4044,10 +4685,15 @@ selftest() {
     cp -R "$fx/." "$d/" || exit 2
     expect "$name" "$d" "$want" "$file"
     also=
+    # Network is skipped in registry/, so the same file there passes; a Swift or Objective-C one
+    # there is SwRoot's one hit instead (no Swift lives outside mobile/ios/), and no Network hit.
     if [ "$want" = Network ]; then
       fresh
       mkdir -p "$d/registry" && cp -R "$fx/." "$d/registry/" || exit 2
-      expect "$name under registry/" "$d" clean
+      case $file in
+        *.swift | *.m) expect "$name under registry/" "$d" SwRoot "registry/$file" ;;
+        *) expect "$name under registry/" "$d" clean ;;
+      esac
     fi
     # FailOpen covers core/, ffi/ and pi/app/ only, and Device covers pi/app/ only: the same file
     # in pi/sim/src/ passes.
@@ -4987,8 +5633,26 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     also=
     atline=
   done
+  # A NUL byte earlier on a line of the project file ended it for the Mac's awk, so SwTestHook's reading
+  # of the project (sw_hooks_pbxproj) would not see the rest of it (kt_text): clean-sw-allowed's
+  # project with one line more in the app's Shipping configuration, a NUL in a quoted string before
+  # the condition, is a hit at that line. Built here, as a fixture in git would hold the byte where
+  # no diff shows it.
+  fresh
+  swp=mobile/ios/KeepCrypt.xcodeproj/project.pbxproj
+  mkdir -p "$d/${swp%/*}" || exit 2
+  swat=$(grep -n -x -F -e '				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy;' "$here/testdata/banned-api/clean-sw-allowed/$swp") ||
+    exit 2
+  swat=${swat%%:*}
+  { sed -n "1,${swat}p" "$here/testdata/banned-api/clean-sw-allowed/$swp" &&
+    printf '\t\t\t\tOTHER_SWIFT_FLAGS = "\000"; SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS;\n' &&
+    sed -n "$((swat + 1)),\$p" "$here/testdata/banned-api/clean-sw-allowed/$swp"; } >"$d/$swp" || exit 2
+  atline=$((swat + 1))
+  expect swtesthook-app-configuration-after-a-nul "$d" SwTestHook "$swp"
+  atline=
   for want in RNG Network Clipboard Rule1 FailOpen Include Shell Device Build KtLog KtFailOpen KtWindow KtInput KtStorage \
-    KtIntent KtDevice KtSdk KtBinary KtManifest KtTestChannel KtSourceSet KtIos KtRoot KtCinterop FFI clean; do
+    KtIntent KtDevice KtSdk KtBinary KtManifest KtTestChannel KtSourceSet KtIos KtRoot KtCinterop FFI SwLog SwStorage SwInput \
+    SwPackage SwTestHook SwRoot clean; do
     case "$seen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want fixture" ;; esac
   done
   # The shard option (M5-63): a shard past the last, a malformed value, a missing one, a further
