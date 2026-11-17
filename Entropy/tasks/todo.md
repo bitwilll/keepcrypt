@@ -18341,6 +18341,28 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   each placement (hit and clean), the canaries' crate pins (members, direct dependencies, identical clippy.toml and
   lint tables) grown by capi, check-path-deps' member list.
   Proof: the gate's --selftest and canaries.sh green, each new fixture named.
+  Proof (M6 commit B4a, partial: the gate's half, landed ahead of B1 so that B1's tree passes the gate; the crate pins
+  come in B4b): ffi/capi/src/lib.rs is the second boundary. The export scan reads both boundaries' lib.rs, each export's
+  own body calling keepcrypt_guard::guarded(, the one exempt export by file (jni's JNI_OnLoad, capi's kc_max_out, the
+  crate root's no_mangle fn, neither name exempt in the other file); capi's extern fns name "C" alone (ffi_capi_abi,
+  ffi_jni_abi's scan made ffi_abi_scan ABI FILE); macro_rules and macro_export refused in ffi/capi/src but its lib.rs
+  (the export scan's); an export in capi's lib.rs needs the guard's one catch site (reported at its line 1, as jni's).
+  JNI names, the thread ban, Rule1's hashing and FailOpen already covered ffi/capi (their fixtures
+  `ffi-jni-names-in-capi`, `ffi-thread-in-capi`, `rule1-hashset-in-ffi-capi-src`, `failopen-ffi-capi-discard`
+  pass unchanged). Fixtures: new `ffi-capi-export-without-catch-unwind` (was `ffi-export-in-capi-lib`, which named
+  capi "no boundary in M5"), `ffi-macro-rules-in-capi-other-file`, `ffi-thread-in-capi-tests`,
+  `ffi-session-new-in-capi-lib`; in the selftest beside the guard `ffi-capi-*-beside-the-guard` for extern-system,
+  extern-c-unwind, extern-no-abi, extern-system-split-over-lines, safe-layer-directly, second-export,
+  guarded-in-a-helper, export-name, extern-c-without-no-mangle, no-mangle-static, max-out-in-a-mod,
+  max-out-without-no-mangle, max-out-exported-as-kc-call, onload-name, macro-written-exports (each at its line),
+  `ffi-capi-export-beside-a-guard-without-catch-unwind`, and `clean-ffi-capi-exports-each-calling-guarded`; the
+  capi tests' macros join `clean-ffi-macros-outside-shipped-src`. The four single-file capi lib fixtures that the
+  site rule now hits twice (`ffi-export-extern-c-in-capi-lib`, `-extern-no-abi-`, `-export-name-`,
+  `-no-mangle-static-`) moved into those beside-the-guard cases. `scripts/banned-api-check.sh --selftest` in four
+  shards: 414, 414, 414 and 413 passed, 0 failed (1655 cases; 1639 before). On the commit's own tree (a worktree at
+  it): `cargo fmt --all --check`, both clippy runs, `cargo deny --locked check`, `cargo vet --locked`,
+  check-path-deps and `--workflows ../.github/workflows` clean; the gate clean, 414 files; `scripts/canaries.sh`
+  PASS, all 94 checks ran (9 min 34 s).
 - [ ] B5. CI: entropy-ci.yml's two iOS cross legs build `-p keepcrypt-capi` as a staticlib (release and
   test-registry, as the Android legs build jni) and scan `libkeepcrypt_capi.a` with `--artifact`
   (`_CCRandomGenerateBytes` imported, no other RNG symbol; the test-registry build exactly its marker and the test
