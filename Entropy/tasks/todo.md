@@ -19591,6 +19591,34 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   actions/cache keyed on Cargo.lock and the toolchain, never by an artifact a later job trusts unchecked). Each job's
   budget is its measured time plus 25% (M5-30); the hardening (read-only token, pinned actions, no secrets) and
   `--workflows` hold; Entropy CI's 14 required checks are unchanged and entropy-ios.yml stays non-required (Q38 (b)).
+  As built (plan, 2026-11-18): entropy-ios.yml's one job per leg becomes two kinds of job on each leg. (a) unit
+  (one a leg): both libraries, --selftest-ios-app, the Shipping and WithTestRegistry schemes built and tested with
+  their scans, the TestHooks scheme built and its UI tests run but the journeys (-skip-testing for each class of
+  the workflow's KC_JOURNEYS), the hooks marker, the device build and its scan; and a check that the journeys
+  matrix's groups are KC_JOURNEYS, each class once a leg and a KeepCryptUITests file, each row with its budget,
+  so a class runs in exactly one job of each leg (a class the list leaves out runs in unit, never nowhere).
+  (b) journeys (one a group a leg): the test-registry library alone (the TestHooks app's, M6-7), the TestHooks
+  scheme built and its group's classes tested (-only-testing), the marker; journeys-1 is ScanUITests,
+  WordsUITests and CheckBackupUITests, and U1-U2's journeys come as more groups, each a matrix row with its
+  own measured budget (timeout-minutes from the row, as entropy-android.yml's emulators rows). The Rust
+  library is built in each job from its own checkout with the pinned toolchain (scripts/ios-rust.sh, 86 s
+  for one configuration on macos-26 at 3a13ac60), never passed between jobs; the crate registry stays the one
+  cache (downloaded sources, keyed on rust-toolchain.toml and Cargo.lock, which Cargo verifies by checksum on
+  every build, so a hit is correct by construction). A cache of the built library is not used: its key would
+  have to cover every crate source, the manifests, the script, the toolchain and the runner's Xcode and SDK
+  (secp256k1-sys's C build), and a miss would cost what building costs anyway. First budgets from run
+  44153504614's step times (no push from here to measure): unit 1620 s less the three journeys' 212 s is
+  1408 s on macos-26, x 1.25 is 30 minutes; journeys-1 estimated at 786 s (setup 40 s, the library 86 s, the
+  simulator 164 s, a fresh build for testing as Shipping's 227 s, the tests 212 s and xcodebuild's 57 s
+  around them), x 1.25 is 17 minutes. The lead re-measures both from the first green run. The hardening
+  (read-only token, the two pinned actions, no secret, no fork-trusting trigger, no expression in a run step)
+  and `--workflows` hold. CLAUDE.md's iPhone CI lines are the lead's to update (text in the U5 report).
+  As built (M6 commit U5a): .github/workflows/entropy-ios.yml's unit and journeys jobs, KC_JOURNEYS, the UI test
+  groups check, its header and budgets.
+  Proof (M6 commit U5a, partial: local; CI at the next push): `--workflows ../.github/workflows` clean (4
+  workflows); the file parses as YAML (Ruby's Psych: jobs unit and journeys, two journeys rows); the UI test
+  groups check, run locally from the workflow's text, passes on it and fails on KC_JOURNEYS short a class, on
+  a row short a class and on a class with no file; the gate clean.
 - [ ] U1. User journeys through the UI alone, one XCUITest per journey from First launch to Finish on both simulators,
   as M5's U1: mixed and dice-only, 12 and 24 words (24 with the device swap); the check by a typed code, a scanned
   proof (the Scan hook, M6-7, the camera's own path), a loaded snapshot and Skip; Match found and a scanned collision
@@ -19599,6 +19627,22 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   to drive: the save and the snapshot's open go through TestHooks hooks at the model's own entries (as M6-13's Backup
   file hook), the save's bytes kept in memory and read back through the same verify path, so the TestHooks app
   writes no file (rule 8). Each journey's pass line names its path.
+  As built (plan, 2026-11-18; U5's report, no code yet): two more TestHooks hooks, as M6-13's Backup file hook,
+  each in TestHooks.swift under the hooks marker and at the model's own entry. (1) The Save hook: with
+  KC_HOOK_SAVE in the launch environment, HookedPickers.create(name:bytes:) records the name and the model's
+  own Secret instead of presenting the exporter, and the panel's Save button (hook_save) answers through the
+  model's backupPlaced with a HookedPlace: its write says whether it was handed that same Secret (ExportedPlace's
+  identity test) and copies the bytes into memory, its readBack gives a Secret copy of at most limit + 1 of them,
+  so core's verify runs on the read-back as with a real file, and nothing is written (rule 8). KC_HOOK_SAVE's
+  values give U2 a failed write, a failed read-back and a changed byte (the verify's refusal). The copy is
+  wiped once read back for Check a backup, at wipeAll and at the process's end. (2) Check a backup of the saved
+  file: KC_HOOK_BACKUP_FROM_SAVE has the Backup file hook offer that in-memory copy under core's suggested
+  name, instead of KC_HOOK_BACKUP_HEX, so the journey checks the very file it saved; its passphrase is read by
+  the UI test from the passphrase's page (inside SecureLayer, so this rests on M6-16's reach holding) and never
+  from a hook. (3) The Snapshot file hook: KC_HOOK_SNAPSHOT_NAME and KC_HOOK_SNAPSHOT_HEX (kcr.json's snapshots
+  are 248 bytes at most) answer Load registry snapshot's picker, waiting as the Backup file hook does, through
+  the model's snapshotPicked with a HookedFile. Each hook's strings are in the TestHooks app alone (the
+  --ios-app scans and the marker count), and the UI tests drive the panel's buttons, outside the press guard.
 - [ ] U2. Edge cases where the phone matters (the JVM-ported unit tests of D2 hold the model's): Back and a double tap
   on every screen; leaving the app at every stage (Public: 59 s kept, 61 s wiped; Protected and Working: at once) by
   XCUIDevice's home and a re-activation; the app killed at every stage, back at First launch with an empty slot; going
