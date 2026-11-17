@@ -660,7 +660,18 @@ final class StandInCore: CeremonyCore {
     }
 
     func start(_ words: Words, _ mode: Mode) -> Reply<Void> { pass { core.start(words, mode) } }
-    func addExtra(_ source: Extra, _ bytes: Secret) -> Reply<Void> { pass { core.addExtra(source, bytes) } }
+    /// Each extra handed over: its source and a copy of its bytes, made as it came, before the model wipes it.
+    var extras: [(Extra, [UInt8])] = []
+
+    /// An extra is recorded and answered done without reaching the slot (D3's tests): an extra outside
+    /// Collecting halts the slot, and that halt would latch for every later test; core's own answer to
+    /// one, a zero-credit pool input, is keepcrypt-ffi's (ffi/tests).
+    func addExtra(_ source: Extra, _ bytes: Secret) -> Reply<Void> {
+        pass {
+            extras.append((source, (0..<bytes.count).map { bytes[$0] }))
+            return .done(())
+        }
+    }
     func commit() -> Reply<Void> { pass { core.commit() } }
     func startDice() -> Reply<Void> { pass { core.startDice() } }
     func pushRoll(_ face: Int) -> Reply<Void> { pass { core.pushRoll(face) } }

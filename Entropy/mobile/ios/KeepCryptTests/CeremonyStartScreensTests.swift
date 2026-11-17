@@ -1,8 +1,11 @@
 // The start screens' model rules (tasks/todo.md, M6 item D3), ported from :screens' StartScreensTest.kt,
-// and PadPressTest.kt, over the real slot: the dice pad
+// PadPressTest.kt, TouchReachesCoreTest.kt and MotionReachesCoreTest.kt, over the real slot: the dice pad
 // picks, Confirm pushes and Undo takes back; the faces picked are the rolls core takes; Confirm does nothing
 // at 256 rolls; Back on the start screens; a dice key under the cover or the warning picks nothing, and a key
-// picked is input. Each test leaves the slot at home.
+// picked is input; and Device entropy's extras, a touch's timing and a motion sample, each reach core's
+// add_extra there alone, in their layout, and are wiped. The extras' tests run over StandInCore, which
+// records each extra (an extra outside Collecting would halt the slot for good). Each test leaves the slot
+// at home.
 
 import XCTest
 
@@ -173,5 +176,79 @@ final class CeremonyStartScreensTests: XCTestCase {
         rig.press("N")
         rig.pressDelete()
         XCTAssertEqual(typed(rig.model.goAheadCode), "PB", "a key or Delete under the cover acted")
+    }
+
+    /// A rig over StandInCore, on Device entropy of a new 12-word seed.
+    private func onDeviceEntropy() -> (Rig, StandInCore) {
+        let core = StandInCore()
+        let rig = Rig(core: core).toHome()
+        rig.model.chooseMode(.mixed)
+        rig.model.touched(uptimeMillis: 1)
+        rig.model.chooseLength(.twelve)
+        rig.worker.run()
+        XCTAssertEqual(rig.screen, .deviceEntropy)
+        return (rig, core)
+    }
+
+    /// TouchReachesCoreTest.kt and the touch's layout (CeremonyModel.kt's touched): on Device entropy a
+    /// touch reaches core's add_extra as InputTiming, 16 bytes, the touch's uptime in milliseconds then the
+    /// clock's nanoseconds as it arrives, each big-endian.
+    func testATouchOnDeviceEntropyReachesCoreInItsLayout() {
+        let (rig, core) = onDeviceEntropy()
+        XCTAssertTrue(core.extras.isEmpty, "a touch before the session went nowhere")
+        rig.clock.now = 0x0102
+        rig.model.touched(uptimeMillis: 0x0A0B_0C0D)
+        XCTAssertEqual(core.extras.count, 1, "the touch reached core")
+        XCTAssertEqual(core.extras.first?.0, .inputTiming)
+        let nanos = UInt64(0x0102) * 1_000_000
+        let want = [0, 0, 0, 0, 0x0A, 0x0B, 0x0C, 0x0D] + (0..<8).map { UInt8(truncatingIfNeeded: nanos >> (56 - 8 * UInt64($0))) }
+        XCTAssertEqual(core.extras.first?.1, want)
+    }
+
+    /// MotionReachesCoreTest.kt and StartScreensTest.kt's noTouchOrMotionSampleReachesCoreOffDeviceEntropy:
+    /// a motion sample reaches core as Motion and is wiped once core has it; after the commitment the model
+    /// listens no more, a late sample is wiped and goes nowhere, and neither touches nor samples reach core
+    /// on the commitment or the dice.
+    func testExtrasReachCoreOnDeviceEntropyAloneAndAreWiped() {
+        let (rig, core) = onDeviceEntropy()
+        let sample = Secret(taking: [UInt8](repeating: 7, count: 24))
+        XCTAssertTrue(rig.motion.sample(sample), "the model listens on Device entropy")
+        XCTAssertEqual(core.extras.count, 1)
+        XCTAssertEqual(core.extras.first?.0, .motion)
+        XCTAssertEqual(core.extras.first?.1, [UInt8](repeating: 7, count: 24))
+        XCTAssertTrue(zeroed(sample), "the sample is wiped once core has it")
+        rig.model.touched(uptimeMillis: 2)
+        XCTAssertEqual(core.extras.count, 2)
+        rig.model.deviceEntropyDone()
+        XCTAssertEqual(rig.screen, .commitment)
+        XCTAssertFalse(rig.motion.sample(Secret(taking: [1])), "the model stopped listening at the commitment")
+        let late = Secret(taking: [UInt8](repeating: 9, count: 24))
+        rig.motion.late(late)
+        XCTAssertTrue(zeroed(late), "a late sample is wiped and goes nowhere")
+        rig.model.touched(uptimeMillis: 3)
+        rig.model.commitmentDone()
+        rig.model.touched(uptimeMillis: 4)
+        rig.motion.late(Secret(taking: [1, 2]))
+        XCTAssertEqual(core.extras.count, 2, "nothing reached core after Device entropy")
+        XCTAssertEqual(rig.motion.starts, 1)
+        XCTAssertEqual(rig.screen, .dice)
+    }
+
+    /// The motion sample's layout, Android's PhoneMotion's (SensorMotionSource.kt; PhoneMotionTest.kt's 24
+    /// bytes): the sensor's type, Android's numbers, 4 bytes; the timestamp in nanoseconds, 8; each value's
+    /// IEEE 754 single bits, 4 each; big-endian.
+    func testAMotionSampleIsAndroidsLayout() {
+        XCTAssertEqual(MotionSensor.accelerometer.rawValue, 1, "Sensor.TYPE_ACCELEROMETER")
+        XCTAssertEqual(MotionSensor.gyroscope.rawValue, 4, "Sensor.TYPE_GYROSCOPE")
+        let sample = motionSample(.gyroscope, timestampNanos: 0x0102_0304_0506_0708, values: [1.0, -2.0, 0.5])
+        let bytes = (0..<sample.count).map { sample[$0] }
+        XCTAssertEqual(bytes, [
+            0, 0, 0, 4,
+            1, 2, 3, 4, 5, 6, 7, 8,
+            0x3F, 0x80, 0, 0,
+            0xC0, 0, 0, 0,
+            0x3F, 0, 0, 0,
+        ])
+        XCTAssertEqual(motionSample(.accelerometer, timestampNanos: 0, values: [0, 0, 0]).count, 24)
     }
 }

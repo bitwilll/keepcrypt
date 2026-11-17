@@ -19,7 +19,7 @@ struct KeepCryptApp: App {
         #endif
         let model = CeremonyModel(
             core: Core.shared, worker: QueueWorker(), clock: SystemClock(), date: SystemDate(),
-            motion: NoMotion(), testRegistry: registry)
+            motion: CoreMotionSource(), testRegistry: registry)
         _model = StateObject(wrappedValue: model)
         offlineCheck = OfflineCheck { offline in
             model.pathReported(offline: offline)
@@ -37,11 +37,4 @@ struct KeepCryptApp: App {
             }
         }
     }
-}
-
-/// The motion source until D3b brings Core Motion's: no sample (motion is a zero-credit extra).
-final class NoMotion: MotionSource {
-    func start(_ report: @escaping (Secret) -> Void) {}
-
-    func stop() {}
 }

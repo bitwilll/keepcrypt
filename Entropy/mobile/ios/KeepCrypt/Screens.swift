@@ -2,14 +2,15 @@
 // a switch over the model's state. Every touch first reaches the model (input, the idle timer; touched,
 // which Device entropy mixes in), and then reaches the screen's controls only if the press guard admits it
 // (PressGuard.swift: a new screen, gate or overlay takes no touch until 300 ms after it was shown, judged by
-// the touch's own time; M5-79): each view is reported to the guard as it is shown, and D3b's recognizer
-// on the window judges each touch. The cover and the warning lie over the screen and take the tap that
+// the touch's own time; M5-79): TouchGuard below, a gesture recognizer on the window that cancels a refused
+// touch before any control gets it. The cover and the warning lie over the screen and take the tap that
 // removes them, and while either is up the screen under it is hidden from VoiceOver (Q80 (a)). Each state's
 // pane title (paneTitle(of:), fixed text) is posted to VoiceOver as it opens (U3g). Screens past the dice
 // draw their title alone until D4-D7 draw them.
 
 import SwiftUI
 import UIKit
+import UIKit.UIGestureRecognizerSubclass
 
 struct Screens: View {
     @ObservedObject var model: CeremonyModel
@@ -31,6 +32,7 @@ struct Screens: View {
             }
         }
         .background(KitColors.background.ignoresSafeArea())
+        .background(TouchGuard(model: model, pressGuard: pressGuard))
         .onChange(of: shownView(state), initial: true) { _, view in
             pressGuard.composed(view, uptimeMillis())
             UIAccessibility.post(notification: .screenChanged, argument: paneTitle(of: model.state))
@@ -162,5 +164,76 @@ struct OverlayScreen: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityAction { dismiss() }
         .accessibilityIdentifier(overlay == .cover ? "cover" : "idle_warning")
+    }
+}
+
+/// The press guard's and the model's view of every touch (Android's root pointer handler): a view behind
+/// the screens that puts a TouchGuardRecognizer on its window once it joins one.
+private struct TouchGuard: UIViewRepresentable {
+    let model: CeremonyModel
+    let pressGuard: PressGuard
+
+    func makeUIView(context: Context) -> TouchGuardView {
+        TouchGuardView(model: model, pressGuard: pressGuard)
+    }
+
+    func updateUIView(_ view: TouchGuardView, context: Context) {}
+}
+
+final class TouchGuardView: UIView {
+    private let recognizer: TouchGuardRecognizer
+
+    init(model: CeremonyModel, pressGuard: PressGuard) {
+        recognizer = TouchGuardRecognizer(model: model, pressGuard: pressGuard)
+        super.init(frame: .zero)
+        isUserInteractionEnabled = false
+        isAccessibilityElement = false
+        recognizer.area = self
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        recognizer.view?.removeGestureRecognizer(recognizer)
+        window?.addGestureRecognizer(recognizer)
+    }
+}
+
+/// Sees every touch that goes down in the window, before any control: inside the screens' area (not the
+/// TestHooks panel's), each down is the model's input and, on Device entropy, its touched, with the
+/// touch's own uptime; a touch the press guard refuses is taken here (the recognizer recognizes, which
+/// cancels it in the views under it and fails their gestures), and one it admits goes on untouched (the
+/// recognizer fails at once).
+final class TouchGuardRecognizer: UIGestureRecognizer {
+    private let model: CeremonyModel
+    private let pressGuard: PressGuard
+    /// The screens' area: touches outside it (the TestHooks panel) are neither input nor guarded.
+    weak var area: UIView?
+
+    init(model: CeremonyModel, pressGuard: PressGuard) {
+        self.model = model
+        self.pressGuard = pressGuard
+        super.init(target: nil, action: nil)
+        cancelsTouchesInView = true
+        delaysTouchesBegan = false
+        delaysTouchesEnded = false
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
+        guard let area else {
+            state = .failed
+            return
+        }
+        var refused = false
+        for touch in touches where area.bounds.contains(touch.location(in: area)) {
+            let millis = Int64(touch.timestamp * 1_000)
+            model.input()
+            model.touched(uptimeMillis: millis)
+            if !pressGuard.admits(shownView(model.state), millis) { refused = true }
+        }
+        state = refused ? .recognized : .failed
     }
 }

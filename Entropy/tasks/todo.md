@@ -19137,6 +19137,32 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Swift warning, the six Kotlin files in the unit bundle; `--ios-app` clean on the three shipped apps (Info.plist
   unchanged); the hooks marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate clean
   (487 files), `--workflows` clean, `cargo fmt --all --check` clean. Not run: the simulator (CI).
+  As built (M6 commit D3b, touches and motion): Screens.swift's TouchGuard, a UIGestureRecognizer on the window
+  (put there by a view behind the screens, so the TestHooks panel under them is outside it): each touch down
+  inside the screens is the model's input and touched, at UITouch's own timestamp in milliseconds (the uptime
+  clock the guard's views are stamped on), and a touch the press guard refuses is recognized, which cancels it in
+  the views under it and fails their gestures; an admitted one fails the recognizer at once and goes on.
+  `MotionSource.swift`'s CoreMotionSource replaces D2's no-op behind the same seam: CMMotionManager's
+  accelerometer and gyroscope at 50 Hz on the main queue, each update Seams.swift's motionSample in Android's
+  layout (the sensor type 1 or 4, the timestamp in nanoseconds, three float bits, big-endian, 24 bytes); no
+  Info.plist key (raw sensor updates need none). StandInCore records each extra instead of forwarding it (an
+  extra outside Collecting would halt the slot for every later test). Tests: CeremonyStartScreensTests +3 (a
+  touch on Device entropy reaches add_extra as InputTiming in its 16-byte layout, TouchReachesCoreTest.kt's; a
+  motion sample reaches it as Motion and is wiped, and after the commitment neither reaches core,
+  MotionReachesCoreTest.kt's and StartScreensTest.kt's noTouchOrMotionSampleReachesCoreOffDeviceEntropy; a
+  sample's bytes against Android's layout, PhoneMotionTest.kt's).
+  Proof (M6 commit D3b, partial: local; CI at the next push): the macOS stand-in "Executed 97 tests, with 0
+  failures" over the host's release archive and the same over its test-registry archive; with the sensor type
+  written in 2 bytes (a copy), testAMotionSampleIsAndroidsLayout fails (restored). Local builds: all three
+  schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean on the three
+  shipped apps (CoreMotion now linked, a system framework, Info.plist unchanged); the hooks marker 1 line in
+  TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate clean (488 files), `cargo fmt --all --check`
+  clean; on the final tree (a worktree at D3b): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (642 s).
+  For CI (not provable here): the views, the press guard's recognizer (that a refused touch reaches no SwiftUI
+  button and an admitted one does) and the UI tests' new identifiers run only on the simulators; Core Motion's
+  samples only on a phone (the simulator has no motion hardware), I3's to watch.
 - [ ] D4. The collision check: the prompt, Skip's confirm, the seal card and its check QR, the scan screen (AVFoundation's
   QR reader, the camera asked for only there), the code entry, Match found's and Cannot check's confirms, the
   collision result, its report QR, the result before the words; Load registry snapshot through the document picker

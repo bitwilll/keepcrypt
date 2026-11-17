@@ -161,3 +161,38 @@ final class QueueWorker: Worker {
         }
     }
 }
+
+/// The motion sensors a sample names, by Android's sensor type numbers (Sensor.TYPE_ACCELEROMETER and
+/// TYPE_GYROSCOPE), so both apps' samples have one layout (tasks/todo.md, M6 item D3).
+enum MotionSensor: UInt32 {
+    case accelerometer = 1
+    case gyroscope = 4
+}
+
+/// One motion sample in Android's layout (its PhoneMotion, M5 group 15): the sensor's type (4 bytes), the
+/// reading's timestamp in nanoseconds (8) and each value's IEEE 754 single-precision bits (4 each),
+/// big-endian; 24 bytes for a sensor's three axes. It goes into the pool with no credit, so its units
+/// (Core Motion's g and rad/s, where Android gives m/s2 and rad/s) change nothing. A Secret the model
+/// wipes once core has it; the array it was built in is wiped here.
+func motionSample(_ sensor: MotionSensor, timestampNanos: Int64, values: [Float]) -> Secret {
+    var bytes = [UInt8](repeating: 0, count: 12 + 4 * values.count)
+    putBigEndian(&bytes, 0, UInt64(sensor.rawValue), 4)
+    putBigEndian(&bytes, 4, UInt64(bitPattern: timestampNanos), 8)
+    for (index, value) in values.enumerated() {
+        putBigEndian(&bytes, 12 + 4 * index, UInt64(value.bitPattern), 4)
+    }
+    let sample = Secret(taking: bytes)
+    let wiped = bytes.withUnsafeMutableBytes { raw -> Bool in
+        guard let base = raw.baseAddress else { return true }
+        return memset_s(base, raw.count, 0, raw.count) == 0
+    }
+    guard wiped else { Ceremony.halt(.bridge) }
+    return sample
+}
+
+/// The low size bytes of value, big-endian, into bytes from at.
+private func putBigEndian(_ bytes: inout [UInt8], _ at: Int, _ value: UInt64, _ size: Int) {
+    for index in 0..<size {
+        bytes[at + index] = UInt8(truncatingIfNeeded: value >> (8 * UInt64(size - 1 - index)))
+    }
+}
