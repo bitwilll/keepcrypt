@@ -99,8 +99,9 @@ jobs:
     # 23 unit tests (99 per scheme): run 44101856909 at 7b6eff87 took 1382 s on macos-26 and 1060 s on
     # macos-15, so 1382 s x 1.25 is 1728 s, 29 minutes. M6 items D4-D5 add the scan's and the words' UI
     # tests: run 44138018119 at 9e34caee took 1442 s on macos-26 and 1225 s on macos-15, so 1442 s x 1.25
-    # is 1803 s, 31 minutes.
-    timeout-minutes: 31
+    # is 1803 s, 31 minutes. M6 item D6 adds the exports' tests (121 per scheme): run 44148124454 at
+    # fed382ff took 1622 s on macos-26 and 1513 s on macos-15, so 1622 s x 1.25 is 2028 s, 34 minutes.
+    timeout-minutes: 34
     strategy:
       fail-fast: false
       matrix:

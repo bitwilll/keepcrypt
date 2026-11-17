@@ -18371,6 +18371,17 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   alone, so no dependency is added and the shipped app links neither for this. Android's account, descriptor and
   registration QR screens are Protected; the iPhone also draws those QRs inside SecureLayer, as D4's report QR.
   The BIP39 passphrase entry uses the ASCII pad, as Android's does.
+- M6-13 (2026-11-18, from D7's report): the TestHooks build's Backup file hook. With KC_HOOK_BACKUP_NAME and
+  KC_HOOK_BACKUP_HEX in the UI test's launch environment (a public backup.json vector), Check a backup's picker
+  waits for the hook instead of opening the system's document browser, and the file goes to the model's
+  backupPicked, the importer's own entry; readAtMost is the unit tests', not the UI test's. TestHooks.swift alone,
+  under the hooks marker; Shipping and WithTestRegistry hold none of it.
+- M6-14 (2026-11-18, from D7's report): Check a backup and Load registry snapshot share one fileImporter (two on
+  one view are not reliably both presented); the model, not the picker, refuses a wrong name or size before any
+  byte is read. I2 opens a .age and a .kcr through it on the owner's iPhone.
+- M6-15 (2026-11-18, from D7's report): the stop screen has one line per halt reason, as Android's; an app end
+  (closed, bridge, and the iPhone's camera, M6-8) ends the process with no screen, as Android's crash handler
+  does, so it has no stop line.
 
 ### Stage B: the bridge (M6 commits 2-4)
 - [x] B1. `ffi/capi` (`keepcrypt-capi`): `[lib] name = "keepcrypt_capi"`, `crate-type = ["staticlib", "rlib"]`,
@@ -19354,7 +19365,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   in all four, every UI test (StartUp, Capture, Offline, Scan, Words) passing on both; the jobs took 1225 s and
   1442 s, so the budget is 31 minutes (d5f39cb1). Entropy CI 44138018147 (14 jobs) and Entropy Android 44138018043
   green.
-- [ ] D6. The exports: the backup's passphrase, confirm and save (`.fileExporter` in DocumentPicker.swift, the file read
+- [x] D6. The exports: the backup's passphrase, confirm and save (`.fileExporter` in DocumentPicker.swift, the file read
   back and verified, "Backup verified"), the watch-only offer, the BIP39 question and entry, the summary, the account
   and descriptor QRs, the registration offer and QR, Reveal D, the checklist and Finish.
   As built (plan, 2026-11-17): the views over D2's model, in Android's BackupScreens.kt and ExportScreens.kt
@@ -19421,6 +19432,13 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   stand-in: "Executed 1 test, with 0 failures" over each archive (2.7 s, 2.4 s); with callAside planted to take
   the main lock first (a copy), it fails over each, "a discard: no try landed inside the long call (baseline
   333 ms)" and the same for a wipe.
+  CI proof (2026-11-18): Entropy iPhone run 44148124454 at fed382ff green: "Executed 121 tests, with 0 failures" in
+  Shipping and WithTestRegistry on macos-15 (Xcode 16.4, iPhone 16 iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17
+  iOS 26.5); CeremonyExportsTests' five tests (the decoders against watchonly.json, the registration QR, D and
+  verify.py, the save's name and bytes, the passphrase pages) and CoreDiscardTests (tightened) passing in all four;
+  every UI test passing on both. The jobs took 1513 s and 1622 s, so the budget is 34 minutes (1622 s x 1.25 = 2028
+  s). Entropy CI 44148124349 green (14 jobs). The exporter itself is not driven in CI (the system's document
+  browser): a real save and its read-back are I2's.
 - [ ] D7. Check a backup (the `.age` file through the picker, the passphrase on the letter pad, the result, the words only
   if asked, the re-check), About, Working and the stop screen.
   As built (plan, 2026-11-18): the views over D2's model (its backupPicked, entryTyped, showBackupWords,
