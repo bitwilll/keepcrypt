@@ -221,9 +221,10 @@ scripts/banned-api-check.sh --image-lists IMG KCONFIG          # the listing pi/
 scripts/banned-api-check.sh --selftest-image IMG KCONFIG       # the scan's positive controls, as mutations of the built image
 scripts/banned-api-check.sh --image IMG pi/os/expected KCONFIG BIN_SHA256   # the scan; a hit fails the leg before
                                      # leg a's upload, so an uploaded image passed it
-# The phone FFI (ffi/: keepcrypt-ffi, keepcrypt-guard, keepcrypt-jni), release and test-registry configurations:
-cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked
-cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked --features keepcrypt-core/test-registry
+# The phone FFI (ffi/: keepcrypt-ffi, keepcrypt-guard, keepcrypt-jni, keepcrypt-capi), release and test-registry
+# configurations (keepcrypt-capi's header test builds its staticlib for the host and reads it with llvm-nm):
+cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni -p keepcrypt-capi --locked
+cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni -p keepcrypt-capi --locked --features keepcrypt-core/test-registry
 # The Android app (mobile/android; CI: .github/workflows/entropy-android.yml, not a required check; needs the
 # Android SDK, NDK and JDK the workflow pins). Rust libraries for both flavours, then the strict Gradle build:
 sh scripts/android-rust.sh shipping

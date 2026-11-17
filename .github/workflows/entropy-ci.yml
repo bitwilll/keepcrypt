@@ -183,14 +183,16 @@ jobs:
       - run: cargo test --workspace --locked
       - run: cargo test -p keepcrypt-core --locked --features test-sources
       - run: cargo test -p keepcrypt-pi-sim --locked --features keepcrypt-core/test-registry
-      # M5 (tasks/todo.md, group 12): the FFI's three crates alone, their features unified among
-      # themselves as in the phone library's build, not across the workspace; then with
+      # M5 (tasks/todo.md, group 12): the FFI's crates alone, their features unified among
+      # themselves as in the phone libraries' builds, not across the workspace; then with
       # test-registry, so the tests that branch on registry_key_is_test() run their registry half.
-      # keepcrypt-ffi depends on keepcrypt-core, so cargo takes the feature with these three
-      # selected (on keepcrypt-jni alone it refuses it, lead decision M5-35), and no -p
-      # keepcrypt-core is needed, which would add core's dev-dependencies and tests.
-      - run: cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked
-      - run: cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked --features keepcrypt-core/test-registry
+      # keepcrypt-ffi depends on keepcrypt-core, so cargo takes the feature with these selected (on
+      # keepcrypt-jni or keepcrypt-capi alone it refuses it, lead decision M5-35), and no -p
+      # keepcrypt-core is needed, which would add core's dev-dependencies and tests. M6 (items B1,
+      # B3): keepcrypt-capi's tests join them; its header test builds the staticlib for this host
+      # and reads its kc_ symbols with llvm-tools-preview's llvm-nm, which the toolchain step installs.
+      - run: cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni -p keepcrypt-capi --locked
+      - run: cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni -p keepcrypt-capi --locked --features keepcrypt-core/test-registry
       # --target keeps the cfg off build scripts: cargo applies a target's rustflags to host
       # artifacts only when no --target is given.
       - name: Build the test-registry simulator for release (x86_64 Linux, its own target dir)

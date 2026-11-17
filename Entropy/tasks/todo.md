@@ -18434,6 +18434,22 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   key); the exports check allows exactly `_kc_call` and `_kc_max_out` beside secp256k1-sys's four. The test job runs
   `cargo test -p keepcrypt-capi` in both configurations.
   Proof: the run IDs; the legs' scan lines.
+  Proof (M6 commit B5a, partial: the test job's half, local only; CI at the next push; the cross legs are held, below):
+  entropy-ci.yml's test job runs `cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni -p keepcrypt-capi`
+  in both configurations (capi alone cannot take `--features keepcrypt-core/test-registry`, B1), so call.rs and
+  header.rs run there, header.rs on the Linux host with the toolchain step's llvm-tools-preview; CLAUDE.md's FFI test
+  lines match. `scripts/banned-api-check.sh --workflows ../.github/workflows` clean, 3 workflows; no action added.
+  Held for the lead (not guessed; no iOS build was run on the Mac, as cc-rs calls xcrun for the iOS SDK): (1) a
+  staticlib carries every upstream rlib's objects, libstd's whole archive among them, so `--artifact` on
+  libkeepcrypt_capi.a gives StdRandom hits for std's own RandomState and hashmap_random_keys (the host build,
+  `--artifact aarch64-apple-darwin`: 3 hits, all std's), and OSImport skips archives, so it cannot require
+  `_CCRandomGenerateBytes`; (2) the archive defines 14,671 external symbols on the host (69 secp256k1-sys, 192
+  compiler-builtins, LLVM's `anon.*`), so "exactly `_kc_call` and `_kc_max_out` beside secp256k1-sys's four" cannot hold
+  for it as for the cdylib. Options: link a small probe (an example in keepcrypt-capi calling both exports) per iOS target
+  and scan it, as core's release_probe is scanned (dead-stripped, OSImport then requires `_CCRandomGenerateBytes`), with
+  the archive's Marker and TestKey scan and `llvm-nm -u` showing its `_CCRandomGenerateBytes`; and judge the exports as
+  the `kc_` symbols of the whole archive (exactly the two) plus no other unmangled symbol in the workspace's own
+  members (keepcrypt_*), with secp256k1-sys's four printed.
 
 ### Stage A: the Swift rules (M6 commit 5, before the first Swift file)
 - [ ] A1. The gate's Swift category over `mobile/ios/` (`.swift`, `.h`, `.m`, `.plist`, `.pbxproj`, `.entitlements`):
