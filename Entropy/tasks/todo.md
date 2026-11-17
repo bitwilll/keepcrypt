@@ -19346,7 +19346,9 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   (write fails: "writing the file failed"), or none (cancel: the save screen stays). The Data the exporter gets,
   and any file SwiftUI stages before the system's picker moves or copies it, are the system's: ciphertext alone
   (age v1, scrypt log2 N = 18), which the app neither names nor can wipe, and the gate refuses the app's
-  directories outright, so it cannot clean a staged copy either. A lead decision; I2 looks at the app's
+  directories outright, so it cannot clean a staged copy either. SwiftUI does stage one: the iOS 27.0
+  simulator runtime's SwiftUI names FileExportOperation's writeToTemporaryLocation and writeTemporaryFilesIfNecessary (its
+  symbols, read from the runtime's shared cache); when it removes the file is not shown. A lead decision; I2 looks at the app's
   container (tmp) after a save and after a cancel, and confirms the name keeps its .age and the read-back of the
   exported URL works (a failed read-back shows "reading the file back failed", never "Backup verified").
   (3) The BIP39 entry uses the ASCII pad, three pages, as Android's (the task's "letter pad" is the confirm's).
@@ -19359,8 +19361,8 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   and file names, opened by core to the summary's fingerprint. BackupScreens.kt's refusal table case for case,
   and every fixed text pinned in ScreenTextsTests (ExportScreens.kt and watchonly.json bundled for the tests).
   (5) No UI test through Save: the exporter's sheet is the system's document browser, which this Mac cannot
-  run (no simulator), and whether XCUITest can drive it on CI's simulators is unproven; the UI job is near 25 of
-  its 29 minutes. Save's journey is left to Stage U and I2.
+  run (no simulator), and whether XCUITest can drive it on CI's simulators is unproven; the iPhone job took
+  1442 s of its 31 minutes at 9e34caee (run 44138018119). Save's journey is left to Stage U and I2.
   As built (M6 commit D6a, the backup's and the exports' screens): `BackupScreens.swift` (BackupOfferScreen,
   BackupPassphraseScreen, BackupConfirmScreen, LetterEntry for the confirm and D7's entry, BackupSaveScreen,
   BackupVerifiedScreen), `ExportScreens.swift` (WatchOfferScreen, Bip39AskScreen, Bip39EntryScreen,
@@ -19383,6 +19385,14 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean on the three
   shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate
   clean (503 files), `cargo fmt --all --check` clean.
+  As built (M6 commit D6b, the note's record): the iPhone job's measured budget (1442 s of 31 minutes, the lead's
+  d5f39cb1) and SwiftUI's staging symbols in point (2); no code.
+  Proof (M6 commit D6b, on the final tree, a worktree at D6a): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1011 s in all); the gate clean (503 files). The lead's CoreDiscardTests at 9e34caee on the
+  stand-in: "Executed 1 test, with 0 failures" over each archive (2.7 s, 2.4 s); with callAside planted to take
+  the main lock first (a copy), it fails over each, "a discard: no try landed inside the long call (baseline
+  333 ms)" and the same for a wipe.
 - [ ] D7. Check a backup (the `.age` file through the picker, the passphrase on the letter pad, the result, the words only
   if asked, the re-check), About, Working and the stop screen.
 - [ ] D8. VoiceOver: each screen's title read as it opens, headings, live lines, every QR named by its kind and never its
