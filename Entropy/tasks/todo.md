@@ -19021,6 +19021,34 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   `--selftest-ios-app` 33 passed; the gate clean (471 files), `--workflows` clean, `cargo fmt --all --check` clean;
   on the commit's tree (a worktree): `--selftest` 4 x "486 passed, 0 failed", `sh scripts/banned-api-faults.sh` "708
   runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102 checks ran" (564 s).
+  As built (M6 commit D2c, refusals, the press guard and the halt path's tests): `KeepCrypt/PressGuard.swift`,
+  PressGuard.kt's ShownView and guard (300 ms after a view is first shown, by the touch's own time) for D3's screens
+  to report and ask; the model itself unchanged. Tests: PressGuardTests (8, PressGuardTest.kt's 7 and its probe
+  line); CeremonyRefusalTablesTests (4, RefusalTablesTest.kt's: every go-ahead QR text of kcr.json scanned on the
+  checks of dice-50-words12 and dice-99-words12, every age_refused backup of backup.json, now a bundled vector,
+  through Check a backup, every snapshot through Load registry snapshot, every mirror pair and a wrong insert on
+  the read-back; the shipping build runs them too, where an accepted proof or snapshot is refused NoRegistryKey
+  and a refused one gives its own refusal or NoRegistryKey; a file text is read with its JSON escapes undone by
+  hand, as Kotlin's jsonText, since JSONSerialization drops armor-bom's leading byte order mark);
+  CeremonyEntryRefusalTests (5, the refusals RefusalTablesTest.kt leaves to the screens' classes: CheckScreensTest's
+  wrong code, BackupScreensTest's wrong confirm answer, CheckBackupScreensTest's file refused by name, size or read
+  and wrong passphrase, no word or unreadable file, ExportScreensTest's empty BIP39 passphrase); CeremonyHaltTests
+  (8: CeremonyModelRefusalTest.kt, CeremonyModelHaltTest.kt, CheckBackupHaltTest.kt, CeremonyModelBusyScreenTest.kt
+  and the four Residual*HaltTest.kt). The halt tests run over StandInCore, which halts in its own place: XCTest runs
+  every class in one process, where the JVM gives each halting class a JVM of its own, so a real halt would latch
+  the slot for every later test; for M5-54's residual StandInCore answers the call core does not offer at home with
+  the halt core gives it (that rule itself is keepcrypt-ffi's, ffi/tests/ceremony.rs). Walk.to takes the core;
+  HeldWorker can run a long call's worker part alone (Android's HeldMain).
+  Proof (M6 commit D2c, partial: local; CI at the next push): the macOS stand-in "Executed 73 tests, with 0
+  failures" (35 s) over the host's release archive, and the same over its test-registry archive; with a
+  refusal from a call with no handler not halting, a refused code not saying so, BadSignature taken as no
+  snapshot refusal and the guard at 250 ms (in a copy), CeremonyHaltTests, CeremonyEntryRefusalTests,
+  CeremonyRefusalTablesTests and PressGuardTests fail (restored). Local builds: all three schemes built for
+  testing and the Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps; the hooks
+  marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate clean (476 files),
+  `--workflows` clean, `cargo fmt --all --check` clean; on the commit's tree (a worktree): `--selftest` 4 x "486
+  passed, 0 failed", `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed",
+  `scripts/canaries.sh` "PASS: all 102 checks ran" (566 s).
 - [ ] D3. The kit and the start: SwiftUI's fixed text, headings and pane titles; the pads (dice 1-6 with undo, letters
   for the first four letters, the go-ahead code, the BIP39 passphrase) as buttons only, never the system keyboard;
   First launch, Self-test, Go offline, Home, Length, Device entropy (Core Motion's accelerometer and gyroscope and

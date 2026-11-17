@@ -620,6 +620,16 @@ final class StandInCore: CeremonyCore {
     /// The discard's reply instead of Core's (Core's discard is made first all the same, so the slot
     /// drops what it held).
     var discardReply: Reply<Void>?
+    /// A discard took the slot home before the next call of one that core does not offer at home
+    /// (finish, revealProof, encryptBackup, verifyBackup): that call halts, internal, as core's stage
+    /// rule halts it (lead decision M5-54's residual; ffi/tests/ceremony.rs pins the rule itself).
+    var haltsAtHome = false
+
+    /// A call core does not offer at home: the halt core gives it there once haltsAtHome, else core's.
+    private func notAtHome<T>(_ body: () -> Reply<T>) -> Reply<T> {
+        if haltsAtHome, latched == nil { latched = .internal }
+        return pass(body)
+    }
 
     /// A call through the stand-in: the latched halt, or core's reply, whose halt latches.
     private func pass<T>(_ body: () -> Reply<T>) -> Reply<T> {
@@ -655,7 +665,7 @@ final class StandInCore: CeremonyCore {
     func startDice() -> Reply<Void> { pass { core.startDice() } }
     func pushRoll(_ face: Int) -> Reply<Void> { pass { core.pushRoll(face) } }
     func undoRoll() -> Reply<Void> { pass { core.undoRoll() } }
-    func finish() -> Reply<Void> { pass { core.finish() } }
+    func finish() -> Reply<Void> { notAtHome { core.finish() } }
     func skipCheck() -> Reply<Void> { pass { core.skipCheck() } }
     func startCheck() -> Reply<Void> { pass { core.startCheck() } }
     func matchFound() -> Reply<Void> { pass { core.matchFound() } }
@@ -669,7 +679,7 @@ final class StandInCore: CeremonyCore {
     func checkRequest() -> Reply<QrMatrix> { pass { core.checkRequest() } }
     func revealCode(_ code: Secret) -> Reply<Revealed> { pass { core.revealCode(code) } }
     func revealSnapshot(today: UInt32) -> Reply<Revealed> { pass { core.revealSnapshot(today: today) } }
-    func revealProof(today: UInt32, text: String) -> Reply<Revealed> { pass { core.revealProof(today: today, text: text) } }
+    func revealProof(today: UInt32, text: String) -> Reply<Revealed> { notAtHome { core.revealProof(today: today, text: text) } }
     func collisionReport() -> Reply<QrMatrix> { pass { core.collisionReport() } }
     func wordPage(_ position: Int) -> Reply<WordPage> { pass { core.wordPage(position) } }
     func checkReadback(_ position: Int, letters: Secret) -> Reply<Readback> { pass { core.checkReadback(position, letters: letters) } }
@@ -677,8 +687,8 @@ final class StandInCore: CeremonyCore {
     func backupPassphrasePage(_ page: Int) -> Reply<Secret> { pass { core.backupPassphrasePage(page) } }
     func backupChallenge() -> Reply<Challenge> { pass { core.backupChallenge() } }
     func confirmBackup(_ first: Int, _ second: Int) -> Reply<Bool> { pass { core.confirmBackup(first, second) } }
-    func encryptBackup() -> Reply<BackupFile> { pass { core.encryptBackup() } }
-    func verifyBackup(_ file: Secret) -> Reply<Void> { pass { core.verifyBackup(file) } }
+    func encryptBackup() -> Reply<BackupFile> { notAtHome { core.encryptBackup() } }
+    func verifyBackup(_ file: Secret) -> Reply<Void> { notAtHome { core.verifyBackup(file) } }
     func watchOnly(passphrase: Secret?) -> Reply<WatchOnly> { pass { core.watchOnly(passphrase: passphrase) } }
     func registration() -> Reply<QrMatrix> { pass { core.registration() } }
     func revealDeviceLeg() -> Reply<Secret> { pass { core.revealDeviceLeg() } }

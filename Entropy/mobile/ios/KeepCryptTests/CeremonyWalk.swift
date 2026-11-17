@@ -176,14 +176,14 @@ enum Walk {
         return rig
     }
 
-    /// A fresh Rig on screen (any but Stop), its long calls run but "Working..."'s and the self-test's own:
-    /// past the privacy gate, or on it when gate (a screen of gated). Every screen on the way is checked as
+    /// A fresh Rig on screen (any but Stop), over core (Core itself, or a stand-in over it), its long calls
+    /// run but "Working..."'s and the self-test's own: past the privacy gate, or on it when gate (a screen of gated). Every screen on the way is checked as
     /// it shows, its gate with it (shown on gated's alone), and passed through its gate.
-    static func to(_ screen: Screen, gate: Bool = false, file: StaticString = #filePath, line: UInt = #line) -> Rig {
+    static func to(_ screen: Screen, gate: Bool = false, core: CeremonyCore = Core.shared, file: StaticString = #filePath, line: UInt = #line) -> Rig {
         XCTAssertNotEqual(screen, .stop, "the stop screen is the halt tests' alone", file: file, line: line)
         XCTAssertTrue(!gate || gated.contains(screen), "\(screen.id) is entered with no privacy gate", file: file, line: line)
         if path(screen).contains(.backupCheckEntry) { _ = SavedBackup.shared }
-        let rig = reach(screen)
+        let rig = reach(screen, core)
         let shown = rig.model.state.gate
         XCTAssertEqual(shown, gated.contains(screen), "\(screen.id): " + (shown ? "a privacy gate showed" : "its privacy gate did not show"), file: file, line: line)
         if !gate, shown { rig.model.passGate() }
@@ -197,12 +197,12 @@ enum Walk {
     }
 
     /// A fresh Rig on screen, by its branch, each screen checked as it shows and passed through its gate.
-    private static func reach(_ screen: Screen) -> Rig {
+    private static func reach(_ screen: Screen, _ core: CeremonyCore) -> Rig {
         guard let step = steps[screen] else {
             XCTFail("no step reaches \(screen.id)")
-            return Rig()
+            return Rig(core: core)
         }
-        let rig = step.from.map { to($0) } ?? Rig().startUp()
+        let rig = step.from.map { to($0, core: core) } ?? Rig(core: core).startUp()
         step.go(rig)
         XCTAssertEqual(rig.screen, screen, "the walk to \(screen.id) reached \(rig.screen.id)")
         return rig
