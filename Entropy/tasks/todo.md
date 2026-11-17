@@ -19758,6 +19758,33 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   On the final tree (a worktree at U1c before this line): `--selftest` 4 x "486 passed, 0 failed" (--selftest-ios-app
   is a mode of its own, above), `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed",
   `scripts/canaries.sh` "PASS: all 102 checks ran" (1037 s in all).
+  As built (M6 commit U1d, from run 44173357483 at 4c2d9859: 13 of 14 journeys jobs green, SnapshotJourneyUITests
+  on macos-26 stopped on the dice screen after its 50th Confirm with Confirm and Done disabled, so a face or a
+  Confirm press had not taken). The cause, as far as that log can say: every tap was sent and the app idled
+  between them; the press guard cannot refuse a press within the dice screen (its view, screen, gate and
+  overlay, stays the same from roll to roll, and only a new view closes it), so the press was lost either
+  before the app's window (the simulator under a loaded runner, or a system interruption that made the scene
+  inactive for a moment, when the privacy cover replaces the screens) or on a control not yet redrawn; the
+  journeys pressed blind, so the log cannot tell which. U1d makes the next run tell: the TestHooks panel counts
+  the touches the screens' touch guard sees and those its press guard refuses (hook_touches_seen,
+  hook_touches_refused, public counts), and JourneySupport's pressUntil presses each pad key and Confirm once,
+  then awaits its effect on the screen (the face picked, then the count at that roll; each letter, ASCII key
+  and code symbol in its entry's line), as Android's Ui waits on the model. A press that did nothing is
+  classified by the counts: refused by the guard (the app as designed) or never seen by the app (outside it):
+  pressed again, the screen settled by then, each named in a probe line with its roll or position; seen,
+  admitted and without effect: the app's defect, and the test fails there, naming the press (U4 would then fix
+  it at its root). Done buttons are pressed once enabled. Every pad of the journeys and of ScanUITests,
+  WordsUITests and CheckBackupUITests goes through it. No sleep is added; each wait is for the screen.
+  Budgets from that run (M5-30, the slower leg plus 25%): unit 1538 s on macos-26, 33 minutes; journeys in four
+  rows a leg (the five long classes in four rows put two together; the effect checks estimated at 0.12 s a press,
+  Snapshot on macos-26 at 1.3 times macos-15's 221 s): journeys-1 CannotCheck and Scan 25 minutes (570 s + 585
+  s), journeys-2 MatchFound and Words 24 (570 s + 561 s), journeys-3 Mixed and CheckBackup 24 (570 s + 562 s),
+  journeys-4 TwentyFourWord and Snapshot 27 (570 s + 703 s), each figure in the workflow's comment.
+  Proof (M6 commit U1d, local; CI at the next push runs the journeys): the three schemes built for testing and the
+  device build, no Swift warning; `--ios-app` clean on the three shipped apps (the touch counts' names and the
+  11 secret names in the TestHooks binary alone); `--selftest-ios-app` 36 passed; the stand-in "Executed 126
+  tests, with 0 failures" both ways; the groups check passes on the four rows a leg; `--workflows` and the gate
+  clean (514 files), `cargo fmt --all --check` clean.
 - [ ] U2. Edge cases where the phone matters (the JVM-ported unit tests of D2 hold the model's): Back and a double tap
   on every screen; leaving the app at every stage (Public: 59 s kept, 61 s wiped; Protected and Working: at once) by
   XCUIDevice's home and a re-activation; the app killed at every stage, back at First launch with an empty slot; going

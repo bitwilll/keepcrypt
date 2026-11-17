@@ -42,12 +42,7 @@ final class WordsUITests: XCTestCase {
         on(app, "length", "Length")
         app.buttons["words_12"].tap()
         on(app, "dice", "the dice")
-        for face in rolls {
-            app.buttons["key_" + String(face)].tap()
-            app.buttons["confirm"].tap()
-        }
-        app.buttons["dice_done"].tap()
-        on(app, "check_prompt", "the check prompt")
+        app.roll(rolls)
         app.buttons["skip"].tap()
         on(app, "skip_confirm", "Skip's confirm")
         app.buttons["confirm_action"].tap()
@@ -77,10 +72,8 @@ final class WordsUITests: XCTestCase {
             let key = app.buttons[String(letter)]
             XCTAssertTrue(key.exists && key.label == String(letter), "the letter pad's key " + String(letter))
         }
-        for letter in words[0].prefix(4) {
-            app.buttons[String(letter)].tap()
-        }
-        app.buttons["letters_done"].tap()
+        app.letters(words[0])
+        app.pressEnabled("letters_done")
         XCTAssertTrue(app.element("readback_matched").waitForExistence(timeout: 10), "insert 1 matches")
         app.buttons["readback_next"].tap()
         let next = NSPredicate(format: "label == %@", "Read back insert 02 \u{00B7} device 1 of 1")

@@ -40,12 +40,9 @@ final class ScanUITests: XCTestCase {
         app.buttons["words_12"].tap()
         XCTAssertTrue(app.element("dice").waitForExistence(timeout: 60), "the dice")
         pastPressGuard()
-        for face in rolls {
-            app.buttons["key_" + String(face)].tap()
-            app.buttons["confirm"].tap()
-        }
+        app.rollFaces(rolls)
         XCTAssertEqual(app.element("dice_count").label, "50 / 50 rolls, 129.2 bits")
-        app.buttons["dice_done"].tap()
+        app.pressEnabled("dice_done")
         XCTAssertTrue(app.element("check_prompt").waitForExistence(timeout: 60), "the check prompt")
         pastPressGuard()
         app.buttons["check_now"].tap()

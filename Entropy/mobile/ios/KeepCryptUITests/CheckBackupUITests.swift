@@ -58,11 +58,8 @@ final class CheckBackupUITests: XCTestCase {
         on(app, "backup_check_entry", "the passphrase's entry")
         for (index, word) in words.enumerated() {
             label(app, "entry_word", "Backup passphrase, word \(index + 1) of 8")
-            pastPressGuard()
-            for letter in word.prefix(4) {
-                app.buttons[String(letter)].tap()
-            }
-            app.buttons["entry_done"].tap()
+            app.letters(word)
+            app.pressEnabled("entry_done")
         }
         on(app, "backup_check_result", "Backup OK")
         label(app, "backup_fingerprint", try XCTUnwrap(plain["fingerprint"] as? String))

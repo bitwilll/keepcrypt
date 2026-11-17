@@ -19,7 +19,9 @@
 // from U1 the backup's save (the exporter answered with a place in memory alone, through backupPlaced: the
 // TestHooks app writes no file, rule 8, and core verifies what was written), the saved backup offered to
 // Check a backup (KC_HOOK_BACKUP_FROM_SAVE), a snapshot from Load registry snapshot's picker (through
-// snapshotPicked) and a halt of the slot (the shell's own, so the next call shows the stop screen). Each
+// snapshotPicked) and a halt of the slot (the shell's own, so the next call shows the stop screen); and the
+// counts of touches the screens' touch guard saw and its press guard refused, which the panel shows, so a UI
+// test can tell a press the guard refused from one that never reached the app (U1d). Each
 // acts on the same inputs the real events reach.
 
 #if KC_TEST_HOOKS
@@ -39,6 +41,16 @@ final class TestHooks: ObservableObject {
     @Published var captured = false
     /// The scene forced inactive, as the app switcher leaves it.
     @Published var inactive = false
+    /// The touches the screens' touch guard saw go down in the screens' area, and those its press guard
+    /// refused (U1d: the UI tests' probe of a press that did nothing).
+    @Published private(set) var touchesSeen = 0
+    @Published private(set) var touchesRefused = 0
+
+    /// Touches that went down, refused or admitted by the press guard (Screens.swift's TouchGuardRecognizer).
+    func noteTouches(_ count: Int, refused: Bool) {
+        touchesSeen += count
+        if refused { touchesRefused += count }
+    }
     /// The app's offline check, whose state the path hooks force.
     var offlineCheck: OfflineCheck?
     /// The scan screen's scanner while it scans, whose found callback the Scan hook calls.
@@ -328,9 +340,15 @@ struct TestHookPanel: View {
 
     var body: some View {
         VStack(spacing: 4) {
-            Text("TEST HOOKS")
-                .font(.caption.bold())
-                .accessibilityIdentifier(TestHooks.marker)
+            HStack {
+                Text("TEST HOOKS")
+                    .font(.caption.bold())
+                    .accessibilityIdentifier(TestHooks.marker)
+                Text(String(hooks.touchesSeen))
+                    .accessibilityIdentifier("hook_touches_seen")
+                Text(String(hooks.touchesRefused))
+                    .accessibilityIdentifier("hook_touches_refused")
+            }
             HStack {
                 Button("Capture") { hooks.captured.toggle() }
                     .accessibilityIdentifier("hook_capture")

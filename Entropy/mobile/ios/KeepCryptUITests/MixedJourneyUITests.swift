@@ -69,10 +69,8 @@ final class MixedJourneyUITests: XCTestCase {
         app.on("bip39_entry", "the BIP39 passphrase's entry")
         app.press("keys_next")
         app.waitLabel("keys_page", "Keys, page 2 of 3")
-        for key in "TREZOR" {
-            app.buttons[String(key)].tap()
-        }
-        app.press("bip39_done")
+        app.ascii("TREZOR")
+        app.pressEnabled("bip39_done")
         app.on("watch_summary", "the watch-only summary")
         XCTAssertTrue(app.element("passphrase_wallet").exists, "the summary is the BIP39 passphrase's wallet's")
         XCTAssertNotNil(app.element("watch_fingerprint").label.range(of: "^[0-9a-f]{8}$", options: .regularExpression))

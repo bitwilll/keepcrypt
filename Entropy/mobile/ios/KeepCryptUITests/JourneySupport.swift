@@ -118,20 +118,97 @@ extension XCUIApplication {
         press("pass_gate")
     }
 
-    /// rolls pressed on the dice pad, a face and Confirm each, then Done: the check prompt.
-    func roll(_ rolls: String) {
-        for face in rolls {
-            buttons["key_" + String(face)].tap()
-            buttons["confirm"].tap()
-        }
-        press("dice_done")
-        on("check_prompt", "the check prompt")
+    /// Whether effect holds within seconds, looked at every 0.1 s (a wait for the screen, not a sleep).
+    func within(_ seconds: TimeInterval, _ effect: () -> Bool) -> Bool {
+        let deadline = Date().addingTimeInterval(seconds)
+        repeat {
+            if effect() { return true }
+            usleep(100_000)
+        } while Date() < deadline
+        return false
     }
 
-    /// A word's first four letters (a three-letter word's three) pressed on the letter pad.
-    func letters(_ word: String) {
-        for letter in word.prefix(4) {
-            buttons[String(letter)].tap()
+    /// The TestHooks panel's touch counts: the touches the screens' touch guard saw, and those its press guard
+    /// refused (TestHooks.swift).
+    func touchCounts() -> (seen: Int, refused: Int) {
+        (Int(element("hook_touches_seen").label) ?? -1, Int(element("hook_touches_refused").label) ?? -1)
+    }
+
+    /// button pressed as a person presses it (U1d): once, then its effect awaited. A press that does nothing is
+    /// told apart by the panel's touch counts: one the press guard refused (a view shown under 300 ms before, the
+    /// app working as designed) or one that never reached the app's window is pressed again, the screen settled
+    /// by then, each named in a probe line; one the app saw and admitted that did nothing is the app's defect,
+    /// and fails the test there. At most three presses.
+    func pressUntil(
+        _ button: XCUIElement, _ what: String, file: StaticString = #filePath, line: UInt = #line, effect: () -> Bool
+    ) {
+        for attempt in 1...3 {
+            let before = touchCounts()
+            button.tap()
+            if effect() || within(5, effect) { return }
+            let after = touchCounts()
+            if after.refused > before.refused {
+                pass("probe: \(what): press \(attempt) refused by the press guard (touches \(before) to \(after)); pressed again")
+            } else if after.seen == before.seen {
+                pass("probe: \(what): press \(attempt) never reached the app (touches \(before) to \(after)); pressed again")
+            } else {
+                XCTFail("\(what): press \(attempt) reached the app and was admitted, and did nothing (touches \(before) to \(after))", file: file, line: line)
+                return
+            }
+        }
+        XCTFail("\(what): three presses did nothing", file: file, line: line)
+    }
+
+    /// The button id pressed once it is enabled, as a person presses a control that is offered.
+    func pressEnabled(_ id: String, file: StaticString = #filePath, line: UInt = #line) {
+        let button = buttons[id]
+        XCTAssertTrue(within(30) { button.exists && button.isEnabled }, id + " never enabled", file: file, line: line)
+        button.tap()
+    }
+
+    /// rolls pressed on the dice pad, then Done once enabled: the check prompt.
+    func roll(_ rolls: String, file: StaticString = #filePath, line: UInt = #line) {
+        rollFaces(rolls, file: file, line: line)
+        pressEnabled("dice_done", file: file, line: line)
+        on("check_prompt", "the check prompt", file: file, line: line)
+    }
+
+    /// rolls pressed on the dice pad, a face and Confirm each, each awaited (the face picked, which enables
+    /// Confirm, then the count at that roll), one look at the screen a press.
+    func rollFaces(_ rolls: String, file: StaticString = #filePath, line: UInt = #line) {
+        let confirm = buttons["confirm"]
+        let pick = element("kc_secret_dice_pick")
+        let count = element("dice_count")
+        for (index, face) in rolls.enumerated() {
+            let roll = index + 1
+            pressUntil(buttons["key_" + String(face)], "roll \(roll)'s face", file: file, line: line) {
+                pick.label == String(face)
+            }
+            pressUntil(confirm, "roll \(roll)'s Confirm", file: file, line: line) { count.label.hasPrefix(String(roll) + " / ") }
+        }
+    }
+
+    /// The letters typed on the letter pad so far (its secret node, kc_secret_typed_letters: each letter, then a
+    /// dash for each face to come).
+    func typedCount() -> Int {
+        element("kc_secret_typed_letters").label.filter { $0 != "-" }.count
+    }
+
+    /// A word's first four letters (a three-letter word's three) pressed on the letter pad, each awaited.
+    func letters(_ word: String, file: StaticString = #filePath, line: UInt = #line) {
+        let start = typedCount()
+        for (index, letter) in word.prefix(4).enumerated() {
+            pressUntil(buttons[String(letter)], "letter \(index + 1) of a word", file: file, line: line) { self.typedCount() == start + index + 1 }
+        }
+    }
+
+    /// keys pressed on the ASCII pad's page on show, each awaited on the BIP39 passphrase's entry (its secret
+    /// node, kc_secret_bip39_text).
+    func ascii(_ keys: String, file: StaticString = #filePath, line: UInt = #line) {
+        let shown = element("kc_secret_bip39_text")
+        let start = shown.label.count
+        for (index, key) in keys.enumerated() {
+            pressUntil(buttons[String(key)], "ASCII key \(index + 1)", file: file, line: line) { shown.label.count == start + index + 1 }
         }
     }
 
@@ -156,10 +233,13 @@ extension XCUIApplication {
         let code = goAheadCode(tag, nonce)
         press("type_code")
         on("code_entry", "the code entry")
-        for symbol in code {
-            buttons["key_" + String(symbol)].tap()
+        let shown = element("code")
+        for (index, symbol) in code.enumerated() {
+            pressUntil(buttons["key_" + String(symbol)], "the code's symbol \(index + 1)") {
+                shown.label.filter { $0 != "_" && $0 != "-" }.count == index + 1
+            }
         }
-        press("code_done")
+        pressEnabled("code_done")
         on("check_result", "the check passed")
     }
 
@@ -196,8 +276,8 @@ extension XCUIApplication {
             waitLabel(
                 "readback_header", String(format: "Read back insert %02d \u{00B7} device %d of %d", position, device, devices),
                 file: file, line: line)
-            letters(word)
-            press("letters_done")
+            letters(word, file: file, line: line)
+            pressEnabled("letters_done", file: file, line: line)
             XCTAssertTrue(element("readback_matched").waitForExistence(timeout: 10), "insert \(position) matches", file: file, line: line)
             press("readback_next")
         }
@@ -238,8 +318,8 @@ extension XCUIApplication {
             let heading = staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Which is word ")).firstMatch
             XCTAssertTrue(heading.waitForExistence(timeout: 10), "the question", file: file, line: line)
             let position = try XCTUnwrap(Int(heading.label.dropFirst("Which is word ".count).dropLast()), file: file, line: line)
-            letters(words[position - 1])
-            press("confirm_done")
+            letters(words[position - 1], file: file, line: line)
+            pressEnabled("confirm_done", file: file, line: line)
         }
         on("backup_save", "the save", timeout: 120, file: file, line: line)
         XCTAssertNotNil(element("backup_name").label.range(of: "^keepcrypt-backup-[0-9a-f]{8}\\.age$", options: .regularExpression))
@@ -261,9 +341,8 @@ extension XCUIApplication {
         on("backup_check_entry", "the passphrase's entry", file: file, line: line)
         for (index, word) in passphrase.enumerated() {
             waitLabel("entry_word", "Backup passphrase, word \(index + 1) of 8", file: file, line: line)
-            pastPressGuard()
-            letters(word)
-            press("entry_done")
+            letters(word, file: file, line: line)
+            pressEnabled("entry_done", file: file, line: line)
         }
         on("backup_check_result", "Backup OK", timeout: 120, file: file, line: line)
         press("show_backup_words")
