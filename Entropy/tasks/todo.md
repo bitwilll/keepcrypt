@@ -18465,6 +18465,29 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   the archive's Marker and TestKey scan and `llvm-nm -u` showing its `_CCRandomGenerateBytes`; and judge the exports as
   the `kc_` symbols of the whole archive (exactly the two) plus no other unmangled symbol in the workspace's own
   members (keepcrypt_*), with secp256k1-sys's four printed.
+  Decided by M6-4 (2026-11-17).
+  Proof (M6 commit B5b, partial: written and checked locally where no Apple SDK is needed; CI at the next push): the two
+  iOS legs' crates gain keepcrypt-guard and keepcrypt-capi (so the target clippy covers capi), and four steps follow
+  the jni ones. `cargo rustc --release -p keepcrypt-capi --lib --crate-type staticlib -- --print native-static-libs`
+  builds the release archive and hands its system libraries to the link (the Mac's host build prints `-lc -lm -liconv
+  -lSystem -lc -lm`; empty fails); the test-registry archive builds with `-p keepcrypt-capi -p keepcrypt-core --features
+  keepcrypt-core/test-registry` into target/capi-test-registry. `ffi/capi/probe/probe.c` (keepcrypt.h's kc_max_out, then
+  kc_call of Self test into a 16,384-byte buffer; never run) is linked against each archive by `xcrun --sdk
+  iphoneos|iphonesimulator clang -target arm64-apple-ios17.0[-simulator] -Wall -Wextra -Werror ... -Wl,-dead_strip`.
+  The release probe joins the release scan step (`--artifact T`, OSImport requiring `_CCRandomGenerateBytes`, which
+  `llvm-nm -u` prints first); the test-registry probe gets the jni-style step: exit 1 with exactly its registry marker
+  and the test key (2 hits) and no stub marker. `scripts/capi-exports.sh` judges both archives by member: the
+  workspace's keepcrypt_* members define exactly `kc_call` and `kc_max_out` once each as unmangled globals (Rust
+  `_ZN`/`_R` and LLVM `anon.` names aside), no member of any crate defines another `kc_` name, and secp256k1-sys's four
+  are counted from its own members and printed. Its `--selftest` (10 cases: clean; a planted `_kc_planted` and a
+  planted C name in capi, an export in the guard's and the safe layer's members, a `kc_` name in a dependency, kc_call
+  twice, kc_max_out missing, kc_call from std's member, a listing with no member) passes under sh and dash: 10 passed,
+  0 failed; the gates job runs it. On the Mac's host debug archive (aarch64-apple-darwin, the B3 build) it reports "ours
+  exactly kc_call and kc_max_out (secp256k1-sys's: 4 of its four)". keepcrypt-capi's header test runs in the test job
+  (B5a, Linux), not on these legs. Not run here: any iOS build, the probe's link and its scans (M6-4: CI only). If std's
+  random-key path survives the probe's dead-strip, the release scan fails on StdRandom, which is to be reported, not
+  relaxed. `--workflows ../.github/workflows` clean (no action added; the hardening canary's pinned line 32 unchanged);
+  the gate clean; CLAUDE.md's Commands name the selftest and the legs' exports run.
 
 ### Stage A: the Swift rules (M6 commit 5, before the first Swift file)
 - [ ] A1. The gate's Swift category over `mobile/ios/` (`.swift`, `.h`, `.m`, `.plist`, `.pbxproj`, `.entitlements`):

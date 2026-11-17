@@ -225,6 +225,11 @@ scripts/banned-api-check.sh --image IMG pi/os/expected KCONFIG BIN_SHA256   # th
 # configurations (keepcrypt-capi's header test builds its staticlib for the host and reads it with llvm-nm):
 cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni -p keepcrypt-capi --locked
 cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni -p keepcrypt-capi --locked --features keepcrypt-core/test-registry
+sh scripts/capi-exports.sh --selftest   # 10 cases: the archive's exports judged by member, a planted export among them
+# CI's two iOS legs only (no xcrun on the owner's Mac): libkeepcrypt_capi.a in release and test-registry, the C probe
+# ffi/capi/probe/probe.c linked against each with the SDK's clang and -dead_strip, --artifact T on each linked probe
+# (the test-registry one exactly its registry marker and the test key), and the two archives' exports:
+sh scripts/capi-exports.sh target/T/release/libkeepcrypt_capi.a target/capi-test-registry/T/release/libkeepcrypt_capi.a
 # The Android app (mobile/android; CI: .github/workflows/entropy-android.yml, not a required check; needs the
 # Android SDK, NDK and JDK the workflow pins). Rust libraries for both flavours, then the strict Gradle build:
 sh scripts/android-rust.sh shipping

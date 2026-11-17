@@ -366,6 +366,7 @@ jobs:
       - run: python3 -I tools/verify/vectorgen.py --selftest
       - run: python3 -I pi/os/rootfs-prefix.py --selftest
       - run: sh pi/os/kconfig.sh --selftest
+      - run: sh scripts/capi-exports.sh --selftest
       - name: Install the pinned toolchain (rust-toolchain.toml)
         run: |
           rustup toolchain install
@@ -560,8 +561,16 @@ jobs:
     # test-registry one, in its own target dir, must show exactly its registry marker and the
     # test key. Both must have 16 KB pages on arm64 and x86_64 and export exactly our two
     # symbols, JNI_OnLoad and Java_com_keepcrypt_entropy_ffi_Native_call (lead decision M5-21),
-    # beside secp256k1-sys's own four. The iPhone's library is M6 (Q73). Every step checks the
-    # changes job (see the header).
+    # beside secp256k1-sys's own four. M6 (tasks/todo.md, item B5; lead decision M6-4): the two
+    # iOS legs build the iPhone's library, keepcrypt-capi's libkeepcrypt_capi.a, the same two ways.
+    # A staticlib keeps every upstream object, libstd's whole archive among them, so the archive
+    # itself is not what ships: a tiny C probe (ffi/capi/probe/probe.c) is linked against each
+    # archive with the SDK's clang and -dead_strip, as the app links it, and each linked probe gets
+    # the artifact scan (the release one clean with its OS import, _CCRandomGenerateBytes; the
+    # test-registry one exactly its registry marker and the test key). Each archive's own exports
+    # are judged by member (scripts/capi-exports.sh): the workspace's crates define exactly kc_call
+    # and kc_max_out. keepcrypt-capi's header test runs in the test job, on its Linux host. Every
+    # step checks the changes job (see the header).
     name: cross (${{ matrix.target }})
     needs: changes
     runs-on: ${{ matrix.os }}
@@ -592,10 +601,10 @@ jobs:
           # iPhone and its simulator, with the image's default Xcode.
           - target: aarch64-apple-ios
             os: macos-26
-            crates: keepcrypt-core keepcrypt-ffi
+            crates: keepcrypt-core keepcrypt-ffi keepcrypt-guard keepcrypt-capi
           - target: aarch64-apple-ios-sim
             os: macos-26
-            crates: keepcrypt-core keepcrypt-ffi
+            crates: keepcrypt-core keepcrypt-ffi keepcrypt-guard keepcrypt-capi
     env:
       TARGET: ${{ matrix.target }}
       # iOS 17+ (docs/mobile-apps.md); read by rustc and cc on the iOS targets only.
@@ -726,6 +735,40 @@ jobs:
       - name: Build the test-registry libkeepcrypt.so (its own target dir)
         if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-jni ')
         run: cargo build --release --locked -p keepcrypt-jni -p keepcrypt-core --lib --features keepcrypt-core/test-registry --target "$TARGET" --target-dir target/ffi-test-registry
+      # M6 (lead decision M6-4): the iPhone's library as the app links it (default features). cargo
+      # rustc builds the staticlib and prints the system libraries it needs, which the probe's link
+      # takes; empty (a build that did not run rustc) fails.
+      - name: Build libkeepcrypt_capi.a (release, default features) and read its system libraries
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-capi ')
+        run: |
+          out=$(cargo rustc --release --locked -p keepcrypt-capi --lib --crate-type staticlib --target "$TARGET" -- --print native-static-libs 2>&1)
+          printf '%s\n' "$out"
+          libs=$(printf '%s\n' "$out" | sed -n 's/^note: native-static-libs: //p')
+          [ -n "$libs" ] || { echo "FAIL: no native-static-libs line from rustc" >&2; exit 1; }
+          echo "KC_CAPI_LIBS=$libs" >> "$GITHUB_ENV"
+      # The test-registry library, as the Android legs build jni's: the feature from the command
+      # line with -p keepcrypt-core (capi has no keepcrypt-core edge, M5-35), its own target dir.
+      - name: Build the test-registry libkeepcrypt_capi.a (its own target dir)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-capi ')
+        run: cargo build --release --locked -p keepcrypt-capi -p keepcrypt-core --lib --features keepcrypt-core/test-registry --target "$TARGET" --target-dir target/capi-test-registry
+      # The probe, linked with the SDK's clang for this target at iOS 17.0 against each archive and
+      # the system libraries rustc named, with -dead_strip as an app link does. Scanned, never run.
+      - name: Link the C probe against each libkeepcrypt_capi.a (the SDK's clang, -dead_strip)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-capi ')
+        run: |
+          case $TARGET in
+            aarch64-apple-ios) sdk=iphoneos triple=arm64-apple-ios17.0 ;;
+            aarch64-apple-ios-sim) sdk=iphonesimulator triple=arm64-apple-ios17.0-simulator ;;
+            *) echo "FAIL: no probe rule for $TARGET" >&2; exit 1 ;;
+          esac
+          xcrun --sdk "$sdk" clang --version
+          for dir in "target/$TARGET/release" "target/capi-test-registry/$TARGET/release"; do
+            # shellcheck disable=SC2086 # KC_CAPI_LIBS is rustc's list of -l flags, one word each
+            xcrun --sdk "$sdk" clang -target "$triple" -Wall -Wextra -Werror -I ffi/capi/include \
+              ffi/capi/probe/probe.c "$dir/libkeepcrypt_capi.a" $KC_CAPI_LIBS -Wl,-dead_strip -o "$dir/capi_probe"
+            size=$(wc -c < "$dir/capi_probe")
+            echo "$dir/capi_probe: $((size)) bytes"
+          done
       - name: Scan the release artifacts (markers, test key, RNG symbols, the OS import)
         if: needs.changes.outputs.entropy == 'true'
         env:
@@ -742,6 +785,9 @@ jobs:
           case " $CRATES " in
             *" keepcrypt-jni "*) files+=("$so") ;;
           esac
+          case " $CRATES " in
+            *" keepcrypt-capi "*) files+=("target/$TARGET/release/capi_probe") ;;
+          esac
           for f in "${files[@]}"; do
             size=$(wc -c < "$f")
             echo "$f: $((size)) bytes"
@@ -754,6 +800,9 @@ jobs:
           esac
           case " $CRATES " in
             *" keepcrypt-jni "*) "$(rustc --print target-libdir)/../bin/llvm-nm" -u "$so" | grep -E '(^| )getrandom(@|$)' ;;
+          esac
+          case " $CRATES " in
+            *" keepcrypt-capi "*) "$(rustc --print target-libdir)/../bin/llvm-nm" -u "target/$TARGET/release/capi_probe" | grep -E '(^| )_CCRandomGenerateBytes$' ;;
           esac
           scripts/banned-api-check.sh --artifact "$TARGET" "${files[@]}"
       # The test-registry library (M5 group 12; rule 10), as the test job scans the test-registry
@@ -785,6 +834,30 @@ jobs:
       # exactly JNI_OnLoad and Java_com_keepcrypt_entropy_ffi_Native_call. The only others allowed
       # are secp256k1-sys's own #[no_mangle] functions (0.10.1: its context allocator pair and its
       # two default callbacks), which a cdylib exports with ours; any other defined symbol fails.
+      # The test-registry probe (M6-4; rule 10), as the test-registry libkeepcrypt.so above: exit 1
+      # with exactly its registry marker and the test key, so no stub marker, no RNG symbol, no std
+      # random-key path, no stripped file and the OS import there.
+      - name: Scan the test-registry C probe (exactly its registry marker and the test key)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-capi ')
+        run: |
+          probe="target/capi-test-registry/$TARGET/release/capi_probe"
+          rc=0
+          out=$(scripts/banned-api-check.sh --artifact "$TARGET" "$probe" 2>&1) || rc=$?
+          printf '%s\n' "$out"
+          fail() { echo "FAIL: the test-registry probe's scan: $1" >&2; exit 1; }
+          [ "$rc" -eq 1 ] || fail "exit $rc, not 1"
+          for want in "Marker: $probe: KC_TEST_REGISTRY_DO_NOT_SHIP" \
+            "TestKey: $probe: the test registry public key " \
+            "banned-api-check --artifact $TARGET: 2 hit(s) in 1 file(s)"; do
+            case $out in *"$want"*) ;; *) fail "no line holds \"$want\"" ;; esac
+          done
+          case $out in *KC_TEST_SOURCE_DO_NOT_SHIP*) fail "the stub marker" ;; esac
+      # Both archives' own exports (M6-4): the workspace's members define exactly kc_call and
+      # kc_max_out as C symbols, and no member another kc_ name (scripts/capi-exports.sh, whose
+      # selftest the gates job runs).
+      - name: libkeepcrypt_capi.a's exports (both builds)
+        if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-capi ')
+        run: sh scripts/capi-exports.sh "target/$TARGET/release/libkeepcrypt_capi.a" "target/capi-test-registry/$TARGET/release/libkeepcrypt_capi.a"
       - name: libkeepcrypt.so's LOAD alignment and exports (both builds)
         if: needs.changes.outputs.entropy == 'true' && contains(format(' {0} ', matrix.crates), ' keepcrypt-jni ')
         run: |
