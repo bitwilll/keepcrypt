@@ -890,7 +890,7 @@
 #              map, the project file, schemes, plists, settings files), comments and string
 #              literals counting, as everywhere: RNG, Network and Clipboard keep their names and
 #              add the Swift rules below to what they refuse everywhere. Four files are allowed
-#              more, each one path ($sw_app is mobile/ios/KeepCrypt; a file of the same name
+#              more (and two more by SwFailOpen's and SwOpenURL's own entries below), each one path ($sw_app is mobile/ios/KeepCrypt; a file of the same name
 #              anywhere else gets every rule): $sw_app/OfflineCheck.swift (the offline check, Stage
 #              C's C5: import Network as the exact line, and NWPathMonitor), $sw_app/SecureLayer.swift
 #              (Q88's secure layer: UITextField, with isSecureTextEntry = true), $sw_app/
@@ -962,6 +962,31 @@
 #              under a .xcodeproj or .xcworkspace directory, outside mobile/ios/, in any letter case:
 #              the app's code and project live under mobile/ios/, the one Xcode root, as Kotlin
 #              lives under mobile/android/ (KtRoot), so no Swift rule's scope can be stepped round.
+#   SwFailOpen (rule 3; M6 item A2, lead decision M6-6): KtFailOpen in Swift. In every file: try? and
+#              try!, Result(catching: and Result { }, flatMapError, Combine's .catch, .tryCatch,
+#              .replaceError and .assertNoFailure, NSSetUncaughtExceptionHandler and its getter,
+#              signal( and sigaction(, and the unstructured tasks (Task { }, Task(, Task<,
+#              Task.detached, withThrowingTaskGroup, withThrowingDiscardingTaskGroup, async let);
+#              every catch clause (Objective-C's @catch too) whose block does not end in a call of
+#              Ceremony.halt( closed on its line or a throw (a rethrow), read fail closed like
+#              KtFailOpen's finally blocks (a quote, a backtick, a # or a comment in the clause, or
+#              a catch in a comment or a string, hits at the catch); a type, extension or typealias
+#              named Ceremony or a func halt outside mobile/ios/KeepCrypt/Ceremony.swift (C3's file,
+#              the Swift CeremonyModel's), and there a func halt declared without -> Never.
+#              Differences from KtFailOpen: the allowance is the block's last statement, not a
+#              caught type with its import; there is no test scope (XCTest's XCTAssertThrowsError
+#              needs no catch); no package allow-list (Swift has no kotlinx.coroutines to read);
+#              and no finally rule, since Swift's defer cannot return, break or throw.
+#   SwOpenURL  (rule 9; A2, M6-6): KtIntent in Swift. Any .open( call, openURL, canOpenURL,
+#              OpenURLAction, SwiftUI's Link(, the settings URLs (openSettingsURLString,
+#              openNotificationSettingsURLString), SafariServices, SFSafariViewController,
+#              ASWebAuthenticationSession and UIDocumentInteractionController, in every file but
+#              mobile/ios/KeepCrypt/OpenSettings.swift; there the one call
+#              UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)! passes
+#              (the camera prompt's "Open Settings"; options and a completion may follow), and every
+#              other line naming those names, the word URL or NSURL, URLComponents, an
+#              .init(string:, fileURLWithPath: or filePath:, or a string literal that starts with a
+#              scheme and its : hits.
 #
 # Fail-closed noise, not bypasses (rename or spell it out instead): a named format argument called
 # path that rustfmt wraps onto its own line ("        path = \"seed.age\",") is an Include hit in
@@ -1006,7 +1031,12 @@
 # comment on its own line); the secure layer's statement is written field.isSecureTextEntry = true,
 # on its own line (an optional chain, field?.isSecureTextEntry, is no such line); and
 # KC_TEST_HOOKS in a project file that does not read as the property list it must be, or in a
-# configuration the reading cannot tie to a test target alone, is a hit wherever it stands.
+# configuration the reading cannot tie to a test target alone, is a hit wherever it stands. A catch
+# in prose or a string under mobile/ios is a SwFailOpen hit (write "a handler"), and so is a halt
+# whose argument is a string or spans lines (pass a case: Ceremony.halt(.core), on one line); any
+# method of our own named open, a property named openURL and a type named Link are SwOpenURL hits
+# (rename them; call the settings helper OpenSettings.show(), not .open()); and in OpenSettings.swift
+# the word URL in a comment, and a string that starts like a scheme ("Note:"), are hits.
 #
 # Portable on purpose: POSIX sh, POSIX ERE (no \b \s \< \>, no -P -w), POSIX sed (BRE, in
 # selectable() and textselection(); ERE with -E, which BSD and GNU sed share, in threads_by_path())
@@ -1224,8 +1254,11 @@ APIs), the Network framework outside the offline check's file and anything but N
 there, logging and printing and trap messages built from values, persistence and the app's
 directories, file writes outside the document picker's file, the system keyboard (UITextField
 outside the secure layer's file, which must set isSecureTextEntry = true), Swift packages,
-CocoaPods, Carthage, SDKs and tracking, a module map but the one, and KC_TEST_HOOKS outside Swift
-files and the test targets' build settings; and Swift, Objective-C, module maps and Xcode projects
+CocoaPods, Carthage, SDKs and tracking, a module map but the one, KC_TEST_HOOKS outside Swift
+files and the test targets' build settings, try? and try!, a catch that does not end in
+Ceremony.halt( or a throw, Combine's error eaters, crash handlers and unstructured tasks, another
+Ceremony or halt outside Ceremony.swift, and opening a URL or another app but the settings page
+from OpenSettings.swift; and Swift, Objective-C, module maps and Xcode projects
 outside mobile/ios. A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
@@ -3468,6 +3501,219 @@ sw_hooks_pbxproj() {
     }'
 }
 
+# SwFailOpen (rule 3: no fallback, no catch-and-continue; tasks/todo.md, M6 item A2 and lead decision
+# M6-6), under mobile/ios: KtFailOpen's rules in their Swift forms. The halt is the Swift
+# CeremonyModel's static func, Ceremony.halt(, which mobile/ios/KeepCrypt/Ceremony.swift (C3)
+# defines; it returns Never, so nothing runs after it.
+sw_ceremony=$sw_app/Ceremony.swift
+sw_opensettings=$sw_app/OpenSettings.swift
+
+# SwFailOpen, every file under mobile/ios (KtFailOpen's words): try? and try! (a failure turned into
+# nil, or into a trap with no wipe; getOrNull's and !!'s Swift forms), Result(catching: and a
+# Result { } built from a closure (runCatching's), flatMapError (recover's), Combine's .catch,
+# .tryCatch, .replaceError and .assertNoFailure; the catch-alls no catch shows (M5-58's Swift
+# forms): NSSetUncaughtExceptionHandler and NSGetUncaughtExceptionHandler, and a signal( or
+# sigaction( handler; and a task whose failure waits where nobody need read it (M5-60's): Task { },
+# Task( and Task< (an unstructured task, whose thrown error is dropped unless its value is
+# awaited), Task.detached, withThrowingTaskGroup, withThrowingDiscardingTaskGroup and async let.
+# Task.sleep, Task.isCancelled and Task.checkCancellation pass, and so does SwiftUI's .task { }.
+swfailopen() {
+  grep -n -a -E \
+    -e "${L}try[[:space:]]*[?!]" \
+    -e "${L}Result[[:space:]]*([(][[:space:]]*catching|[{])" \
+    -e "${L}flatMapError$R" \
+    -e "[.][[:space:]]*(catch|tryCatch|replaceError|assertNoFailure)$R" \
+    -e 'NSSetUncaughtExceptionHandler|NSGetUncaughtExceptionHandler' \
+    -e "${L}(signal|sigaction)[[:space:]]*[(]" \
+    -e "${L}Task[[:space:]]*([{(<]|[.][[:space:]]*detached$R)" \
+    -e "${L}with(Throwing|ThrowingDiscarding)TaskGroup$R" \
+    -e "${L}async[[:space:]]+let$R" \
+    -- "$1"
+}
+
+# SwFailOpen, every file under mobile/ios (KtFailOpen's catch list): every catch clause whose block
+# does not end in the halt. Read fail closed without a parser, as kt_finally reads a finally: from
+# the word catch (Swift's, and Objective-C's @catch; Combine's .catch is swfailopen's), past its
+# pattern and where clause to its {, and on to the } that brings the count of braces back, the
+# block's last statement (after its last line break or ;, blanks aside) must be a call of
+# Ceremony.halt( closed on that line, or a throw (a rethrow), with no brace in it. A catch whose
+# line holds a quote, a backtick, a # or a comment before it, or that an open /* comment holds,
+# hits (a catch in prose or a string is a catch too); so does a quote, a backtick, a # or a comment
+# (// or /*) in its pattern or its block, or a } or ; before its {, where a brace could be text the
+# count must not see, and a file that ends before the block does: the clause is read no further.
+# Each hit is the catch's line. FILE is read through kt_text. Unlike KtFailOpen's, the allowance
+# is the block's end, not the caught type (Swift's catch has no type in its header to require), and
+# there is no test scope (XCTest's XCTAssertThrowsError needs no catch); Swift's defer cannot
+# return, break or throw (the compiler refuses), so kt_finally has no Swift form.
+sw_catch() {
+  grep -q -a -E -e "${L}catch$R" -- "$1"
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  ktext=$(kt_text "$1") || return 2
+  printf '%s\n' "$ktext" | awk '
+    function count(s, t,    n, p) {
+      n = 0
+      while ((p = index(s, t)) > 0) {
+        n++
+        s = substr(s, p + length(t))
+      }
+      return n
+    }
+    # unreadable(c, two): a character the reading cannot see past (a quote, a backtick, a # or a
+    # comment).
+    function unreadable(c, two) {
+      return c == "\"" || c == "`" || c == "#" || two == "//" || two == "/*"
+    }
+    # clause(ln, p): judges the catch whose word ends before column p of line ln; sets eln and ep to
+    # where the reading stopped, and returns 1 for a hit.
+    function clause(ln, p,    s, c, two, depth, body, n, k, seg, last) {
+      s = L[ln]
+      # The pattern and where clause, to the block.
+      while (1) {
+        if (p > length(s)) {
+          if (ln == NR) {
+            eln = ln
+            ep = p
+            return 1
+          }
+          ln++
+          s = L[ln]
+          p = 1
+          continue
+        }
+        c = substr(s, p, 1)
+        two = substr(s, p, 2)
+        if (unreadable(c, two) || c == "}" || c == ";") {
+          eln = ln
+          ep = p + 1
+          return 1
+        }
+        p++
+        if (c == "{") break
+      }
+      depth = 1
+      body = ""
+      while (1) {
+        if (p > length(s)) {
+          if (ln == NR) {
+            eln = ln
+            ep = p
+            return 1
+          }
+          ln++
+          s = L[ln]
+          p = 1
+          body = body "\n"
+          continue
+        }
+        c = substr(s, p, 1)
+        two = substr(s, p, 2)
+        if (unreadable(c, two)) {
+          eln = ln
+          ep = p + 1
+          return 1
+        }
+        p++
+        if (c == "{") depth++
+        if (c == "}" && --depth == 0) break
+        body = body c
+      }
+      eln = ln
+      ep = p
+      gsub(/;/, "\n", body)
+      n = split(body, seg, "\n")
+      last = ""
+      for (k = n; k >= 1; k--) {
+        last = seg[k]
+        gsub(/^[ \t\r\f]+|[ \t\r\f]+$/, "", last)
+        if (last != "") break
+      }
+      if (last ~ /[{}]/) return 1
+      if (last ~ /^Ceremony[ \t]*[.][ \t]*halt[ \t]*[(].*[)]$/) return 0
+      if (last ~ /^throw[ \t]/) return 0
+      return 1
+    }
+    { L[NR] = $0 }
+    END {
+      cmt = 0
+      ln = 1
+      p = 1
+      while (ln <= NR) {
+        s = L[ln]
+        rest = substr(s, p)
+        if (!match(rest, /(^|[^A-Za-z0-9_.])catch([^A-Za-z0-9_]|$)/)) {
+          cmt += count(rest, "/*") - count(rest, "*/")
+          if (cmt < 0) cmt = 0
+          ln++
+          p = 1
+          continue
+        }
+        at = p + RSTART - 1
+        if (substr(s, at, 5) != "catch") at++
+        before = substr(s, p, at - p)
+        cmt += count(before, "/*") - count(before, "*/")
+        if (cmt < 0) cmt = 0
+        pre = substr(s, 1, at - 1)
+        if (cmt > 0 || pre ~ /["`#]/ || index(pre, "//") || index(pre, "/*")) {
+          hit[ln] = 1
+          p = at + 5
+          continue
+        }
+        if (clause(ln, at + 5)) hit[ln] = 1
+        ln = eln
+        p = ep
+      }
+      for (k = 1; k <= NR; k++) {
+        if (k in hit) {
+          print k ":" L[k]
+          found = 1
+        }
+      }
+      exit !found
+    }'
+}
+
+# SwFailOpen, outside mobile/ios/KeepCrypt/Ceremony.swift: a declaration of a type, an extension or a
+# typealias named Ceremony, and a func halt, so no other code stands behind the halt the catch rule
+# allows (KtFailOpen's alias rule's Swift form). In Ceremony.swift (sw_halt_decl): every func halt
+# declared on a line without -> Never, so the halt cannot return.
+sw_ceremony_decl() {
+  grep -n -a -E \
+    -e "${L}(class|struct|enum|actor|protocol|extension|typealias)[[:space:]]+Ceremony$R" \
+    -e "${L}func[[:space:]]+halt$R" \
+    -- "$1"
+}
+sw_halt_decl() {
+  t=$(grep -n -a -E -e "${L}func[[:space:]]+halt$R" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "${L}func[[:space:]]+halt$R" -e '/->[[:space:]]*Never([^A-Za-z0-9_]|$)/s/func/fn/g'
+}
+
+# SwOpenURL (rule 9: no link out of the app; KtIntent's Swift form; lead decision M6-6), under
+# mobile/ios: any .open( call (UIApplication.shared.open( and every other), openURL (SwiftUI's
+# environment action), canOpenURL, OpenURLAction, SwiftUI's Link(, the settings URLs
+# (openSettingsURLString, openNotificationSettingsURLString), Safari and web sign-in views
+# (SafariServices, SFSafariViewController, ASWebAuthenticationSession) and
+# UIDocumentInteractionController (another app opens the file), in every file but
+# mobile/ios/KeepCrypt/OpenSettings.swift (sw_open). There (sw_open_settings) the one call allowed is
+# UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!, its argument the
+# settings URL itself (blanks around each part aside; options and a completion may follow), the
+# camera prompt's "Open Settings"; with that shape taken out, every other line naming one of those
+# names, the word URL or NSURL, URLComponents, an .init(string:, .init(fileURLWithPath: or
+# .init(filePath:, or a string literal that starts with a scheme and its : (a URL literal: "https:,
+# "app-settings:, "tel:; "Note: also hits), is a hit, so no other URL is built, taken as a
+# parameter or opened there.
+sw_open_ere="[.][[:space:]]*open[[:space:]]*[(]|${L}(openURL|canOpenURL|OpenURLAction)$R|${L}Link[[:space:]]*[(]|open[A-Za-z]*SettingsURLString|SafariServices|SFSafariViewController|ASWebAuthenticationSession|UIDocumentInteractionController"
+sw_open() {
+  grep -n -a -E -e "$sw_open_ere" -- "$1"
+}
+sw_open_settings_ere="$sw_open_ere|${L}(NS)?URL$R|URLComponents|[.][[:space:]]*init[[:space:]]*[(][[:space:]]*(string|fileURLWithPath|filePath)[[:space:]]*:|\"[A-Za-z][A-Za-z0-9+.-]*:"
+sw_open_settings() {
+  t=$(grep -n -a -E -e "$sw_open_settings_ere" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "$sw_open_settings_ere" \
+    -e 's/UIApplication[[:space:]]*[.][[:space:]]*shared[[:space:]]*[.][[:space:]]*open[[:space:]]*[(][[:space:]]*URL[[:space:]]*[(][[:space:]]*string[[:space:]]*:[[:space:]]*UIApplication[[:space:]]*[.][[:space:]]*openSettingsURLString[[:space:]]*[)][[:space:]]*!//g'
+}
+
 # --- FFI (tasks/todo.md, M5 groups 3 and 7; Q53; Q66's keepcrypt-guard and, after Q73, M5-32: the
 # guard and the JNI boundary; M6 item B4: keepcrypt-capi, the second boundary), .rs files under ffi/ -
 
@@ -4200,8 +4446,8 @@ EOF
       *) report KtTestChannel kt_test_channel "$rel" ;;
     esac
     # Swift and the iPhone (tasks/todo.md, M6 item A1): every scanned file under mobile/ios/ gets every
-    # rule but where one of the four allowed files ($sw_offline, $sw_secure, $sw_picker and
-    # $sw_modulemap, one path each) is named; the path rules (SwPackage's package files and module
+    # rule but where one of the allowed files ($sw_offline, $sw_secure, $sw_picker, $sw_modulemap,
+    # $sw_ceremony and $sw_opensettings, one path each) is named; the path rules (SwPackage's package files and module
     # maps) are reported without a line. SwRoot: Swift, Objective-C, a module map and an Xcode
     # project or workspace live under mobile/ios/, the one Xcode root, and nowhere else.
     case $rel in
@@ -4246,6 +4492,16 @@ EOF
           *.swift) ;;
           *.pbxproj) report SwTestHook sw_hooks_pbxproj "$rel" ;;
           *) report SwTestHook sw_hooks "$rel" ;;
+        esac
+        report SwFailOpen swfailopen "$rel"
+        report SwFailOpen sw_catch "$rel"
+        case $rel in
+          "$sw_ceremony") report SwFailOpen sw_halt_decl "$rel" ;;
+          *) report SwFailOpen sw_ceremony_decl "$rel" ;;
+        esac
+        case $rel in
+          "$sw_opensettings") report SwOpenURL sw_open_settings "$rel" ;;
+          *) report SwOpenURL sw_open "$rel" ;;
         esac
         ;;
       *.[Ss][Ww][Ii][Ff][Tt] | *.[Mm] | *.[Mm][Mm] | *.[Mm][Oo][Dd][Uu][Ll][Ee][Mm][Aa][Pp] | \
@@ -4534,7 +4790,7 @@ expect() {
       alsook=no
     fi
   fi
-  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell|Device|Build|KtLog|KtFailOpen|KtWindow|KtInput|KtStorage|KtIntent|KtDevice|KtSdk|KtBinary|KtManifest|KtTestChannel|KtSourceSet|KtIos|KtRoot|KtCinterop|FFI|SwLog|SwStorage|SwInput|SwPackage|SwTestHook|SwRoot): '
+  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell|Device|Build|KtLog|KtFailOpen|KtWindow|KtInput|KtStorage|KtIntent|KtDevice|KtSdk|KtBinary|KtManifest|KtTestChannel|KtSourceSet|KtIos|KtRoot|KtCinterop|FFI|SwLog|SwStorage|SwInput|SwPackage|SwTestHook|SwRoot|SwFailOpen|SwOpenURL): '
   hit=$(printf '%s\n' "$out" | grep -E "$cats")
   count=$(printf '%s\n' "$out" | grep -c -E "$cats")
   ok=no
@@ -4646,6 +4902,8 @@ selftest() {
       swpackage-*) want=SwPackage ;;
       swtesthook-*) want=SwTestHook ;;
       swroot-*) want=SwRoot ;;
+      swfailopen-*) want=SwFailOpen ;;
+      swopenurl-*) want=SwOpenURL ;;
       clean-*) want=clean ;;
       *) fail=$((fail + 1)); printf 'FAIL %s: unknown prefix\n' "$name"; continue ;;
     esac
@@ -5652,7 +5910,7 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   atline=
   for want in RNG Network Clipboard Rule1 FailOpen Include Shell Device Build KtLog KtFailOpen KtWindow KtInput KtStorage \
     KtIntent KtDevice KtSdk KtBinary KtManifest KtTestChannel KtSourceSet KtIos KtRoot KtCinterop FFI SwLog SwStorage SwInput \
-    SwPackage SwTestHook SwRoot clean; do
+    SwPackage SwTestHook SwRoot SwFailOpen SwOpenURL clean; do
     case "$seen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want fixture" ;; esac
   done
   # The shard option (M5-63): a shard past the last, a malformed value, a missing one, a further

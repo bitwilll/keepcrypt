@@ -113,7 +113,9 @@ tools='awk basename cmp dirname find git grep mktemp od rm rustc sed sort tr'
 # layer, whose isSecureTextEntry takes sw_secure_entry there and whose UITextField runs the scan's
 # second grep after the loop, the module map, and the project file, whose KC_TEST_HOOKS takes
 # sw_hooks_pbxproj to kt_text and its awk; and a file outside the offline check naming an NW type,
-# which takes sw_nw to kept_hits.
+# which takes sw_nw to kept_hits. A2's: the halt file and the settings file, whose func halt and
+# open call take sw_halt_decl and sw_open_settings to kept_hits, and a file with a catch, which
+# takes sw_catch to kt_text and its awk.
 fixtures='clean-kt-shipping-allowed/mobile/android/secure-ui/src/main/kotlin/com/keepcrypt/entropy/secure/SecureActivity.kt
 clean-kt-shipping-allowed/mobile/android/app/src/main/kotlin/com/keepcrypt/app/MainActivity.kt
 clean-kt-shipping-allowed/mobile/android/app/src/main/kotlin/com/keepcrypt/app/Screens.kt
@@ -148,7 +150,10 @@ clean-sw-allowed/mobile/ios/KeepCrypt/OfflineCheck.swift
 clean-sw-allowed/mobile/ios/KeepCrypt/SecureLayer.swift
 clean-sw-allowed/mobile/ios/KeepCryptCore/module.modulemap
 clean-sw-allowed/mobile/ios/KeepCrypt.xcodeproj/project.pbxproj
-network-ios-nwparameters-outside-offline-check/mobile/ios/KeepCrypt/Transport.swift'
+network-ios-nwparameters-outside-offline-check/mobile/ios/KeepCrypt/Transport.swift
+clean-sw-allowed/mobile/ios/KeepCrypt/Ceremony.swift
+clean-sw-allowed/mobile/ios/KeepCrypt/OpenSettings.swift
+clean-sw-allowed/mobile/ios/KeepCrypt/Core.swift'
 # The workflow fixtures' files in the workflows directory, FIXTURE/FILE, found as the tree's were
 # (2026-10-28): the one whose lenient dependency verification is a bootstrap hit that kept_hits
 # reads too, so kt_bootstrap runs its sed and its sort.

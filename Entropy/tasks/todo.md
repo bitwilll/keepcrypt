@@ -18556,10 +18556,28 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   `scripts/canaries.sh` "all 102 checks ran", 0 FAIL (new: ios-swift-rules, eleven hits, the three allowed files
   clean); `cargo fmt --all --check` clean.
 
-- [ ] A2. SwFailOpen and SwOpenURL (M6-6): `try?` and `try!` are hits under mobile/ios; a `catch` block that does not
+- [x] A2. SwFailOpen and SwOpenURL (M6-6): `try?` and `try!` are hits under mobile/ios; a `catch` block that does not
   end in the halt call (the CeremonyModel's halt, named in C3) is a hit, as KtFailOpen's catch list; `open(`,
   `openURL`, `UIApplication.shared.open` and SwiftUI's `Link(` are hits except `UIApplication.openSettingsURLString`
   opened from `mobile/ios/KeepCrypt/OpenSettings.swift`. Hit and clean fixtures; selftest, fault check, canaries.
+  As built (the gate's header, SwFailOpen and SwOpenURL): the halt is `Ceremony.halt(`, a static func returning
+  `Never` that C3 defines in `mobile/ios/KeepCrypt/Ceremony.swift`; a catch (Objective-C's @catch too) passes only
+  when its block's last statement is that call, closed on its line with a case argument (no string), or a `throw`.
+  A type, extension or typealias named Ceremony, or a `func halt`, outside that file is a hit, and there a `func halt`
+  without `-> Never`. Also KtFailOpen's other Swift forms: `Result(catching:`, `Result { }`, `flatMapError`,
+  Combine's `.catch`/`.replaceError`, `NSSetUncaughtExceptionHandler`, `signal(`/`sigaction(`, and unstructured
+  tasks (`Task { }`, `Task.detached`, throwing task groups, `async let`; `Task.sleep` and `.task { }` pass). No test
+  scope (XCTest needs no catch). In `OpenSettings.swift` the one call allowed is
+  `UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!` (options and a completion may
+  follow); the word `URL`, any other URL construction or a scheme-like string literal there is a hit; callers use
+  `OpenSettings.show()`, since any `.open(` elsewhere is a hit.
+  Proof (local, 2026-11-17, long runs on a scratch copy): 52 new hit fixtures (35 SwFailOpen, 17 SwOpenURL), each
+  exactly one hit, and clean-sw-allowed's Ceremony.swift, OpenSettings.swift and Core.swift (catches ending in the
+  halt and a rethrow) with clean-sw-near-misses' FailOpenNearMisses.swift clean; clean-near-misses' Backup.swift no
+  longer names the settings URL; `scripts/banned-api-check.sh` "clean, 427 files scanned"; `--workflows` clean;
+  `--selftest` "1934 passed, 0 failed"; `sh scripts/banned-api-faults.sh` "699 runs (3 ways): 699 passed, 0 failed"
+  (scan: 179 places at 141 lines); `scripts/canaries.sh` "all 102 checks ran" (ios-swift-rules now fourteen hits,
+  five allowed files clean); `cargo fmt --all --check` clean.
 
 ### Stage C: the app shell and its CI (M6 commits C1-C5, after Stage A)
 - [ ] C1. `scripts/ios-rust.sh FLAVOUR` (shipping or withTestRegistry): plain `cargo build --release --locked` of

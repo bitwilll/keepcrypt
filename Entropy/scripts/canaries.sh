@@ -1647,16 +1647,17 @@ fi
 # committed: one planted line per rule in a Swift file of the copy's mobile/ios (a random UUID, an
 # import of Network outside the offline check, a paste control, a print, the defaults store, a
 # file write outside the document picker, a SwiftUI text field and a UITextField outside the secure
-# layer), a Package.swift and a settings file defining KC_TEST_HOOKS there, and a Swift file
-# outside mobile/ios must fail scripts/banned-api-check.sh with exactly these eleven hits, while
-# the three allowed files, planted with what each may hold (the offline check's import and
-# monitor, the secure layer's field with isSecureTextEntry = true, the document picker's write),
-# pass. So a dropped rule, a widened allowance or a scope that stops reaching mobile/ios turns CI
+# layer, and from A2 a try?, a URL opened and a catch that does not halt), a Package.swift and a
+# settings file defining KC_TEST_HOOKS there, and a Swift file outside mobile/ios must fail
+# scripts/banned-api-check.sh with exactly these fourteen hits, while the five allowed files,
+# planted with what each may hold (the offline check's import and monitor, the secure layer's
+# field with isSecureTextEntry = true, the document picker's write in a catch that halts, the
+# halt returning Never, the settings page opened), pass. So a dropped rule, a widened allowance or a scope that stops reaching mobile/ios turns CI
 # red. Each planted file has a name the real tree does not use, and unplant removes it.
 name=ios-swift-rules
 si=mobile/ios/KeepCrypt
 splanted="$si/KcGateCanary.swift $si/OfflineCheck.swift $si/SecureLayer.swift $si/DocumentPicker.swift
-mobile/ios/Package.swift mobile/ios/Config/KcGateCanary.xcconfig tools/KcGateCanary.swift"
+$si/Ceremony.swift $si/OpenSettings.swift mobile/ios/Package.swift mobile/ios/Config/KcGateCanary.xcconfig tools/KcGateCanary.swift"
 for p in $splanted; do
     mkdir -p "$tmp/${p%/*}" || exit 1
 done
@@ -1669,10 +1670,18 @@ UserDefaults.standard.set(1, forKey: "kc")
 try Data().write(to: kcGateCanaryURL)
 let kcGateCanaryEntry = TextField("kc", text: $kc)
 let kcGateCanaryField = UITextField()
+let kcGateCanaryReply = try? Data()
+UIApplication.shared.open(kcGateCanaryURL)
+do {
+    try kcGateCanaryWork()
+} catch {
+}
 EOF
+printf '%s\n' 'enum Ceremony {' '    static func halt(_ reason: Halt) -> Never { exit(1) }' '}' > "$tmp/$si/Ceremony.swift" || exit 1
+echo 'UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!)' > "$tmp/$si/OpenSettings.swift" || exit 1
 printf '%s\n' 'import Network' 'let monitor = NWPathMonitor()' > "$tmp/$si/OfflineCheck.swift" || exit 1
 printf '%s\n' 'let field = UITextField()' 'field.isSecureTextEntry = true' > "$tmp/$si/SecureLayer.swift" || exit 1
-echo 'try sealed.write(to: url)' > "$tmp/$si/DocumentPicker.swift" || exit 1
+echo 'do { try sealed.write(to: url) } catch { Ceremony.halt(.backup) }' > "$tmp/$si/DocumentPicker.swift" || exit 1
 echo '// swift-tools-version: 5.9' > "$tmp/mobile/ios/Package.swift" || exit 1
 echo 'SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS' > "$tmp/mobile/ios/Config/KcGateCanary.xcconfig" || exit 1
 echo 'let pad = 6' > "$tmp/tools/KcGateCanary.swift" || exit 1
@@ -1688,10 +1697,15 @@ need "SwInput: $si/KcGateCanary.swift:8: "
 need "SwPackage: mobile/ios/Package.swift: "
 need "SwTestHook: mobile/ios/Config/KcGateCanary.xcconfig:1: "
 need "SwRoot: tools/KcGateCanary.swift: "
+need "SwFailOpen: $si/KcGateCanary.swift:9: "
+need "SwOpenURL: $si/KcGateCanary.swift:10: "
+need "SwFailOpen: $si/KcGateCanary.swift:13: "
 never "$si/OfflineCheck.swift"
 never "$si/SecureLayer.swift"
 never "$si/DocumentPicker.swift"
-need "banned-api-check: 11 hit(s) in "
+never "$si/Ceremony.swift"
+never "$si/OpenSettings.swift"
+need "banned-api-check: 14 hit(s) in "
 verdict
 unplant $splanted
 

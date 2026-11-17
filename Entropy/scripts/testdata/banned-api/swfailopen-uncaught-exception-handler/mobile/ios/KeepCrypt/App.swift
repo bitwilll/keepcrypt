@@ -1,0 +1,1 @@
+NSSetUncaughtExceptionHandler { exception in }
