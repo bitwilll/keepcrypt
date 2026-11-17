@@ -19462,6 +19462,9 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   clean on the three shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere, and KC_HOOK_BACKUP in the
   TestHooks app alone; `--selftest-ios-app` 33 passed; the gate clean (505 files), `cargo fmt --all --check`
   clean.
+  Proof (M6 commit D7b, on the final tree, a worktree at D7a): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1013 s in all).
 - [ ] D8. VoiceOver: each screen's title read as it opens, headings, live lines, every QR named by its kind and never its
   data, each Protected pad key reading its letter; reading counts as input for the idle rule (Q80 (b)'s answer on
   Android). iOS has no accessibility-data-sensitive mark, so VoiceOver reads the words as any screen reader would:
