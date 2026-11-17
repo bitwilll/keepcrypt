@@ -87,8 +87,9 @@ jobs:
     # Budget (lead decision M5-30's rule): the measured whole job plus 25%, rounded up. The first green
     # run, 44049143630 at ab3e8ab0, took 826 s on macos-26 and 857 s on macos-15: 857 s x 1.25 is
     # 1071 s, so 18 minutes (tasks/todo.md, M6 item C4). A commit that adds tests re-measures it: M6
-    # item C5 adds a third scheme's build and UI tests, so 30 minutes until its first run is measured.
-    timeout-minutes: 30
+    # item C5 adds a third scheme's build and UI tests: run 44064121639 at b870ecd5 took 578 s on
+    # macos-26 and 874 s on macos-15, so 874 s x 1.25 is 1093 s, 19 minutes.
+    timeout-minutes: 19
     strategy:
       fail-fast: false
       matrix:

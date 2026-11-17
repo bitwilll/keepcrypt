@@ -18766,7 +18766,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   the privacy manifest equal to mobile/ios/expected/, the OS import, no other RNG, no networking, pasteboard or
   denied framework, the markers as each configuration needs) on both legs. The budget: 857 s x 1.25, 18 minutes
   (M5-30), set in this commit.
-- [ ] C5. The capture layers and the offline check, before any Protected screen exists: a cover over the whole scene
+- [x] C5. The capture layers and the offline check, before any Protected screen exists: a cover over the whole scene
   while `isSceneCaptured` (SwiftUI) or `sceneCaptureState` (UIKit) reads active, and while `scenePhase` is not
   `.active` (the app-switcher snapshot); `userDidTakeScreenshotNotification` discarding the session with its
   explanation; Q88's secure-text-field layer for the word views; the offline check, `NWPathMonitor` reporting no
@@ -18897,6 +18897,16 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   legs (the three schemes' unit and UI tests on the simulators, the TestHooks step's marker line, the job's time for
   the budget).
 
+  Proof (CI, the lead's, 2026-11-17: Entropy iPhone 44064121639 at b870ecd5, both legs green, macos-26 578 s and
+  macos-15 874 s; Entropy CI green): on both simulators (iOS 26.5, 18.6) and in every scheme, CaptureLayerTests,
+  CeremonyModelTests, CoreTests and WireTests pass (18 unit tests a scheme), and the TestHooks scheme's UI tests pass:
+  CaptureUITests testTheCaptureCoverReplacesTheSceneWhileCaptured, testThePrivacyCoverReplacesTheSceneWhileInactive,
+  testAScreenshotDiscardsTheSessionAndSaysWhy, OfflineUITests testStartOnlyOfflineAndGoingOnlineBringsGoOfflineBack,
+  and StartUpUITests; the hook panel's KC_TEST_HOOKS_DO_NOT_SHIP found in the TestHooks app, and `--ios-app` clean on
+  the Shipping simulator and device apps and the WithTestRegistry app (no other marker), so the marker never ships.
+  The capture state did not read active on either runner with nothing recording. The secure layer hosts its
+  content on both iOS versions in CaptureLayerTests; whether it hides that content from a screenshot is I1's (Q88).
+  The job's budget: 874 s x 1.25, 19 minutes (M5-30).
 ### Verification (each maps to a gate item; refined with the plan)
 - [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest
   with the capture hook on both simulators); I1 on the owner's iPhone (a Control Center recording, AirPlay mirroring,
