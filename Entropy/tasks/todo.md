@@ -19188,7 +19188,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   (%{exitcode}) and fails a non-zero one by name before its HTTP code, and retries any error (--retry-all-errors,
   still 3 tries; whatever is kept is still checked against its hash and signature by the review). Local check (curl
   8.7.1): a 200, a 404 and a refused connection report "0 200", "0 404" and, after 3 retries, "7 000".
-- [ ] D4. The collision check: the prompt, Skip's confirm, the seal card and its check QR, the scan screen (AVFoundation's
+- [x] D4. The collision check: the prompt, Skip's confirm, the seal card and its check QR, the scan screen (AVFoundation's
   QR reader, the camera asked for only there), the code entry, Match found's and Cannot check's confirms, the
   collision result, its report QR, the result before the words; Load registry snapshot through the document picker
   (`.kcr`, kept in memory only).
@@ -19269,6 +19269,14 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   102 checks ran" (668 s).
   For the lead: CLAUDE.md's Commands still describe the TestHooks configuration as linking shipping's library
   (line 246); the plan's (6) changes that, and CLAUDE.md is not this agent's to edit.
+  CI proof (2026-11-17): Entropy iPhone run 44116499465 at 4fb888dd green: "Executed 108 tests, with 0 failures" in
+  Shipping and WithTestRegistry on macos-15 (Xcode 16.4, iPhone 16 iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17
+  iOS 26.5); in TestHooks, ScanUITests testAGoAheadQrFromTheTestRegistryRevealsItsResult passed on both (77 s and
+  74 s: the dice-50-words12 seed rolled on the pad, the collision-dice-50 go-ahead text through the camera's path, the
+  collision result); the jobs took 1365 s and 1272 s, inside the 29-minute budget (1365 s x 1.25 = 1706 s, still 29).
+  Entropy CI 44116499411 (14 jobs), Entropy Android 44116500229 (the dependency review passed: 924 artifacts; the
+  earlier 429 was transient, its rerun at e30192c2 passed the review too) and Entropy Pi image green. Lead decisions
+  M6-7 to M6-9 record D4's choices for the gate.
 - [ ] D5. The words: the privacy gate ("I'm alone, show words"), insert view (the word, its SeedBook number, five braille
   faces, blank faces and mirror pairs flagged) drawn inside SecureLayer, the overview, the device swap, the read-back
   entry, its mismatch and its end, the wallet summary.
