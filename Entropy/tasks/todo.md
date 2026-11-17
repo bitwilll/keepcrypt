@@ -18283,6 +18283,8 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
 - MA:34 "One shared `CeremonyModel` owns the FFI session." -> "One `CeremonyModel` owns the FFI session (the shared
   Kotlin one on Android, a Swift one on iPhone, held to the same screens by one table)."
 - MA:86 and MA:100 stay until I1 tests the secure layer (Q88).
+- Approved 2026-11-17 (the owner): "approve all as recommended". Landed in M6 commit 1 as listed; `git grep` finds
+  none of the replaced texts outside this file.
 
 ### Plan (provisional, for the recommended answers; refined into items once Q86-Q92 are answered)
 - **Stage A, docs and rules:** Q92's edits; CLAUDE.md rule 9's iOS sentence checked against the choice; the gate's
