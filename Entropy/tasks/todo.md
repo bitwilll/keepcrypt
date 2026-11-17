@@ -14139,12 +14139,13 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   through DocumentsUI ... read back and verified (Backup verified)", then "age-check: pass (1.1.1): age -d through
   the pty decrypted the backup (946 bytes) ... and refused a wrong passphrase"; Check a backup through the picker.
   P2 (the owner's, 2026-11-17, Galaxy S25): "Backup verified" on the phone, "P2 done, all passed".
-- [ ] **Gate: snapshot import works.** The test-registry APK loads `with-dice-50` through the picker with its Stale
+- [x] **Gate: snapshot import works.** The test-registry APK loads `with-dice-50` through the picker with its Stale
   warning and it stops `dice-50-words12` (emulator and P4); the shipping APK refuses it.
   Proof: run ID, P4.
   Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: both registry jobs' snapshot drill, "with-dice-50 picked from Downloads through DocumentsUI
   and loaded (No. 4, dated 2026-03-01, 7 entries, the Stale warning)", dice-50-words12's check stopped; the shipping
-  app "refused: This build trusts no registry key yet ...; nothing loaded". Unticked until P4.
+  app "refused: This build trusts no registry key yet ...; nothing loaded". P4 (the owner's, 2026-11-17, Galaxy
+  S25): with-dice-50 loaded with its Stale warning and it stopped dice-50-words12, "P4 done, all passed, matched".
 - [x] **Gate: Sparrow watch-only import works.** P3: Sparrow 2.5.5 imports the account QR from the phone and its first
   receive address matches the wallet summary; Bitcoin Core 31.1 imports the descriptor with the same address (swb:235).
   CI: the drawn matrices decode to core's QR text.
@@ -14153,20 +14154,22 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   required by the JVM test results step) reads every matrix back: the account UR's fingerprint equals the summary's
   and the descriptor's structure holds. The phone step is P2's (M5-70 (e) moved the export there): "P2 done, all
   passed, matched" (2026-11-17), Sparrow's and Bitcoin Core's first addresses equal to the wallet summary's.
-- [ ] **Gate: a go-ahead QR from the test registry reveals the words.** P4's camera scan of `clear-empty-bucket` reveals
+- [x] **Gate: a go-ahead QR from the test registry reveals the words.** P4's camera scan of `clear-empty-bucket` reveals
   `dice-99-words12`'s words after the Stale warning, with the Seal ID checked first; CI feeds the same UR through the
   decoder (canned YUV frames) and `onGoAheadText`.
   Proof: P0b and P4, run ID.
   Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: "the scanned clear-empty-bucket QR: dice-99-words12's check passed (9FHYMCQA, as of
-  2026-03-01), 0 entries in this seal's bucket, the Stale warning, the words available" on API 34 and 36. Unticked
-  until P0b and P4.
-- [ ] **Gate: a Stop wipes them.** `collision-dice-50`'s QR and the `with-dice-50` snapshot each end in the collision
+  2026-03-01), 0 entries in this seal's bucket, the Stale warning, the words available" on API 34 and 36. P0b (bf132744's
+  APK) and P4 (62396383's) on the owner's S25, 2026-11-17: the camera scan of clear-empty-bucket revealed
+  dice-99-words12's words after the Stale warning, the Seal ID checked first.
+- [x] **Gate: a Stop wipes them.** `collision-dice-50`'s QR and the `with-dice-50` snapshot each end in the collision
   result ("Collision found. This seed is not unique and has been destroyed.", M5-55) with no words page, the
   collision-report QR and a restart at 99 (`ffi_drill_12`, emulator, P4).
   Proof: test names, run ID, P4.
   Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: `ffi_drill_12` ok; "the scanned collision-dice-50 QR: the collision before any words, 1 entry
   in this seal's bucket, the Stale warning and its Seal ID YVM9CPP3; the report behind the gate; Add fresh entropy: 0
-  / 99" and the snapshot drill's collision, on API 34 and 36. Unticked until P4.
+  / 99" and the snapshot drill's collision, on API 34 and 36. P4 on the owner's S25 (2026-11-17): the snapshot and the
+  scanned collision QR each ended in the collision, no words, 0 / 99.
 - [x] **Boot path and native libraries:** the ARM and 16 KB leg green; which ABIs ran (natively or translated) recorded;
   any ABI CI could not run named in the gate report.
   Proof: run ID; the Review line.
@@ -14361,18 +14364,18 @@ bb7500efb3790bf4f26001d35910ea12072823730d02bc34f6fde0fd29dd1806  with-dice-50.k
 throwaway key (certificate SHA-256 1f2454eaef9237039b716ba143dcd2732ff7530169ffb6b71d46d9bca1dcfd3c), so install the
 shipping APK and the test-registry APK one at a time, as P4 says. The offline verifier: `tools/verify/verify.py` at
 62396383, SHA-256 0ba842e2b139e4d6971d19a5f7c7f906cca81e8d29c765cf0fe67010c1850645.
-- [ ] An Android 14+ phone (Q56; Q84), charged. The M4 computer with Sparrow 2.5.5, Bitcoin Core 31.1 and the C920, and
+- [x] An Android 14+ phone (Q56; Q84), charged. The M4 computer with Sparrow 2.5.5, Bitcoin Core 31.1 and the C920, and
   an offline computer with Python 3.9+ and verify.py from the final head's commit (the lead gives its SHA-256). Paper
   and pen.
-- [ ] From the Android run the lead names: download both APKs and the P4 files; each `shasum -a 256` equals the run's
+- [x] From the Android run the lead names: download both APKs and the P4 files; each `shasum -a 256` equals the run's
   log; copy `with-dice-50.kcr` to the phone's Downloads; install the shipping APK (allow "Install unknown apps" for your
   file manager only while installing).
 
   Proof, in part (the lead's, 2026-11-17, at the owner's request): `gh run download 43950082932 -n android-apks` into
   the owner's `Entropy-Keep Crypt/p0-62396383/`; `shasum -a 256 -c` passes all 7 files against the artifact's
   SHA256SUMS and against the values above from the build job's log; apksigner: both APKs signed by certificate
-  1f2454ea...; aapt2: com.keepcrypt.entropy and com.keepcrypt.entropy.testregistry. Copying with-dice-50.kcr to the
-  phone and the install are the owner's (unticked until P1's report).
+  1f2454ea...; aapt2: com.keepcrypt.entropy and com.keepcrypt.entropy.testregistry. The copy of with-dice-50.kcr and
+  both installs were the owner's: P1-P4 ran on them (2026-11-17).
 **P0b. Scanner smoke test (early, from commit 18's run; about 10 minutes)**
 Issued 2026-10-22 from run 39744137391 at 1a63e0f: artifact android-apks (kept until 2026-11-05), the test-registry APK
 SHA-256 8983977bd0fb4fb6ac125cfc3bc99112ea9451b4f47f715386113471dea5a328, goahead-collision-dice-50.png
@@ -14445,17 +14448,23 @@ SHA-256 8983977bd0fb4fb6ac125cfc3bc99112ea9451b4f47f715386113471dea5a328, goahea
 **P4. The test registry** (a loaded snapshot or a pending 99-roll minimum lasts until the app's process ends). At every
 check, compare the Seal ID with the lead's value from `p4-seal-ids.txt`: on the seal card before a scan, or on the
 result screen when a loaded snapshot answers; if it differs, it was a typing slip: start again.
-- [ ] Uninstall the shipping APK; install the test-registry APK; airplane mode on, Wi-Fi off. Dice-only, 12 words, the 99
+- [x] Uninstall the shipping APK; install the test-registry APK; airplane mode on, Wi-Fi off. Dice-only, 12 words, the 99
   rolls `654321` repeated; Check now; Seal ID check; Scan go-ahead QR; scan `goahead-clear-empty-bucket.png` on the
   computer screen: Stale warning, then the words, which match kcr.json's `dice-99-words12`. Leave the app from that
   words page; on return the session is gone.
-- [ ] Load `with-dice-50.kcr` (number, date, count and the Stale warning shown). Dice-only, 12 words, 50 rolls `123456`
+- [x] Load `with-dice-50.kcr` (number, date, count and the Stale warning shown). Dice-only, 12 words, 50 rolls `123456`
   repeated; Check now: the check runs on its own, "Collision found. This seed is not unique and has been destroyed."
   with no words; Seal ID check on that screen; the collision-report QR, "Add fresh entropy" shows 0 / 99.
-- [ ] Force-stop the app and open it again. The same 50 rolls; Check now; Seal ID check; Scan go-ahead QR; scan
+- [x] Force-stop the app and open it again. The same 50 rolls; Check now; Seal ID check; Scan go-ahead QR; scan
   `goahead-collision-dice-50.png`: "Collision found. This seed is not unique and has been destroyed.", no words;
   after the report, "Add fresh entropy" shows 0 / 99.
-- [ ] Uninstall the test-registry APK.
+- [x] Uninstall the test-registry APK.
+  Proof (the owner's report, 2026-11-17): "P4 done, all passed, matched", on the Galaxy S25 with 62396383's
+  test-registry APK (SHA-256 6543671c..., checked in p0-62396383/): every Seal ID equal to p4-seal-ids.txt's
+  (9FHYMCQA, YVM9CPP3; "matched"); the clear-empty-bucket scan gave the Stale warning, then dice-99-words12's words,
+  and the session was gone after leaving its words page; with-dice-50.kcr loaded with its number, date, count and
+  Stale warning, and the check ended in the collision with no words, then 0 / 99; after a force-stop the scanned
+  collision QR did the same; the APK uninstalled.
 
 **P5. Second device (optional for the gate)**
 - [ ] P1 on a phone of the other brand, if you have one.
@@ -20876,8 +20885,12 @@ are under "M4: hardware records" above.
   Galaxy S25 as the test-registry APK of bf132744 (`p0b-bf13274/keepcrypt-testregistry-bf13274.apk.zip`, its APK's
   SHA-256 777dee4c...). The owner's report, 2026-11-17: "P0b done, all passed" (each item ticked under P0b; P4
   repeats the scans on the final APK).
-- **P0-P5**: issued in this commit (the checklist block above) from Entropy Android 43950082932 at 62396383. No
-  report yet.
+- **P0-P5**: issued in commit 23 from Entropy Android 43950082932 at 62396383; the lead downloaded the artifact for the
+  owner and checked every hash, the signer and both package names (33d854d9). The owner's reports, 2026-11-17, all on
+  the Galaxy S25 with those APKs: "P1 done, all passed"; "P2 done, all passed, matched"; "P3 done, all passed,
+  matched"; "P4 done, all passed, matched". Each is recorded under its checklist. Not reported: the S25's Android
+  version, the wallet versions (the checklist names Sparrow 2.5.5 and Bitcoin Core 31.1), whether P1's optional
+  TalkBack item ran, and stopwatch times. P5 (a second brand) is optional and was not run.
 
 ### M5: local proof (2026-11-17, at 3a3cecce)
 Apple M4 Max, macOS 27.2.1, toolchain 1.98.1 (rust-toolchain.toml), cargo-llvm-cov 0.9.1, python3 3.12.5 and
@@ -21046,35 +21059,36 @@ end in M9), "CI" and "Definition of done", each with its "Proof (M5 Review, 2026
 the same form and stays `[ ]`.
 
 **Still unticked**, with what each waits for: 
-- The gate's screenshot, backup round trip, snapshot import, Sparrow import, go-ahead and Stop items, and Matrix
-  "Screen-capture tests", "Full ceremony with offline verification", "Watch-only import" and "Metal read-back drill":
-  the owner's P1-P4 (P5 optional); P0b passed 2026-11-17.
+- P1's optional TalkBack item and P5 (optional): not run or not reported.
 - U3 (the UX audit): its parts are ticked (U3a-U3n); what TalkBack actually reads and speaks waits for P1's optional
   TalkBack item (approved 2026-11-17).
 - Matrix "Reproducible build" (APK): M7.
 - The six named items above, until a run shows their cause or the owner accepts them.
 
-### M5 gate status: NOT MET (2026-11-17): CI's part complete, waiting for the owner's phone sessions
+### M5 gate status: MET (2026-11-17), waiting for the owner's approval
 The gate in docs/build-plan.md:299: "Screenshot and recording tests come back blank; merged manifest has no INTERNET
 permission; backup round trip passes; snapshot import and Sparrow watch-only import work; a go-ahead QR from the test
-registry reveals the words and a Stop wipes them".
-- Screenshot and recording tests come back blank: met. CI on API 34 and 36 for both APKs (run 43950082932); P1 on
-  the owner's Galaxy S25, "P1 done, all passed" (2026-11-17).
-- Merged manifest has no INTERNET permission: met (run 43950082932's `--apk`, the canary refused, `dumpsys package`
-  on every emulator job).
-- Backup round trip passes: met. CI (`ffi_backup_round_trip`, BackupTest's save, "Backup verified", age -d through
-  the pty, Check a backup); P2 on the owner's S25, "Backup verified" (2026-11-17).
-- Snapshot import works: CI's part met (the drill's load through DocumentsUI, the Stale warning, the shipping APK's
-  refusal); P4 is owed.
-- Sparrow watch-only import works: met. P2's watch-only step on the owner's S25, "matched" in Sparrow and Bitcoin
-  Core (2026-11-17); CI reads the drawn matrices back (QrRoundTripTest).
-- A go-ahead QR from the test registry reveals the words: CI's part met (the scanned clear-empty-bucket QR through
-  the decoder); P0b passed on the owner's S25 (2026-11-17, bf132744's APK); P4's scans on the final APK are owed.
-- A Stop wipes them: CI's part met (`ffi_drill_12`, the scanned collision QR and the snapshot's collision, no words, 0
-  / 99); P4 is owed.
+registry reveals the words and a Stop wipes them". Each part on CI (Entropy Android 43950082932, Entropy CI
+43950083336, both at 62396383, every job green) and on the owner's Galaxy S25 with that run's APKs:
+- Screenshot and recording tests come back blank: met. CI on API 34 and 36 for both APKs; P1, "P1 done, all passed".
+- Merged manifest has no INTERNET permission: met. `--apk` on both APKs equal to the expected summaries, the canary
+  APK refused, `dumpsys package` "no INTERNET" on every emulator job.
+- Backup round trip passes: met. `ffi_backup_round_trip`; BackupTest's save through DocumentsUI, "Backup verified",
+  age -d 1.1.1 through the pty; P2's "Backup verified" and P3's "Backup OK" with the same fingerprint and Seal ID.
+- Snapshot import works: met. The emulator drill and P4 loaded with-dice-50 with its Stale warning and it stopped
+  dice-50-words12; the shipping APK refuses it.
+- Sparrow watch-only import works: met. P2's watch-only step, "matched" in Sparrow and Bitcoin Core; QrRoundTripTest
+  reads every drawn matrix back.
+- A go-ahead QR from the test registry reveals the words: met. CI through the decoder; P0b (bf132744's APK) and P4
+  (62396383's) by the S25's camera: dice-99-words12's words after the Stale warning, the Seal ID checked first.
+- A Stop wipes them: met. `ffi_drill_12`; on the emulators and in P4, the snapshot's and the scanned QR's collision,
+  no words, 0 / 99.
 - Deliverables: the Compose Multiplatform screens (:screens) on the Android target, the JNI bridge (keepcrypt-ffi,
-  keepcrypt-guard, keepcrypt-jni), capture protection (:secure-ui, FLAG_SECURE on every window, the capture tests),
-  the backup through the file picker: built, and green at 62396383.
-- Next: the owner runs P0-P4 (P0b passed 2026-11-17) from the block above, and sends back only what P0's preamble
-  allows; the lead records them under "M5: device records", ticks the owed items, and sets this status to MET for
-  the owner's approval. Nothing of M6 starts before that approval.
+  keepcrypt-guard, keepcrypt-jni), capture protection (:secure-ui, FLAG_SECURE on every window), the backup through
+  the file picker: built, and green at 62396383.
+- Also met: P3's verify.py run on the offline computer (Matrix "Full ceremony with offline verification") and P2's
+  deliberate misread (Matrix "Metal read-back drill").
+- Named, not blocking (accepted 2026-11-17 with the Review's nine items): the six open items under "items the gate
+  report names"; armeabi-v7a on no emulator; U3's TalkBack check not reported (P1's optional item).
+- For the owner: approve the M5 gate. On approval the lead records it here, marks PR bitwilll/keepcrypt#9 ready for
+  review and merges it only on the owner's word; nothing of M6 starts before that.
