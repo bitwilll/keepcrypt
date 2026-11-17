@@ -18314,9 +18314,22 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
 - M6-2 (2026-11-17): Stage B (the bridge) runs before Stage A's Swift rules, since no Swift exists before Stage C and
   B's own gate change (capi as the second boundary over the one catch) is the FFI rule's; the Swift rules and their
   fixtures land before the first Swift file (Stage C's first commit needs them green).
+- M6-3 (2026-11-17): B1's planted-panic case is dropped from keepcrypt-capi's tests. The panic path is
+  keepcrypt-guard's alone (its unit test with `PLANTED`); capi reaches the slot only through `guarded`, which the gate's
+  B4a rule ties to every export. The guard is not changed. capi's guard-test-op case stays (the guard's test op is no
+  op of the table outside the guard's own tests).
+- M6-4 (2026-11-17): B5's cross legs, on CI only (no xcrun on the owner's Mac): the two iOS legs build keepcrypt-capi's
+  staticlib in release and in the test-registry configuration (separate target dirs, as the Android legs build jni);
+  a tiny C probe, `ffi/capi/probe/probe.c` (keepcrypt.h's kc_max_out and kc_call of Self test), is linked against each
+  archive with the SDK's clang and `-Wl,-dead_strip`, and each linked probe gets the existing `--artifact` scan (the
+  OS import `_CCRandomGenerateBytes` required, no other RNG symbol, no std random-key path; no marker or test key in
+  the release probe, exactly the registry marker and the test key in the test-registry one). If std's random-key path
+  survives the dead-strip, stop and report; the scan is not relaxed. The exports check on each archive: the defined
+  global unmangled symbols of the workspace's own keepcrypt_* members are exactly `_kc_call` and `_kc_max_out`
+  (secp256k1-sys's four may appear from its own members), with a selftest that a planted extra export fails.
 
 ### Stage B: the bridge (M6 commits 2-4)
-- [ ] B1. `ffi/capi` (`keepcrypt-capi`): `[lib] name = "keepcrypt_capi"`, `crate-type = ["staticlib", "rlib"]`,
+- [x] B1. `ffi/capi` (`keepcrypt-capi`): `[lib] name = "keepcrypt_capi"`, `crate-type = ["staticlib", "rlib"]`,
   dependencies keepcrypt-guard alone (as keepcrypt-jni, M5-35; no new crates.io crate), the workspace's lints and
   clippy.toml as jni's, `[profile.release.package.keepcrypt-capi]` `overflow-checks = true`. `src/lib.rs` exports:
   - `kc_max_out() -> usize`: `MAX_OUT`, the reply bound;
@@ -18347,7 +18360,9 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Open: the planted panic under the guard's test op. keepcrypt-guard's `PLANTED` op is `#[cfg(test)]`, in the guard's
   own unit tests only, so no capi test can reach it, and no other route plants a panic under the catch without a change
   to the guard (M5's old plan had a panic planted under `test-sources`). The guard-test-op case shows that op is no op
-  of the table in this build (halts as internal). For the lead.
+  of the table in this build (halts as internal). For the lead. Decided by M6-3 (2026-11-17): the case is dropped,
+  the guard unchanged, guard-test-op kept; B1 ticked. The registry configuration runs with keepcrypt-ffi,
+  keepcrypt-guard and keepcrypt-jni selected beside keepcrypt-capi (cargo refuses the feature on capi alone).
   Pulled forward from B4 so this tree passes check-path-deps and canaries.sh: check-path-deps pins seven members
   (ffi/capi); canaries.sh's `pinned_seven`, its manifest copies and profile pin grown by ffi/capi, and
   `path-member-capi` (a member in M5) now `path-member-capi-missing` (the copy without ffi/capi fails as a pinned member
