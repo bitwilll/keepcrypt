@@ -14113,14 +14113,14 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   registration end to end, the duplicate-seed drill end to end.
 
 ### Verification
-- [ ] **Gate: screenshot and recording tests come back blank.** Group 6's harness green on API 34 and 36 for both APKs
+- [x] **Gate: screenshot and recording tests come back blank.** Group 6's harness green on API 34 and 36 for both APKs
   (every screen id with its drawn-screen proof; screencap, `UiAutomation`, continuous raw-frame recording, `SECURE` on
   every window; control (a) on both APIs and control (c) on 36; the first frame), and the owner's P1 on a phone.
   Proof: the run ID at the final head; P1's report.
   Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met: both capture jobs green, CaptureTest 2 runs (both APKs) on API 34 and 36, every screen "drawn, then
   screencap and takeScreenshot black over the app's window; SECURE on all 1 of its windows; no content capture", the
   raw-frame recordings black, recents "shows none of the app's content", control (a) on both and control (c) lit then
-  black again. Unticked until P1's report.
+  black again. P1 (the owner's, 2026-11-17, Galaxy S25, the shipping APK of 43950082932): "P1 done, all passed".
 - [x] **Gate: the merged manifest has no INTERNET permission.** `--apk` on both APKs equals the expected summaries
   (exactly `HIDE_OVERLAY_WINDOWS`, `DETECT_SCREEN_RECORDING`, `CAMERA`, plus androidx.core's signature permission if
   the probe kept it; no provider, receiver or service; backup off; not debuggable); the merger-report grep; the canary
@@ -14181,10 +14181,10 @@ Line numbers are those of main at 95c4359 (`git show 95c4359:Entropy/<path>`). O
   imported" for the shipping library and exactly the registry marker and the test key for the test-registry one;
   `--apk` on both APKs: 3 libkeepcrypt.so, each the scanned copy's bytes, and "612 com.keepcrypt classes in 2 dex
   files with no banned RNG reference".
-- [ ] **Matrix "Screen-capture tests"**: every build on CI emulators; a real phone at the gate (P1), as BP:318 and MA:74
+- [x] **Matrix "Screen-capture tests"**: every build on CI emulators; a real phone at the gate (P1), as BP:318 and MA:74
   read after Q55.
   Proof: the Android job's runs on every pushed head; P1.
-  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met (see the first gate item); unticked until P1.
+  Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): CI's part met (see the first gate item); P1 passed on the owner's S25, 2026-11-17.
 - [x] **Matrix "No-network checks"**: the manifest summaries, the KtSdk, KtBinary and network rules, the classpath list.
   Proof: run IDs; selftest counts.
   Proof (M5 Review, 2026-11-17, Entropy Android 43950082932 and Entropy CI 43950083336 at 62396383): the manifest summaries (above); banned-api-check clean over 414 files with its KtSdk, KtBinary and network
@@ -14394,9 +14394,12 @@ SHA-256 8983977bd0fb4fb6ac125cfc3bc99112ea9451b4f47f715386113471dea5a328, goahea
   U3k, U3n's minSdk 34); P4 repeats the camera scans on 62396383's APK.
 
 **P1. Capture (shipping APK)**
-- [ ] On the dice screen, a words page and the backup passphrase: a hardware screenshot is blocked or black; a Quick
+- [x] On the dice screen, a words page and the backup passphrase: a hardware screenshot is blocked or black; a Quick
   Settings screen recording is black on those screens; the recents card shows no content. On Android 15+, with a
   recording running, a words page shows its "hidden while recording" cover.
+  Proof (the owner's report, 2026-11-17): "P1 done, all passed", on the Galaxy S25 with the shipping APK of Entropy
+  Android 43950082932 at 62396383 (SHA-256 2b40a98a..., checked in p0-62396383/); the Android version not yet
+  reported. Whether the optional TalkBack item below was run is not stated, so it stays unticked.
 - [ ] Optional (TalkBack, Q79 and Q80; the owner's approval of 2026-11-17): in a throwaway session (P2's, or one
   started for this and then left), headphones in, TalkBack on. Each screen's title is spoken as it opens. On a
   Protected letter pad (the read-back), touching a key speaks its letter. On a words page left untouched for 30 s the
@@ -21042,8 +21045,8 @@ the same form and stays `[ ]`.
 The gate in docs/build-plan.md:299: "Screenshot and recording tests come back blank; merged manifest has no INTERNET
 permission; backup round trip passes; snapshot import and Sparrow watch-only import work; a go-ahead QR from the test
 registry reveals the words and a Stop wipes them".
-- Screenshot and recording tests come back blank: CI's part met on API 34 and 36 for both APKs (run
-  43950082932); P1 on the phone is owed.
+- Screenshot and recording tests come back blank: met. CI on API 34 and 36 for both APKs (run 43950082932); P1 on
+  the owner's Galaxy S25, "P1 done, all passed" (2026-11-17).
 - Merged manifest has no INTERNET permission: met (run 43950082932's `--apk`, the canary refused, `dumpsys package`
   on every emulator job).
 - Backup round trip passes: CI's part met (`ffi_backup_round_trip`, BackupTest's save, "Backup verified", age -d
