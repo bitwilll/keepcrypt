@@ -18368,9 +18368,23 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   dice-99-words24 (then WATCH_ONLY 818, OPEN_BACKUP 241, CHECK_REQUEST 213), the same in both configurations; `MAX_OUT`
   = 16,384, 11.7 times it. Release 1 passed, test-registry 1 passed; with `MAX_OUT` set to 4,096 the test fails ("the
   longest reply, op 32's, is 1399 bytes: past a quarter of MAX_OUT, 4096"), restored.
-- [ ] B3. `ffi/capi/include/keepcrypt.h`, hand-written: exactly the two prototypes; a test (macOS and Linux hosts)
+- [x] B3. `ffi/capi/include/keepcrypt.h`, hand-written: exactly the two prototypes; a test (macOS and Linux hosts)
   builds the staticlib, reads its defined `kc_*` symbols with `llvm-nm` (the toolchain's) and compares them with the
   header's two names; a planted extra export fails it.
+  Proof (M6 commit B3, partial: local on the Mac, aarch64-apple-darwin; the Linux host at the next push, in the test
+  job, whose toolchain step installs llvm-tools-preview from rust-toolchain.toml): keepcrypt.h holds `size_t
+  kc_max_out(void);` and `int64_t kc_call(uint32_t op, const uint8_t *input, size_t input_len, uint8_t *out, size_t
+  out_cap);` and nothing else outside its comment. ffi/capi/tests/header.rs: `the_header_names_exactly_the_librarys_exports`
+  builds `-p keepcrypt-capi --lib` with the test's own cargo (`env!("CARGO")`), `--locked --offline`, into
+  `CARGO_TARGET_TMPDIR/capi-header` (the workspace's target dir is the running cargo's), reads `llvm-nm --defined-only
+  --extern-only` (the toolchain's, beside `rustc --print target-libdir`, as entropy-ci.yml finds it), strips Mach-O's
+  leading underscore on Apple hosts only, and needs the `kc_` symbols to be exactly the header's two prototypes, each
+  pinned whole (types too); `the_comparison_fails_on_a_planted_export_or_prototype` feeds the comparison a planted
+  `_kc_planted` (Mach-O) and `kc_planted` (ELF, weak), a missing export, a prototype twice, a changed one and a planted
+  one (each refused), and a commented-out prototype (no declaration). `cargo test -p keepcrypt-capi --locked --test
+  header`: 2 passed (21 s with a fresh build dir). The real build with a planted export is B4b's canary
+  capi-header-planted-export. The host library defines 14,671 external symbols, of them exactly `_kc_call` and
+  `_kc_max_out` named `kc_`.
 - [ ] B4. The gate: capi becomes the second boundary. `#[no_mangle]`/`extern "C"` exports only in ffi/jni/src/lib.rs and
   ffi/capi/src/lib.rs; a capi export needs the guard's one catch (as jni's); unsafe only in keepcrypt-jni and
   keepcrypt-capi; JNI names never in capi; the thread ban, Rule1's hashing and FailOpen over ffi/capi/src. Fixtures for
