@@ -18580,11 +18580,23 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   five allowed files clean); `cargo fmt --all --check` clean.
 
 ### Stage C: the app shell and its CI (M6 commits C1-C5, after Stage A)
-- [ ] C1. `scripts/ios-rust.sh FLAVOUR` (shipping or withTestRegistry): plain `cargo build --release --locked` of
+- [x] C1. `scripts/ios-rust.sh FLAVOUR` (shipping or withTestRegistry): plain `cargo build --release --locked` of
   keepcrypt-capi for aarch64-apple-ios and aarch64-apple-ios-sim (the test-registry flavour with
   `-p keepcrypt-core --features keepcrypt-core/test-registry`, its own target dir), copying each `.a` to
   `mobile/ios/build/rust/FLAVOUR/TARGET/` and printing each SHA-256; no Xcode call inside it. `--selftest` on a
   stand-in cargo (as android-rust.sh's). Proof: the selftest count; a local run's hashes.
+  Proof (M6 commit C1, partial: local; CI at C4): `sh scripts/ios-rust.sh --selftest` "12 passed, 0 failed" under the
+  Mac's sh and dash (both flavours with their features and target dirs, both targets in order, IPHONEOS_DEPLOYMENT_TARGET
+  17.0 given to cargo, each copy equal to cargo's archive, a stale file removed; exit 1 for a failing build, a missing
+  archive and a copy with other bytes; exit 2 for a failing or junk shasum, no cargo, Linux x86_64 and macOS x86_64
+  hosts, another flavour, no argument). The test-registry flavour builds into target/capi-test-registry, the cross
+  legs' own dir. Local runs (DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer, Xcode 27.2, for cc's xcrun):
+  shipping aarch64-apple-ios 29,756,384 bytes SHA-256 b50203e3d67d68a81ef62446ca69d5b5508acc731d30e93fd53b50d40b22b7f2,
+  aarch64-apple-ios-sim 29,733,512 bytes cb09409ceeca7f840761112abe5baf8186247c773b459e1cad743391b2f062a1;
+  withTestRegistry aarch64-apple-ios 29,775,104 bytes 9560b3adad43cb7e57bbbeb0aa14612d2fcb86bd5592f996b4753db5747e0cfd,
+  aarch64-apple-ios-sim 29,735,288 bytes 0820b45e80fe52b3cb2e48ea6f8c26d6e6941631c8fb21143adbda230774df08 (each copy
+  the same). The gates job runs the selftest after android-rust.sh's; CLAUDE.md's Commands list the script and its
+  selftest; `--workflows ../.github/workflows` clean.
 - [ ] C2. `mobile/ios/KeepCrypt.xcodeproj`, written by hand: one app target and two test targets (XCTest unit, XCUITest),
   Xcode's synchronized folders (objectVersion 77, Xcode 16 and later), deployment target iOS 17.0, no Swift package,
   no Run Script phase that fetches anything. Two configurations per flavour: `Shipping` (bundle id

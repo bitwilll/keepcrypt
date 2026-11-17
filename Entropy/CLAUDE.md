@@ -235,6 +235,12 @@ sh scripts/capi-exports.sh --selftest   # 10 cases: the archive's exports judged
 # ffi/capi/probe/probe.c linked against each with the SDK's clang and -dead_strip, --artifact T on each linked probe
 # (the test-registry one exactly its registry marker and the test key), and the two archives' exports:
 sh scripts/capi-exports.sh target/T/release/libkeepcrypt_capi.a target/capi-test-registry/T/release/libkeepcrypt_capi.a
+# The iPhone app's Rust library (macOS arm64 with Xcode, DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer on
+# the owner's Mac, whose xcode-select points at the Command Line Tools), for each configuration, copied into
+# mobile/ios/build/rust/FLAVOUR/TARGET/:
+sh scripts/ios-rust.sh shipping
+sh scripts/ios-rust.sh withTestRegistry
+sh scripts/ios-rust.sh --selftest    # 12 cases on a stand-in cargo, uname and shasum (CI's gates job)
 # The Android app (mobile/android; CI: .github/workflows/entropy-android.yml, not a required check; needs the
 # Android SDK, NDK and JDK the workflow pins). Rust libraries for both flavours, then the strict Gradle build:
 sh scripts/android-rust.sh shipping
