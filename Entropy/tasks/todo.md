@@ -16290,6 +16290,28 @@ both), the slower whole job plus 25%, rounded up: API 34 capture then 16 KB 22 (
 (370 s), registry 12 (564 s); API 36 capture 22 (1036 s), journeys 9 (432 s), ui 10 (442 s), registry 25 (1200 s).
 API 34's four leave the 90-minute ceiling U3n gave them; API 36's were 40, 26, 27 and 40.
 
+**Repeats (2026-11-18), Entropy Android run 44148124713 at fed382ff** (M6's branch, no Android change since M5's
+merge; the run was cancelled by the next push after both API 34 jobs had failed). Not rerun to green; a side
+session was proposed to diagnose both (2026-11-18).
+- The lit raw frame (item of 2026-10-21), API 34's capture job, the shipping cold-launch recording, read with
+  lit_source's lines for the first time: "lit frame 6 of the stream: 219812 pixel(s) in the app's window, columns
+  1-358, rows 25-638, brightest #d4dbe0"; "its most frequent colours in the app's window #d4dbe0 (219812), of 1
+  distinct; 10588 of the 10588 pixels outside it lit"; 1 of 17 frames, the two control recordings before it visible
+  (817 and 12356 known-colour pixels). One colour over the whole window and every pixel of the system bars: a
+  whole-screen flat fill, nothing drawn and not the app's theme. That fits the leading guess (the system's backdrop
+  behind a cross-task launch animation) and shows no app content in the stream. The check is not changed: telling
+  such a fill from content would change a security check, the owner's to decide.
+- LifecycleTest leavingDuringABackupsScryptDiscardsTheSession, the same failure as run 43836938055 (2026-11-16): "the
+  dice's Done did not start the seed" (LifecycleTest.kt:527, toTheLastAnswer). Facts at the failure: every block
+  began airplane_mode_on=0, wifi_on=1, wifi_apm_state=null; at the failure airplane_mode_on=1, wifi_on=0,
+  wifi_apm_state=0, every Wi-Fi toggle the shell's or android_apm's; "the app: RESUMED, screen CheckPrompt, page 0,
+  gate false, overlay null, notice null, airplane mode true, Wi-Fi off true". The app ended on CheckPrompt, so a Done
+  ran finish; yet diceDone() shows Working synchronously (work()'s show(busy)) and the worker resumes on
+  Dispatchers.Main.immediate, which cannot run inside the test's runOnMainSync block, so the read could miss Working
+  only if diceDone() returned early (pressOn refused, or fewer than 50 rolls counted), which the final CheckPrompt
+  contradicts. Not explained. Item 5 of M5's gate list was closed by the stale-bounds tap (e60e5444), but this test
+  calls the model in-process with no tap, so that fix never covered it: its LifecycleTest half is open again.
+
 **Open item (2026-11-16): two failures of android-local.sh's whole run alone.** On one boot the ui part runs before the
 registry part, and two tests leave state that a later one trips on (found by the Stage U-6 workflow, seen again on kc37
 today); a part on its own boot, as android-local.sh --part and CI's jobs run it, passes. (1) JourneyTest grants CAMERA
@@ -18382,6 +18404,24 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
 - M6-15 (2026-11-18, from D7's report): the stop screen has one line per halt reason, as Android's; an app end
   (closed, bridge, and the iPhone's camera, M6-8) ends the process with no screen, as Android's crash handler
   does, so it has no stop line.
+- M6-16 (2026-11-18, from D8's report): VoiceOver and SecureLayer. The secure field and its view are not
+  accessibility elements, so what SecureLayer hosts is offered in their place: WordsUITests asserts insert 1's
+  SeedBook line (drawn inside it) is in the accessibility tree, matching its "SeedBook " prefix and printing no
+  value. If it is, a screen-reader user reads the words as on Android and SecureLayer hides them only from captures;
+  if CI shows it is not, a VoiceOver user could not read the words, which Android does not have, and that goes to
+  the owner. The iPhone residual stands either way: iOS has no accessibility-data-sensitive mark, so VoiceOver reads
+  the words, the passphrases, D and the Protected keys' letters aloud or to a braille display; every privacy gate's
+  headphones warning holds, as on Android; I5 checks it.
+- M6-17 (2026-11-18, from D8's report): reading counts as input for the idle rule (Q80 (b)) through
+  `UIAccessibility.elementFocusedNotification` (VoiceOver's cursor, a braille display, Switch Control), handed to
+  the model's reading(), as Android's accessibility focus is. Whether VoiceOver posts it for every element of a
+  continuous read-all is I5's to see.
+- M6-18 (2026-11-18, from D8's report): a live line (Android's liveRegion Polite) is a queued announcement of its
+  own fixed or public text when it appears or changes, with the updates-frequently trait; the live set is Android's
+  eleven tags (scan line, refusals, the keys' page, the dice count, minimum and cap, More below) and the iPhone's
+  network_state, none holding a secret. The capture and app-switcher covers post a screen change as they come and
+  go (iPhone only: Android has no whole-scene capture cover). XCUITest cannot read the header trait; the unit table
+  and I5 cover it.
 
 ### Stage B: the bridge (M6 commits 2-4)
 - [x] B1. `ffi/capi` (`keepcrypt-capi`): `[lib] name = "keepcrypt_capi"`, `crate-type = ["staticlib", "rlib"]`,
@@ -19439,7 +19479,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   every UI test passing on both. The jobs took 1513 s and 1622 s, so the budget is 34 minutes (1622 s x 1.25 = 2028
   s). Entropy CI 44148124349 green (14 jobs). The exporter itself is not driven in CI (the system's document
   browser): a real save and its read-back are I2's.
-- [ ] D7. Check a backup (the `.age` file through the picker, the passphrase on the letter pad, the result, the words only
+- [x] D7. Check a backup (the `.age` file through the picker, the passphrase on the letter pad, the result, the words only
   if asked, the re-check), About, Working and the stop screen.
   As built (plan, 2026-11-18): the views over D2's model (its backupPicked, entryTyped, showBackupWords,
   showRecheck, closeBackup and about are unchanged), in Android's BackupScreens.kt and HomeScreens.kt words,
@@ -19483,6 +19523,12 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Proof (M6 commit D7b, on the final tree, a worktree at D7a): `--selftest` 4 x "486 passed, 0 failed", `sh
   scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
   checks ran" (1013 s in all).
+  CI proof (2026-11-18): Entropy iPhone run 44153504614 at 3a13ac60 green: "Executed 125 tests, with 0 failures" in
+  Shipping and WithTestRegistry on macos-15 (Xcode 16.4, iPhone 16 iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17
+  iOS 26.5); CeremonyCheckBackupTests' four tests (every backup.json file through Check a backup, a wrong name or
+  size refused before any byte, the re-check QR, the entry's line) passing in all four; CheckBackupUITests passing
+  in TestHooks on both legs (59 s and 55 s), every other UI test too. The jobs took 1364 s and 1620 s, inside the
+  34-minute budget (1620 s x 1.25 = 2025 s). Entropy CI 44153503873 (14 jobs) and Entropy Pi image 44153504767 green.
 - [ ] D8. VoiceOver: each screen's title read as it opens, headings, live lines, every QR named by its kind and never its
   data, each Protected pad key reading its letter; reading counts as input for the idle rule (Q80 (b)'s answer on
   Android). iOS has no accessibility-data-sensitive mark, so VoiceOver reads the words as any screen reader would:
