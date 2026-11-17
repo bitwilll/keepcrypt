@@ -20,6 +20,7 @@ private struct InsertWord: View {
             + Text(String(word.dropFirst(lighterFrom))).foregroundColor(KitColors.muted))
             .font(KitType.large)
             .padding(.vertical, 6)
+            .accessibilityIdentifier("insert_word")
     }
 }
 

@@ -19656,6 +19656,56 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   are 248 bytes at most) answer Load registry snapshot's picker, waiting as the Backup file hook does, through
   the model's snapshotPicked with a HookedFile. Each hook's strings are in the TestHooks app alone (the
   --ios-app scans and the marker count), and the UI tests drive the panel's buttons, outside the press guard.
+  As built (M6 commit U1a, 2026-11-18): the hooks as planned, in TestHooks.swift under the marker: the Save hook
+  (KC_HOOK_SAVE: HookedPickers.create holds the model's Secret, hook_save answers backupPlaced with a HookedPlace
+  that checks it was handed that Secret, copies it to memory and reads it back; fail-write, fail-read and
+  corrupt, a middle byte flipped, for U2), the saved copy offered to Check a backup (KC_HOOK_BACKUP_FROM_SAVE,
+  zeroed once handed over), the Snapshot file hook (KC_HOOK_SNAPSHOT_NAME and KC_HOOK_SNAPSHOT_HEX,
+  hook_snapshot_file, through snapshotPicked) and a Halt hook (hook_halt: the shell's own halt of the slot,
+  reason internal, which the model's next call finds, as a real halt is found). No file is written. Three
+  secret texts the journeys read gain identifiers that name no secret (insert_word, passphrase_text,
+  device_leg_text; Android's tests read them in-process, XCUITest cannot); their labels are unchanged.
+  The journeys (KeepCryptUITests, each from First launch to Finish, its pass lines naming its path and the
+  seconds each part took; JourneySupport.swift holds the shared steps, as Android's Journeys.kt):
+  - MatchFoundJourneyUITests: dice-only 12 (dice-50-words12), Match found and its confirm, the collision and its
+    report QR behind the gate, Add fresh entropy at 0 / 99; dice-99-words12's 99 rolls, a scanned proof
+    (clear-empty-bucket, the Scan hook) passed; the words (the vector's), the read-back, the summary; Skip of
+    the backup and watch-only; the registration QR; Finish.
+  - TwentyFourWordJourneyUITests: dice-only 24 (dice-99-words24), Skip and its confirm; 24 words on two devices
+    with the device swap and its gate; all read back; every export skipped; the checklist's two devices; Finish.
+  - MixedJourneyUITests: mixed 12: Device entropy, C read from the commitment screen, 50 rolls; a scanned proof
+    of another seal refused, Back, the go-ahead code built from the drawn check QR (read back from its picture
+    with Core Image, T and nonce, then CLAUDE.md's go-ahead formula, held first to its vector) typed: passed;
+    the words read from the screen and read back; the backup made, its passphrase read from its pages and
+    confirmed, saved by the Save hook and verified; watch-only with TREZOR on the ASCII pad, the account and
+    descriptor QRs; the registration QR; Reveal D committing to C; Finish; then Check a backup of the saved copy
+    (Backup OK, its words the ceremony's) and About.
+  - CannotCheckJourneyUITests: dice-only 12, Cannot check, its confirm's Back, then Start again: dice at 0 / 50;
+    a scanned collision (collision-dice-50) and its report, Add fresh entropy at 0 / 99; dice-99-words12, the
+    typed code passed; the words, the read-back, the summary; every export skipped; Finish.
+  - SnapshotJourneyUITests: About; Load registry snapshot (kcr.json's small, the Snapshot file hook), its line
+    on Home; dice-only 12 checked against the snapshot on its own; the words, the read-back, the summary;
+    every export skipped; Finish; then the Halt hook, New seed: the stop screen naming its reason, Close app
+    ending the process.
+  U1's list against them: mixed (Mixed) and dice-only (the rest), 12 (MatchFound, Mixed, CannotCheck, Snapshot)
+  and 24 with the device swap (TwentyFourWord); the check by a typed code (Mixed, CannotCheck), a scanned proof
+  (MatchFound; ScanUITests' scanned collision), a loaded snapshot (Snapshot) and Skip (TwentyFourWord); Match
+  found to Add fresh entropy at 99 (MatchFound) and a scanned collision to it (CannotCheck); Cannot check to
+  Start again (CannotCheck); the words, read-back and summary (every journey); the backup saved and checked,
+  watch-only, Reveal D (Mixed); register (MatchFound, Mixed); About (Mixed, Snapshot); the stop screen
+  (Snapshot). The scan, the pickers, the save, the offline path and the halt are the hooks'; every other step is
+  a press on the screen.
+  Rows (KC_JOURNEYS, three a leg; budgets from 3a13ac60's measured classes and a fixed part of 574 s a job, U1's
+  classes estimated at 0.6 s a press, 1 s a screen and 12 s to Go offline, plus 25%): journeys-1 ScanUITests,
+  WordsUITests, CheckBackupUITests and MatchFoundJourneyUITests (212 s measured + 300 s, 23 minutes);
+  journeys-2 TwentyFourWordJourneyUITests and MixedJourneyUITests (295 s + 290 s, 25 minutes); journeys-3
+  CannotCheckJourneyUITests and SnapshotJourneyUITests (385 s + 190 s, 24 minutes).
+  Proof (M6 commit U1a, partial: local build only; no simulator here, so no journey has run; CI at the next
+  push runs them): all three schemes built for testing (the journeys compiled in TestHooks alone) and the
+  Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps; the hooks marker 1 line
+  and a KC_HOOK_ string in the TestHooks app alone, none in the three shipped apps; `--selftest-ios-app` 33
+  passed; the macOS stand-in "Executed 126 tests, with 0 failures" both ways; the groups check run locally on
+  the workflow; `--workflows` and the gate clean (513 files), `cargo fmt --all --check` clean.
 - [ ] U2. Edge cases where the phone matters (the JVM-ported unit tests of D2 hold the model's): Back and a double tap
   on every screen; leaving the app at every stage (Public: 59 s kept, 61 s wiped; Protected and Working: at once) by
   XCUIDevice's home and a re-activation; the app killed at every stage, back at First launch with an empty slot; going

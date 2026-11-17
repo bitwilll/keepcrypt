@@ -257,6 +257,7 @@ struct RevealDScreen: View {
                             .font(KitType.hex)
                             .foregroundColor(KitColors.text)
                             .padding(.vertical, 6)
+                            .accessibilityIdentifier("device_leg_text")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     KitText(ExportTexts.dNote, style: .small)

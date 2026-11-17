@@ -1,0 +1,305 @@
+// What U1's journeys share (tasks/todo.md, M6 item U1; Android's Journeys.kt and Ui.kt), each step a press on
+// the screen by its identifier or its label, as a person makes it: the way to Home, the dice pressed face by
+// face, the privacy gate passed, the words read from the screen (insert_word, inside SecureLayer, reachable
+// to the accessibility tree as M6-16 found) and read back on the letter pad, the backup made and saved through
+// the Save hook, Check a backup of the saved copy, and the go-ahead code a checker builds from the check QR,
+// read back from a picture of the drawn QR (Core Image's QR detector) and typed on the code pad. Every seed is
+// a vectors/kcr.json gate seed (rule 12) or a new one made on the screen; a secret read from the screen is
+// compared and typed, never printed (each journey's pass line names its path alone). The system's own UI is
+// the hooks' (TestHooks.swift): the offline path, the scan, the pickers and the halt.
+
+#if KC_TEST_HOOKS
+import CommonCrypto
+import CoreImage
+import UIKit
+import XCTest
+
+/// The UI tests' vectors (rule 12): kcr.json's and backup.json's, bundled.
+enum JourneyVectors {
+    private final class Anchor {}
+
+    static func json(_ name: String) throws -> [String: Any] {
+        let file = try XCTUnwrap(Bundle(for: Anchor.self).url(forResource: name, withExtension: "json"))
+        return try XCTUnwrap(JSONSerialization.jsonObject(with: Data(contentsOf: file)) as? [String: Any])
+    }
+
+    /// kcr.json's entry named name in list (seeds, proofs or snapshots).
+    static func kcr(_ list: String, _ name: String) throws -> [String: Any] {
+        let entries = try XCTUnwrap(try json("kcr")[list] as? [[String: Any]])
+        return try XCTUnwrap(entries.first { $0["name"] as? String == name }, name)
+    }
+
+    /// A gate seed's rolls, words and Seal ID.
+    static func seed(_ name: String) throws -> (rolls: String, words: [String], sealId: String) {
+        let entry = try kcr("seeds", name)
+        let words = try XCTUnwrap(entry["mnemonic"] as? String).split(separator: " ").map(String.init)
+        return (try XCTUnwrap(entry["rolls"] as? String), words, try XCTUnwrap(entry["seal_id"] as? String))
+    }
+
+    /// A proof's go-ahead QR text (its UR).
+    static func proof(_ name: String) throws -> String {
+        try XCTUnwrap(try kcr("proofs", name)["ur"] as? String, name)
+    }
+
+    /// A snapshot's bytes in hex.
+    static func snapshotHex(_ name: String) throws -> String {
+        try XCTUnwrap(try kcr("snapshots", name)["kcr_hex"] as? String, name)
+    }
+}
+
+/// The journey's pass line: its path, in the test's log (XCTest prints an activity's name), never a secret.
+func pass(_ line: String) {
+    XCTContext.runActivity(named: "pass: " + line) { _ in }
+}
+
+/// SHA-256 (CommonCrypto, the tests' own).
+func sha256(_ bytes: [UInt8]) -> [UInt8] {
+    var out = [UInt8](repeating: 0, count: Int(CC_SHA256_DIGEST_LENGTH))
+    _ = bytes.withUnsafeBytes { CC_SHA256($0.baseAddress, CC_LONG(bytes.count), &out) }
+    return out
+}
+
+/// hex's bytes, every space and line feed left out.
+func hexBytes(_ hex: String) -> [UInt8] {
+    let digits = Array(hex.filter { !" \n\t".contains($0) }.utf8)
+    return stride(from: 0, to: digits.count - 1, by: 2).compactMap { UInt8(String(decoding: digits[$0...$0 + 1], as: UTF8.self), radix: 16) }
+}
+
+/// The go-ahead code a checker builds (CLAUDE.md's domain constants): Crockford base32 of the first 40 bits of
+/// SHA-256("KCE/v1/go" || T || n), 8 symbols.
+func goAheadCode(_ tag: [UInt8], _ nonce: [UInt8]) -> String {
+    let digest = sha256(Array("KCE/v1/go".utf8) + tag + nonce)
+    var bits: UInt64 = 0
+    for index in 0..<5 {
+        bits = bits << 8 | UInt64(digest[index])
+    }
+    let symbols = Array("0123456789ABCDEFGHJKMNPQRSTVWXYZ")
+    return String((0..<8).map { symbols[Int((bits >> UInt64(35 - 5 * $0)) & 31)] })
+}
+
+extension XCUIApplication {
+    /// Waits for the element id (a screen's root, or any), then past the press guard.
+    func on(_ id: String, _ what: String, timeout: TimeInterval = 60, file: StaticString = #filePath, line: UInt = #line) {
+        XCTAssertTrue(element(id).waitForExistence(timeout: timeout), what, file: file, line: line)
+        pastPressGuard()
+    }
+
+    /// The button id pressed, once it is there.
+    func press(_ id: String, file: StaticString = #filePath, line: UInt = #line) {
+        let button = buttons[id]
+        XCTAssertTrue(button.waitForExistence(timeout: 30), "no button " + id, file: file, line: line)
+        button.tap()
+    }
+
+    /// Waits until the element id's label is label.
+    func waitLabel(_ id: String, _ label: String, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
+        let element = self.element(id)
+        let shows = NSPredicate(format: "label == %@", label)
+        let deadline = Date().addingTimeInterval(timeout)
+        while Date() < deadline {
+            if element.exists, shows.evaluate(with: element) { return }
+            usleep(100_000)
+        }
+        XCTFail("\(id) never read as expected", file: file, line: line)
+    }
+
+    /// Launched, past First launch and the self-test, the offline path reported, Start: Home.
+    func toHome() {
+        launchedToGoOffline()
+        buttons["hook_path_none"].tap()
+        pastPressGuard()
+        press("start")
+        on("home", "Home")
+    }
+
+    /// The privacy gate before a Protected screen, passed.
+    func passGate(_ what: String) {
+        on("privacy_gate", "the privacy gate before " + what)
+        press("pass_gate")
+    }
+
+    /// rolls pressed on the dice pad, a face and Confirm each, then Done: the check prompt.
+    func roll(_ rolls: String) {
+        for face in rolls {
+            buttons["key_" + String(face)].tap()
+            buttons["confirm"].tap()
+        }
+        press("dice_done")
+        on("check_prompt", "the check prompt")
+    }
+
+    /// A word's first four letters (a three-letter word's three) pressed on the letter pad.
+    func letters(_ word: String) {
+        for letter in word.prefix(4) {
+            buttons[String(letter)].tap()
+        }
+    }
+
+    /// The check QR on show read back from its picture: T and the nonce (the check request's text).
+    func checkRequest(file: StaticString = #filePath, line: UInt = #line) throws -> (tag: [UInt8], nonce: [UInt8]) {
+        let qr = element("check_request")
+        XCTAssertTrue(qr.waitForExistence(timeout: 30), "the check QR", file: file, line: line)
+        let picture = try XCTUnwrap(CIImage(image: qr.screenshot().image), file: file, line: line)
+        let detector = try XCTUnwrap(
+            CIDetector(ofType: CIDetectorTypeQRCode, context: nil, options: [CIDetectorAccuracy: CIDetectorAccuracyHigh]))
+        let text = try XCTUnwrap((detector.features(in: picture).first as? CIQRCodeFeature)?.messageString, "no QR read", file: file, line: line)
+        let pattern = try NSRegularExpression(pattern: "^https://registry\\.invalid/check#t=([0-9a-f]{64})&n=([0-9a-f]{16})$")
+        let match = try XCTUnwrap(pattern.firstMatch(in: text, range: NSRange(text.startIndex..., in: text)), "not a check request", file: file, line: line)
+        let tag = String(text[try XCTUnwrap(Range(match.range(at: 1), in: text))])
+        let nonce = String(text[try XCTUnwrap(Range(match.range(at: 2), in: text))])
+        return (hexBytes(tag), hexBytes(nonce))
+    }
+
+    /// On the check QR: its go-ahead code typed on the code pad (Type go-ahead code), Done: the result.
+    func typeGoAhead() throws {
+        let (tag, nonce) = try checkRequest()
+        let code = goAheadCode(tag, nonce)
+        press("type_code")
+        on("code_entry", "the code entry")
+        for symbol in code {
+            buttons["key_" + String(symbol)].tap()
+        }
+        press("code_done")
+        on("check_result", "the check passed")
+    }
+
+    /// From the first insert (its gate passed): every insert's word read from the screen (with the device swap
+    /// and its gate before word 13 of 24), equal to expected when given; the read-back of each, its first four
+    /// letters on the letter pad, each a match; the read-back's end and the wallet summary. The words, in order.
+    @discardableResult
+    func wordsAndReadback(_ count: Int, expected: [String]? = nil, file: StaticString = #filePath, line: UInt = #line) -> [String] {
+        var words: [String] = []
+        let devices = count > 12 ? 2 : 1
+        for position in 1...count {
+            let device = position > 12 ? 2 : 1
+            if position == 13 {
+                press("next")
+                on("device_swap", "the device swap", file: file, line: line)
+                waitLabel("device_swap_text", "Words 13-24 go on device 2 of 2.", file: file, line: line)
+                press("continue")
+                passGate("word 13")
+                on("words", "insert 13", file: file, line: line)
+            } else if position > 1 {
+                press("next")
+            }
+            waitLabel("insert_header", String(format: "Insert %02d \u{00B7} device %d of %d", position, device, devices), file: file, line: line)
+            words.append(element("insert_word").label)
+        }
+        if let expected {
+            XCTAssertTrue(words == expected, "the inserts are not the seed's words (none printed)", file: file, line: line)
+        }
+        press("start_readback")
+        on("readback_entry", "the read-back's entry", file: file, line: line)
+        for (index, word) in words.enumerated() {
+            let position = index + 1
+            let device = position > 12 ? 2 : 1
+            waitLabel(
+                "readback_header", String(format: "Read back insert %02d \u{00B7} device %d of %d", position, device, devices),
+                file: file, line: line)
+            letters(word)
+            press("letters_done")
+            XCTAssertTrue(element("readback_matched").waitForExistence(timeout: 10), "insert \(position) matches", file: file, line: line)
+            press("readback_next")
+        }
+        on("readback_done", "the read-back's end", file: file, line: line)
+        press("show_summary")
+        on("wallet", "the wallet summary", file: file, line: line)
+        XCTAssertNotNil(element("fingerprint").label.range(of: "^[0-9a-f]{8}$", options: .regularExpression), "the fingerprint")
+        return words
+    }
+
+    /// From the wallet summary: the backup made through its gate, the passphrase's two pages read from the
+    /// screen, both questions answered on the letter pad, and Save answered by the Save hook (in memory, no
+    /// file): "Backup verified", then the watch-only offer. The passphrase's eight words.
+    func backupMadeAndSaved(file: StaticString = #filePath, line: UInt = #line) throws -> [String] {
+        press("summary_next")
+        on("backup_offer", "the backup's offer", file: file, line: line)
+        press("make_backup")
+        passGate("the backup passphrase")
+        on("backup_passphrase", "the backup passphrase", file: file, line: line)
+        var words: [String] = []
+        for page in 0..<2 {
+            if page == 1 {
+                press("next")
+                waitLabel("passphrase_page", "Words 5-8 of 8", file: file, line: line)
+            }
+            let lines = element("passphrase_text").label.split(separator: "\n").map(String.init)
+            XCTAssertEqual(lines.count, 4, "four words a page", file: file, line: line)
+            for (index, text) in lines.enumerated() {
+                let number = String(page * 4 + index + 1) + " "
+                XCTAssertTrue(text.hasPrefix(number), "the page's numbering", file: file, line: line)
+                words.append(String(text.dropFirst(number.count)))
+            }
+        }
+        press("passphrase_written")
+        on("backup_confirm", "the confirm", file: file, line: line)
+        for question in 1...2 {
+            waitLabel("confirm_question", "Check your copy: question \(question) of 2", file: file, line: line)
+            let heading = staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "Which is word ")).firstMatch
+            XCTAssertTrue(heading.waitForExistence(timeout: 10), "the question", file: file, line: line)
+            let position = try XCTUnwrap(Int(heading.label.dropFirst("Which is word ".count).dropLast()), file: file, line: line)
+            letters(words[position - 1])
+            press("confirm_done")
+        }
+        on("backup_save", "the save", timeout: 120, file: file, line: line)
+        XCTAssertNotNil(element("backup_name").label.range(of: "^keepcrypt-backup-[0-9a-f]{8}\\.age$", options: .regularExpression))
+        press("save_backup")
+        press("hook_save")
+        on("backup_verified", "Backup verified", timeout: 120, file: file, line: line)
+        press("backup_next")
+        on("watch_offer", "the watch-only offer", file: file, line: line)
+        return words
+    }
+
+    /// From Home: Check a backup, its picker answered by the Backup file hook with the copy the Save hook kept,
+    /// the gate, passphrase's first fours on the letter pad, Backup OK, the words through the gate, each equal to
+    /// words, and Done: Home.
+    func checkSavedBackup(_ passphrase: [String], _ words: [String], file: StaticString = #filePath, line: UInt = #line) {
+        press("check_backup")
+        press("hook_backup_file")
+        passGate("the passphrase's entry")
+        on("backup_check_entry", "the passphrase's entry", file: file, line: line)
+        for (index, word) in passphrase.enumerated() {
+            waitLabel("entry_word", "Backup passphrase, word \(index + 1) of 8", file: file, line: line)
+            pastPressGuard()
+            letters(word)
+            press("entry_done")
+        }
+        on("backup_check_result", "Backup OK", timeout: 120, file: file, line: line)
+        press("show_backup_words")
+        passGate("the backup's words")
+        on("words", "the backup's insert 1", file: file, line: line)
+        var read: [String] = []
+        for position in 1...words.count {
+            if position > 1 { press("next") }
+            waitLabel("insert_header", String(format: "Insert %02d \u{00B7} device 1 of 1", position), file: file, line: line)
+            read.append(element("insert_word").label)
+        }
+        XCTAssertTrue(read == words, "the checked backup holds the ceremony's words (none printed)", file: file, line: line)
+        press("backup_words_done")
+        on("backup_check_result", "back to the result", file: file, line: line)
+        press("backup_done")
+        on("home", "Home", file: file, line: line)
+    }
+
+    /// From the checklist: its two-devices line when the seed has two, and Finish: Home.
+    func checklistToFinish(twoDevices: Bool = false, file: StaticString = #filePath, line: UInt = #line) {
+        on("checklist", "the checklist", file: file, line: line)
+        XCTAssertEqual(element("two_devices").exists, twoDevices, "the checklist's devices line", file: file, line: line)
+        press("finish")
+        on("home", "Home after Finish", file: file, line: line)
+    }
+
+    /// From the wallet summary, every export skipped: the backup, watch-only and the registration, to the
+    /// checklist.
+    func skipExports(file: StaticString = #filePath, line: UInt = #line) {
+        press("summary_next")
+        on("backup_offer", "the backup's offer", file: file, line: line)
+        press("skip_backup")
+        on("watch_offer", "the watch-only offer", file: file, line: line)
+        press("skip_watch_only")
+        on("register_offer", "the registration's offer", file: file, line: line)
+        press("skip_registration")
+    }
+}
+#endif

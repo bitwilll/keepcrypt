@@ -36,6 +36,8 @@ struct KeepCryptApp: App {
         TestHooks.shared.scanner = hooked
         scanner = hooked
         TestHooks.shared.backupPicked = { model.backupPicked($0) }
+        TestHooks.shared.backupPlaced = { model.backupPlaced($0) }
+        TestHooks.shared.snapshotPicked = { model.snapshotPicked($0) }
         documents = HookedPickers(screen: pickers)
         #else
         scanner = GoAheadScanner()

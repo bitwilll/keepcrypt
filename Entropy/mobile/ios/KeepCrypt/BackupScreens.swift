@@ -63,6 +63,7 @@ struct BackupPassphraseScreen: View {
                             .foregroundColor(KitColors.text)
                             .lineSpacing(10)
                             .padding(.vertical, 6)
+                            .accessibilityIdentifier("passphrase_text")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 } actions: {

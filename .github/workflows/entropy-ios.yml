@@ -95,7 +95,9 @@ concurrency:
 env:
   # The journeys (M6 item U5): the TestHooks UI test classes the journeys jobs run, in groups, and the
   # unit job leaves out. The unit job checks this list against the journeys matrix below.
-  KC_JOURNEYS: ScanUITests WordsUITests CheckBackupUITests
+  KC_JOURNEYS: >-
+    ScanUITests WordsUITests CheckBackupUITests MatchFoundJourneyUITests TwentyFourWordJourneyUITests
+    MixedJourneyUITests CannotCheckJourneyUITests SnapshotJourneyUITests
 
 defaults:
   run:
@@ -301,11 +303,16 @@ jobs:
     name: iphone journeys ${{ matrix.group }} (${{ matrix.os }}, Xcode ${{ matrix.xcode }}, ${{ matrix.device }} iOS ${{ matrix.ios }})
     runs-on: ${{ matrix.os }}
     # Each row's budget (timeout, read here; M5-30's rule): its measured job plus 25%, rounded up. First
-    # budget (M6 item U5), estimated from run 44153504614 at 3a13ac60 (macos-26, the slower leg there): the
-    # setup steps 40 s, the test-registry library 86 s, the simulator 164 s, a fresh build for testing as
-    # the Shipping step's 227 s, and the group's test cases (journeys-1: 212 s) with xcodebuild's 38 s
-    # before the first, and 19 s after: 786 s, and 786 s x 1.25 is 983 s, 17 minutes; re-measured from the
-    # first green run of this layout. U1's and U2's journeys come as more groups (rows), each measured.
+    # budgets (M6 items U5 and U1), estimated from run 44153504614 at 3a13ac60 (macos-26, the slower leg
+    # there): every row's fixed part, the setup steps 40 s, the test-registry library 86 s, the simulator
+    # 164 s, a fresh build for testing as the Shipping step's 227 s and xcodebuild's 57 s around the tests,
+    # is 574 s; and each class's time, the three measured there (ScanUITests 68 s, WordsUITests 85 s,
+    # CheckBackupUITests 59 s), U1's estimated from them at 0.6 s a press, 1 s a screen and 12 s to Go
+    # offline (MatchFoundJourneyUITests 300 s, TwentyFourWordJourneyUITests 295 s, MixedJourneyUITests 290 s,
+    # CannotCheckJourneyUITests 385 s, SnapshotJourneyUITests 190 s). journeys-1: 574 s + 512 s is 1086 s, x
+    # 1.25 is 1358 s, 23 minutes; journeys-2: 574 s + 585 s is 1159 s, x 1.25 is 1449 s, 25 minutes;
+    # journeys-3: 574 s + 575 s is 1149 s, x 1.25 is 1436 s, 24 minutes. Re-measured from the first green
+    # run; U2's journeys come as more rows, each measured, at most four a leg.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -316,15 +323,43 @@ jobs:
             ios: '26.5'
             device: iPhone 17
             group: journeys-1
-            classes: ScanUITests WordsUITests CheckBackupUITests
-            timeout: 17
+            classes: ScanUITests WordsUITests CheckBackupUITests MatchFoundJourneyUITests
+            timeout: 23
+          - os: macos-26
+            xcode: '26.6'
+            ios: '26.5'
+            device: iPhone 17
+            group: journeys-2
+            classes: TwentyFourWordJourneyUITests MixedJourneyUITests
+            timeout: 25
+          - os: macos-26
+            xcode: '26.6'
+            ios: '26.5'
+            device: iPhone 17
+            group: journeys-3
+            classes: CannotCheckJourneyUITests SnapshotJourneyUITests
+            timeout: 24
           - os: macos-15
             xcode: '16.4'
             ios: '18.6'
             device: iPhone 16
             group: journeys-1
-            classes: ScanUITests WordsUITests CheckBackupUITests
-            timeout: 17
+            classes: ScanUITests WordsUITests CheckBackupUITests MatchFoundJourneyUITests
+            timeout: 23
+          - os: macos-15
+            xcode: '16.4'
+            ios: '18.6'
+            device: iPhone 16
+            group: journeys-2
+            classes: TwentyFourWordJourneyUITests MixedJourneyUITests
+            timeout: 25
+          - os: macos-15
+            xcode: '16.4'
+            ios: '18.6'
+            device: iPhone 16
+            group: journeys-3
+            classes: CannotCheckJourneyUITests SnapshotJourneyUITests
+            timeout: 24
     env:
       KC_XCODE: ${{ matrix.xcode }}
       KC_IOS: ${{ matrix.ios }}
