@@ -18744,6 +18744,13 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   device finder's Python, cut from the parsed step, picks a canned device list's one iPhone 17 on iOS 26.5. Not run:
   the workflow itself (CI); the runner images' device names and the two Xcodes' handling of objectVersion 77 are read
   from the plan's facts, not seen. C4 is ticked from the first green run (its ID and both legs' scan lines).
+  Proof (CI, the lead's, 2026-11-17, the first Entropy iPhone run 44046032987 at a83660d4): the macos-26 leg
+  (Xcode 26.6, iPhone 17 on iOS 26.5) green in 1211 s, the first run of the app's tests on a simulator; the macos-15
+  leg failed in its first step, "/Applications/Xcode_16.4.app/Contents/Developer is not Xcode 16.4", after the
+  first `xcodebuild -version` had printed "Xcode 16.4": the second, piped into `grep -q`, got SIGPIPE when grep
+  stopped at its match ("Abort trap: 6") and pipefail failed the step, a race the macos-26 leg won. The step now
+  reads the version once into a variable (M6 commit C4c); no other pipe in the workflow ends in an early-closing
+  reader.
 - [ ] C5. The capture layers and the offline check, before any Protected screen exists: a cover over the whole scene
   while `isSceneCaptured` (SwiftUI) or `sceneCaptureState` (UIKit) reads active, and while `scenePhase` is not
   `.active` (the app-switcher snapshot); `userDidTakeScreenshotNotification` discarding the session with its

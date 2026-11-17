@@ -121,8 +121,11 @@ jobs:
           [ -d "$dev" ] || fail "no Xcode $KC_XCODE ($dev)"
           echo "DEVELOPER_DIR=$dev" >> "$GITHUB_ENV"
           export DEVELOPER_DIR=$dev
-          xcodebuild -version
-          xcodebuild -version | grep -q -x "Xcode $KC_XCODE" || fail "$dev is not Xcode $KC_XCODE"
+          # Read once into a variable: grep -q stops at its match and closes the pipe, and xcodebuild then
+          # aborts on SIGPIPE (Abort trap: 6), which pipefail made a failure (run 44046032987, macos-15).
+          version=$(xcodebuild -version) || fail "xcodebuild -version failed"
+          printf '%s\n' "$version"
+          printf '%s\n' "$version" | grep -x "Xcode $KC_XCODE" > /dev/null || fail "$dev is not Xcode $KC_XCODE"
           xcrun --sdk iphoneos --show-sdk-version
           xcrun --sdk iphonesimulator --show-sdk-version
       - name: Install the pinned toolchain (rust-toolchain.toml)
