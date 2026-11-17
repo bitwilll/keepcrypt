@@ -18241,6 +18241,49 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
     Recommended: the lead lists each sentence's exact old and new text in this file after Q86-Q91 are answered, and
     they land as one docs commit only after the owner approves that list.
 
+- **Answered 2026-11-17 (the owner): "approve all as recommended"** for Q86-Q92: native SwiftUI screens (86);
+  `keepcrypt-capi`, a hand-written C ABI staticlib over keepcrypt-guard with the JNI bridge's wire protocol (87); the
+  secure layer built and tested on the iPhone, dropped by a doc edit if it does not hide the words (88); a free
+  Personal Team in Xcode on the owner's Mac (89; the iPhone model and iOS version still to come); Xcode, simctl and
+  one iOS 26 simulator runtime on the owner's Mac for the local loop, every run reported as local (90);
+  `entropy-ios.yml`, non-required, on macos-26 and macos-15 (91); the doc edits listed below for approval first (92).
+
+### Q92's doc edits (the exact current text, then the new; for the owner's approval before they land)
+- BP:35 "... `keepcrypt-jni` (the Android boundary, `libkeepcrypt.so`); the iPhone boundary and screens are chosen
+  when M6 starts." -> "... `keepcrypt-jni` (the Android boundary, `libkeepcrypt.so`) and `keepcrypt-capi` (the iPhone
+  boundary, `libkeepcrypt_capi.a`, a C ABI called from Swift); the iPhone's screens are SwiftUI (Q86)."
+- BP:37 "(`keepcrypt-jni` for Android, over `keepcrypt-guard`; the iPhone boundary is chosen in M6)" ->
+  "(`keepcrypt-jni` for Android and `keepcrypt-capi` for iPhone, both over `keepcrypt-guard`)".
+- BP:49-51, the tree: a new line under `ffi/`: "│  ├─ capi/                  keepcrypt-capi: hand-written C ABI for iPhone,
+  built as libkeepcrypt_capi.a".
+- BP:58 "│  └─ ios/                    the iPhone app (M6)" -> "│  └─ ios/                    Xcode project: the SwiftUI iPhone app,
+  no third-party packages".
+- BP:77 "| iOS | Screens and binding chosen in M6; iOS 17+ | iOS 17 adds `sceneCaptureState` for capture detection |"
+  -> "| iOS | Swift, SwiftUI, `libkeepcrypt_capi.a` (`keepcrypt-capi` over `keepcrypt-ffi`) built with plain `cargo`
+  for aarch64-apple-ios and aarch64-apple-ios-sim, no generated bindings, no third-party Swift package; iOS 17+ | iOS
+  17 adds `sceneCaptureState` for capture detection; Apple's toolchain alone, so no unverifiable download (Q73, Q86) |".
+- BP:78, the Bindings row's first cell, after "`keepcrypt-jni` (the JNI boundary over `jni-sys`, `libkeepcrypt.so`)":
+  add "and `keepcrypt-capi` (the C ABI for iPhone, `libkeepcrypt_capi.a`, no dependency beyond the guard and
+  keepcrypt-ffi)".
+- BP:300, the M6 row's deliverables "Screens and binding chosen when M6 starts (Q73), capture handling, backup via
+  document picker" -> "SwiftUI screens over `keepcrypt-capi` (Q86, Q87), capture handling, backup via document picker";
+  its Needs "M1, M2; M5 if it reuses the shared screens" -> "M1, M2".
+- MA:17, "M6 decides whether the iPhone reuses them." -> "The iPhone's screens are SwiftUI (Q86), written over the
+  same bridge, so the flow is written twice, in Kotlin and in Swift, and one shared table of screens holds both to
+  the same list."; "(... the iPhone boundary is chosen in M6)" -> "(... `keepcrypt-capi` for iPhone, a C ABI over the
+  same guard)"; the last sentence "If the iPhone reuses the shared screens, four residuals, ... only answered by a
+  discard." -> "On the iPhone three residuals, also accepted for the M7 audit, limit it: Swift's strings and the
+  text SwiftUI draws cannot be wiped; an unexpected Swift trap ends the app with a system crash report that can name
+  where it stopped; and a screenshot cannot be blocked, only answered by a discard."
+- MA:21 "| UI | Compose Multiplatform, shared | Chosen in M6 (Q73) |" -> "| UI | Compose Multiplatform, shared |
+  SwiftUI (Q86) |".
+- MA:23's iPhone cell "Chosen in M6 (Q73)" -> "`libkeepcrypt_capi.a` (`keepcrypt-capi` over `keepcrypt-ffi`) built with
+  plain `cargo` (aarch64-apple-ios, aarch64-apple-ios-sim); a hand-written C header, no generated bindings".
+- MA:24's iPhone cell "Chosen in M6 (Q73)" -> "One Xcode app target and its test targets; no Swift packages".
+- MA:34 "One shared `CeremonyModel` owns the FFI session." -> "One `CeremonyModel` owns the FFI session (the shared
+  Kotlin one on Android, a Swift one on iPhone, held to the same screens by one table)."
+- MA:86 and MA:100 stay until I1 tests the secure layer (Q88).
+
 ### Plan (provisional, for the recommended answers; refined into items once Q86-Q92 are answered)
 - **Stage A, docs and rules:** Q92's edits; CLAUDE.md rule 9's iOS sentence checked against the choice; the gate's
   Swift rules (banned RNG everywhere in Swift: `arc4random*`, `SecRandomCopyBytes`, `SystemRandomNumberGenerator`,
