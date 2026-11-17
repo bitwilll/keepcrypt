@@ -14369,16 +14369,24 @@ shipping APK and the test-registry APK one at a time, as P4 says. The offline ve
 Issued 2026-10-22 from run 39744137391 at 1a63e0f: artifact android-apks (kept until 2026-11-05), the test-registry APK
 SHA-256 8983977bd0fb4fb6ac125cfc3bc99112ea9451b4f47f715386113471dea5a328, goahead-collision-dice-50.png
 3dc26b8f577ed7d2890418fea68b44de34c8d3874b399362428a1b22213a4777, dice-50-words12's Seal ID YVM9CPP3.
-- [ ] Install that run's test-registry APK (its strip reads TEST REGISTRY); airplane mode on, Wi-Fi off. Dice-only, 12
+- [x] Install that run's test-registry APK (its strip reads TEST REGISTRY); airplane mode on, Wi-Fi off. Dice-only, 12
   words, the 50 rolls `123456` repeated; Check now; the Seal ID on the seal card equals `dice-50-words12`'s from the
   lead (if not, a typing slip: Cannot check, then Start again). Scan go-ahead QR and allow the camera when asked.
-- [ ] The camera indicator (Android 12 and later: a green dot or camera icon at the top right) is on while the scan
+- [x] The camera indicator (Android 12 and later: a green dot or camera icon at the top right) is on while the scan
   screen shows (M5-59). Press Home: it goes off within a few seconds. Open the app again within a minute: the cover is
   up and the indicator off; tap the cover: the indicator comes back. Press Back to the seal card: it goes off. If the
   phone shows no indicator, skip this item and say so.
-- [ ] Scan go-ahead QR again; scan `goahead-collision-dice-50.png` on the computer screen: "Collision found. This seed
+- [x] Scan go-ahead QR again; scan `goahead-collision-dice-50.png` on the computer screen: "Collision found. This seed
   is not unique and has been destroyed.", no words, and the indicator goes off. Send pass or fail only (on a fail,
   which item). Uninstall the APK.
+  Proof (the owner's report, 2026-11-17): "P0b done, all passed". Run on the owner's Galaxy S25 (the phone the
+  reissue was built for; its Android version not reported) with the reissued test-registry APK of bf132744
+  (`p0b-bf13274/keepcrypt-testregistry-bf13274.apk.zip`, holding app-withTestRegistry-release-NOT-FOR-RELEASE.apk,
+  SHA-256 777dee4c7d7d58251552471bcf775140bf1dd988f2f07f954459849615fb3c35, and goahead-collision-dice-50.png 3dc26b8f...,
+  as its SHA256SUMS lists). "All passed" covers the three items: the Seal ID YVM9CPP3 checked and the camera allowed;
+  the camera indicator on while scanning and off after Home and Back (the indicator item was not reported skipped);
+  the collision QR off the computer screen ending in the collision with no words. The APK predates Stage U-6 (U3j,
+  U3k, U3n's minSdk 34); P4 repeats the camera scans on 62396383's APK.
 
 **P1. Capture (shipping APK)**
 - [ ] On the dice screen, a words page and the backup passphrase: a hardware screenshot is blocked or black; a Quick
@@ -20844,8 +20852,9 @@ are under "M4: hardware records" above.
 
 ### M5: device records (the owner's reports, in P0-P5's form)
 - **P0b** (the scanner smoke test): first issued 2026-10-22 from run 39744137391 at 1a63e0f; reissued for the owner's
-  Galaxy S25 as the test-registry APK of bf132744 (`p0b-bf13274/keepcrypt-testregistry-bf13274.apk.zip`). No report
-  yet: waiting for the owner's "done" and pass or fail per item.
+  Galaxy S25 as the test-registry APK of bf132744 (`p0b-bf13274/keepcrypt-testregistry-bf13274.apk.zip`, its APK's
+  SHA-256 777dee4c...). The owner's report, 2026-11-17: "P0b done, all passed" (each item ticked under P0b; P4
+  repeats the scans on the final APK).
 - **P0-P5**: issued in this commit (the checklist block above) from Entropy Android 43950082932 at 62396383. No
   report yet.
 
@@ -21018,7 +21027,7 @@ the same form and stays `[ ]`.
 **Still unticked**, with what each waits for: 
 - The gate's screenshot, backup round trip, snapshot import, Sparrow import, go-ahead and Stop items, and Matrix
   "Screen-capture tests", "Full ceremony with offline verification", "Watch-only import" and "Metal read-back drill":
-  the owner's P0b and P1-P4 (P5 optional).
+  the owner's P1-P4 (P5 optional); P0b passed 2026-11-17.
 - U3 (the UX audit): its parts are ticked (U3a-U3n); what TalkBack actually reads and speaks waits for P1's optional
   TalkBack item (approved 2026-11-17).
 - Matrix "Reproducible build" (APK): M7.
@@ -21038,12 +21047,12 @@ registry reveals the words and a Stop wipes them".
   refusal); P4 is owed.
 - Sparrow watch-only import works: owed (P2's watch-only step and P3); CI decodes the drawn matrices.
 - A go-ahead QR from the test registry reveals the words: CI's part met (the scanned clear-empty-bucket QR through
-  the decoder); P0b and P4's camera scans are owed.
+  the decoder); P0b passed on the owner's S25 (2026-11-17, bf132744's APK); P4's scans on the final APK are owed.
 - A Stop wipes them: CI's part met (`ffi_drill_12`, the scanned collision QR and the snapshot's collision, no words, 0
   / 99); P4 is owed.
 - Deliverables: the Compose Multiplatform screens (:screens) on the Android target, the JNI bridge (keepcrypt-ffi,
   keepcrypt-guard, keepcrypt-jni), capture protection (:secure-ui, FLAG_SECURE on every window, the capture tests),
   the backup through the file picker: built, and green at 62396383.
-- Next: the owner runs P0b (if not yet), then P0-P4 from the block above, and sends back only what P0's preamble
+- Next: the owner runs P0-P4 (P0b passed 2026-11-17) from the block above, and sends back only what P0's preamble
   allows; the lead records them under "M5: device records", ticks the owed items, and sets this status to MET for
   the owner's approval. Nothing of M6 starts before that approval.
