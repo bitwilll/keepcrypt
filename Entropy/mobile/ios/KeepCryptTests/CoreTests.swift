@@ -78,7 +78,7 @@ final class CoreTests: XCTestCase {
         // call gives the halt the slot latched, internal; every later call gives it too, and the
         // start-up screen is the stop screen.
         let tooLong = [UInt8](repeating: 0, count: maxInput - 4 + 1)
-        XCTAssertEqual(haltReason(core.loadSnapshot(today: 20_261_117, file: tooLong)), .internal)
+        XCTAssertEqual(haltReason(core.loadSnapshot(today: 20_261_117, file: Secret(taking: tooLong))), .internal)
         assertWiped("the halt")
         XCTAssertEqual(haltReason(core.selfTest()), .internal)
         XCTAssertEqual(StartScreen(selfTest: core.selfTest()), .stopped(.internal))

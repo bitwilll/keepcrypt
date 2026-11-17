@@ -12,6 +12,8 @@ final class CaptureUITests: XCTestCase {
     private func launched() -> XCUIApplication {
         let app = XCUIApplication()
         app.launch()
+        XCTAssertTrue(app.buttons["continue"].waitForExistence(timeout: 30), "First launch's Continue")
+        app.buttons["continue"].tap()
         XCTAssertTrue(app.staticTexts["self_test_passed"].waitForExistence(timeout: 60), "Self-test passed")
         return app
     }

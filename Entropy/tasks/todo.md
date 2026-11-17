@@ -18947,6 +18947,54 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   at the same expectations. A discard while a long call runs must not wait for it (ffi's
   `ffi_discard_during_call` rule): Core gains a second, small reply buffer for DISCARD and WIPE_ALL alone, called
   outside the main call's lock.
+  As built (M6 commit D2a, the state machine and its screens): `KeepCrypt/Ceremony.swift`'s CeremonyModel is
+  CeremonyModel.kt's, method for method, with Kotlin's comments cut to what each does: UiState (Android's fields;
+  `offline`, one reading, for airplaneMode and wifiOff), every action from First launch's Continue to the
+  checklist's Finish, Check a backup, Load registry snapshot and About, `work` and `onWorker` (the long calls'
+  two looks at the discard flag, M5-54), show and enter (the gate, what each screen holds and wipes, the pads
+  wiped as their screens leave, the backup's, Check a backup's and the snapshot's files), Back (`backTo`),
+  `needsOffline`, the press rule (`pressOn`), the picker press rule (`pickerUp`, `appResumed`), the halt path
+  (`settle`, `halted`, the first halt's reason latched), going online (`pathReported`, Android's offlineChanged,
+  C5's pure `afterPathReport` kept) and C5's screenshot discard. `Seams.swift`: CeremonyCore (Core's 38 calls and
+  `shellHalt`, which Core gains: Android's Core.halt, named apart since the gate keeps `func halt` to
+  Ceremony.halt; the model's own halt is `failClosed`), MonotonicClock, UtcDate, MotionSource, Worker,
+  ScanStop, DocumentPickers (`openBackup` for Android's open, since `.open(` is SwOpenURL's), DocumentPlace,
+  PickedFile, and the app's SystemClock (CLOCK_MONOTONIC, which counts sleep), SystemDate (gmtime_r) and
+  QueueWorker (one serial queue, each reply on the main queue). `Pads.swift`: PadEntry (a buffer it owns, wiped
+  with memset_s, `take` one copy into a Secret) and the four pads' keys. Core: the four file constants (Android's
+  BACKUP_SUFFIX and the rest), `addExtra` and `loadSnapshot` taking a Secret. Wire: DiceProgress, SealCard,
+  RegistryHeader and Summary Equatable. The app: the model made over its seams (NoMotion until D3's Core Motion,
+  a zero-credit extra), Stage C's views on its state with First launch's Continue; the UI tests press Continue
+  first, and StartUpUITests checks First launch shows before the self-test.
+  Deviations from the Kotlin model, each the platform's or the gate's: (1) the offline check is C5's
+  process-long monitor reporting to `pathReported`, not a monitor started on each return; (2) a discard whose
+  reply is refused or discarded halts (C5's rule; Kotlin's discard ignores any reply but the halt), on the worker
+  too; (3) C5's screenshot discard, the iPhone's own, keeps First launch and Go offline in place with its notice
+  and otherwise lands as any discard; (4) a busy screen with no reply handed (impossible) halts.
+  Tests (KeepCryptTests, over the real slot; each leaves it at home, and each class checks it is live first,
+  since XCTest runs every class in one process and CoreTests' halt latches it, so they are named to run before
+  CoreTests): CeremonySupport.swift (Rig, HeldWorker, FakeOffline, FakeMotion, FakePickers, FakePlace, FakeFile,
+  SavedBackup, kcr.json's vectors and StandInCore, which forwards to Core and halts in its own place);
+  CeremonyWalk.swift, Walk.kt's 48 screens, branches, gated set and four words' states; CeremonyWalkTests (2:
+  every screen reached and checked, each gate, each state; isProtected against the docs' list, LeavingTest.kt's);
+  CeremonyBackTests (4, BackTest.kt's but the cover and warning half); CeremonyConfigurationAndOnlineTests (1,
+  goingOnlineOnEveryScreenDiscardsWhatIsHeld); CeremonyModelTests (9, C5's on the new model: First launch makes
+  no call before Continue, Start only offline, the pure rule, the screenshot on every kind of screen, a halted
+  and a broken discard, a failed self-test, the self-test once, the notice lines).
+  Proof (M6 commit D2a, partial: local; CI at the next push): the macOS stand-in (Core, Wire, Ceremony, Screen,
+  Seams and Pads.swift with the unit tests but CaptureLayerTests) over the host's release libkeepcrypt_capi.a
+  "Executed 24 tests, with 0 failures" (9 s), and over the host's test-registry archive (target/capi-test-registry,
+  `-D KC_WITH_TEST_REGISTRY`) the same; with Length's Back made nil, the code entry's wipe on leaving removed and
+  going online's discard made Go offline (in a copy), CeremonyBackTests and CeremonyConfigurationAndOnlineTests
+  fail at "length: Back once", "code_entry: Back left what was typed" and every held screen's "what is held"
+  (restored). Local builds (Xcode 27.2, generic simulator, CODE_SIGNING_ALLOWED=NO): build-for-testing "TEST BUILD
+  SUCCEEDED" for all three schemes, no Swift warning, and the Shipping device build "BUILD SUCCEEDED"; `--ios-app
+  Shipping` (simulator and device) and `--ios-app WithTestRegistry` clean; the hooks marker on 1 line of the
+  TestHooks binary, 0 in the others; `--selftest-ios-app` 33 passed. The gate clean (466 files; its first run
+  found four hits, fixed in the code: a comment naming the catch of KcHalt, `pickers.open()`, and two comments
+  naming the halt function), `--workflows` clean, `cargo fmt --all --check` clean; on the commit's tree (a
+  worktree): `--selftest` 4 x "486 passed, 0 failed", `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708
+  passed, 0 failed", `scripts/canaries.sh` "PASS: all 102 checks ran" (572 s). Not run here: the simulator (CI).
 - [ ] D3. The kit and the start: SwiftUI's fixed text, headings and pane titles; the pads (dice 1-6 with undo, letters
   for the first four letters, the go-ahead code, the BIP39 passphrase) as buttons only, never the system keyboard;
   First launch, Self-test, Go offline, Home, Length, Device entropy (Core Motion's accelerometer and gyroscope and

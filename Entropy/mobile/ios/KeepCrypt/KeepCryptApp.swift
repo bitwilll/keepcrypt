@@ -1,7 +1,9 @@
-// The iPhone app (tasks/todo.md, M6 items C2, C3 and C5; Q86): in Stage C a shell of the start-up
-// self-test (docs/mobile-apps.md, step 2), Go offline (step 3) and Home, inside the capture layers
-// (CaptureShield.swift) and watched by the offline check (OfflineCheck.swift). The ceremony's screens
-// come in Stage D. The TestHooks build (C5, M6-5) draws the UI tests' hook panel over every screen.
+// The iPhone app (tasks/todo.md, M6 items C2, C3, C5 and D2; Q86): the CeremonyModel (Ceremony.swift) over
+// its seams, inside the capture layers (CaptureShield.swift) and watched by the offline check
+// (OfflineCheck.swift). Until D3 brings the ceremony's SwiftUI screens, the shell draws Stage C's: First
+// launch's Continue, the start-up self-test (docs/mobile-apps.md, step 2), Go offline (step 3), Home and
+// the stop screen, and any other screen by its title alone. The TestHooks build (C5, M6-5) draws the UI
+// tests' hook panel over every screen.
 
 import SwiftUI
 
@@ -11,7 +13,14 @@ struct KeepCryptApp: App {
     private let offlineCheck: OfflineCheck
 
     init() {
-        let model = CeremonyModel()
+        #if KC_WITH_TEST_REGISTRY
+        let registry = true
+        #else
+        let registry = false
+        #endif
+        let model = CeremonyModel(
+            core: Core.shared, worker: QueueWorker(), clock: SystemClock(), date: SystemDate(), motion: NoMotion(),
+            testRegistry: registry)
         _model = StateObject(wrappedValue: model)
         offlineCheck = OfflineCheck { offline in
             model.pathReported(offline: offline)
@@ -31,7 +40,15 @@ struct KeepCryptApp: App {
     }
 }
 
-/// Stage C's screens, in fixed text only.
+/// The motion source until D3 brings Core Motion's (docs/mobile-apps.md, "Entropy sources on phones"):
+/// no sample. Motion is an extra mixed in with no credit, so none changes no quota.
+final class NoMotion: MotionSource {
+    func start(_ report: @escaping (Secret) -> Void) {}
+
+    func stop() {}
+}
+
+/// Stage C's screens, in fixed text only, over the model's state.
 struct StartView: View {
     @ObservedObject var model: CeremonyModel
 
@@ -41,12 +58,22 @@ struct StartView: View {
             TestRegistryStrip()
             #endif
             Spacer()
-            switch model.screen {
+            switch model.state.screen {
+            case .firstLaunch:
+                VStack(alignment: .leading, spacing: 16) {
+                    Text("First launch")
+                        .font(.title)
+                        .accessibilityIdentifier("first_launch")
+                    Button("Continue") {
+                        model.firstLaunchDone()
+                    }
+                    .accessibilityIdentifier("continue")
+                }
             case .selfTest:
                 Text("Running the self-test")
                     .accessibilityIdentifier("self_test_running")
             case .stop:
-                StopScreen(reason: model.halt)
+                StopScreen(reason: model.state.halt)
             case .goOffline:
                 GoOfflineScreen(model: model)
             case .home:
@@ -54,18 +81,29 @@ struct StartView: View {
                     .font(.title)
                     .accessibilityIdentifier("home")
             default:
-                Text(model.screen.title)
+                Text(model.state.screen.title)
                     .font(.title)
             }
-            if let notice = model.notice {
+            if let notice = model.state.notice {
                 Text(noticeLine(notice))
                     .padding(.top, 24)
-                    .accessibilityIdentifier(notice == .screenshot ? "notice_screenshot" : "notice_offline")
+                    .accessibilityIdentifier(noticeId(notice))
             }
             Spacer()
         }
         .padding()
         .textSelection(.disabled)
+    }
+}
+
+/// The notice line's identifier, for the UI tests.
+func noticeId(_ notice: Notice) -> String {
+    switch notice {
+    case .left: return "notice_left"
+    case .offline: return "notice_offline"
+    case .idle: return "notice_idle"
+    case .background: return "notice_background"
+    case .screenshot: return "notice_screenshot"
     }
 }
 
@@ -79,14 +117,14 @@ struct GoOfflineScreen: View {
                 .accessibilityIdentifier("self_test_passed")
             Text("Go offline")
                 .font(.title)
-            Text(model.offline
+            Text(model.state.offline
                  ? "No usable network path: the phone is offline."
                  : "A network path is usable: turn on airplane mode and turn off Wi-Fi.")
                 .accessibilityIdentifier("network_state")
             Button("Start") {
                 model.startOffline()
             }
-            .disabled(!model.offline)
+            .disabled(!model.state.offline)
             .accessibilityIdentifier("start")
         }
     }

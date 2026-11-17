@@ -376,7 +376,7 @@ struct DeviceProgress {
 }
 
 /// The dice screen's counts: the rolls, the minimum, and the bits so far in thousandths.
-struct DiceProgress {
+struct DiceProgress: Equatable {
     let rolls: Int
     let minimum: Int
     let millibits: UInt32
@@ -384,7 +384,7 @@ struct DiceProgress {
 
 /// The seal card (docs/seal-watchonly-braille.md, "The seal card"): the 8x8 grid, the colour index
 /// into the Okabe-Ito palette (0-7), the Seal ID and the Seal ID in braille. Public values.
-struct SealCard {
+struct SealCard: Equatable {
     let grid: [UInt8]
     let colourIndex: Int
     let sealId: String
@@ -426,7 +426,7 @@ enum Freshness {
 
 /// A loaded snapshot's or a verified proof's header: its number, its date (YYYYMMDD), its count (a
 /// snapshot's seals, or the entries in a proof's bucket) and its freshness.
-struct RegistryHeader {
+struct RegistryHeader: Equatable {
     let number: UInt64
     let date: UInt32
     let count: UInt32
@@ -530,7 +530,7 @@ enum Readback {
 }
 
 /// The wallet summary: the fingerprint (4 bytes) and the first receive address. Public values.
-struct Summary {
+struct Summary: Equatable {
     let fingerprint: [UInt8]
     let firstAddress: String
 }

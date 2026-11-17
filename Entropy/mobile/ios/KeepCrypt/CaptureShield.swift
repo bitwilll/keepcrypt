@@ -51,9 +51,6 @@ struct CaptureShield<Content: View>: View {
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.userDidTakeScreenshotNotification)) { _ in
             model.discardAfterScreenshot()
         }
-        .task {
-            await model.startUp()
-        }
         #if KC_TEST_HOOKS
         .overlay(alignment: .bottom) { TestHookPanel() }
         #endif

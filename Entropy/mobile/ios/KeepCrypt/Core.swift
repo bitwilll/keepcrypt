@@ -22,6 +22,22 @@ final class Core: @unchecked Sendable {
     /// The process's one Core, as the slot is the process's one.
     static let shared = Core()
 
+    /// A backup file's name ends so: core's FILE_NAME_SUFFIX (core/src/backup.rs); Check a backup opens no
+    /// file whose name does not, in any letter case (Android's Core.BACKUP_SUFFIX).
+    static let backupSuffix = ".age"
+
+    /// The largest backup file core reads: age's 8 KiB, core's MAX_FILE_BYTES (core/src/backup/age.rs)
+    /// (Android's Core.BACKUP_MAX_BYTES).
+    static let backupMaxBytes = 8 * 1024
+
+    /// A registry snapshot's name ends so (rule 8): Load registry snapshot opens no file whose name does
+    /// not, in any letter case (Android's Core.SNAPSHOT_SUFFIX).
+    static let snapshotSuffix = ".kcr"
+
+    /// The largest snapshot core reads: its signed header, 122 bytes, and 2^22 entries of 18 bytes, the
+    /// file keepcrypt-capi's MAX_INPUT takes after the date's 4 bytes (Android's Core.SNAPSHOT_MAX_BYTES).
+    static let snapshotMaxBytes = 122 + 18 * (1 << 22)
+
     private let lock = NSRecursiveLock()
     private let capacity: Int
     private let buffer: UnsafeMutablePointer<UInt8>
@@ -94,6 +110,15 @@ final class Core: @unchecked Sendable {
         return wipeBuffer() && length == 2
     }
 
+    /// The shell's own halt (Android's Core.halt, named apart since the gate keeps the one halt
+    /// function to Ceremony.halt): halts the slot, an op the table does not hold, and gives the halt status with the
+    /// reason the slot latched, internal unless it had halted before.
+    func shellHalt() -> Reply<Void> {
+        lock.lock()
+        defer { lock.unlock() }
+        return .halted(haltSlot())
+    }
+
     /// Whether the reply buffer holds nothing but zeros: what every call leaves, which KeepCryptTests
     /// reads after each call. It shows nothing of what the buffer held.
     func replyBufferIsWiped() -> Bool {
@@ -115,8 +140,8 @@ final class Core: @unchecked Sendable {
         return call(.start, &input) { $0.nothing() }
     }
 
-    func addExtra(_ source: Extra, _ bytes: [UInt8]) -> Reply<Void> {
-        var input = [source.rawValue] + bytes
+    func addExtra(_ source: Extra, _ bytes: Secret) -> Reply<Void> {
+        var input = Core.input([source.rawValue], bytes)
         return call(.addExtra, &input) { $0.nothing() }
     }
 
@@ -231,9 +256,10 @@ final class Core: @unchecked Sendable {
     /// D, 32 bytes, for verify.py.
     func revealDeviceLeg() -> Reply<Secret> { call(.revealDeviceLeg) { $0.deviceLeg() } }
 
-    /// Load registry snapshot: the .kcr file's bytes (a public file), on today's UTC date (YYYYMMDD).
-    func loadSnapshot(today: UInt32, file: [UInt8]) -> Reply<RegistryHeader> {
-        var input = Core.date(today) + file
+    /// Load registry snapshot: the .kcr file's bytes (a public file, held in a Secret as every file the
+    /// app reads), on today's UTC date (YYYYMMDD).
+    func loadSnapshot(today: UInt32, file: Secret) -> Reply<RegistryHeader> {
+        var input = Core.input(Core.date(today), file)
         return call(.loadSnapshot, &input) { $0.registry() }
     }
 

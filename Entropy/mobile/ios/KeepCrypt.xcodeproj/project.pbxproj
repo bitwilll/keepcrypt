@@ -47,7 +47,9 @@
 				CaptureShield.swift,
 				Ceremony.swift,
 				Core.swift,
+				Pads.swift,
 				Screen.swift,
+				Seams.swift,
 				SecureLayer.swift,
 				Wire.swift,
 			);
