@@ -1,0 +1,809 @@
+package com.keepcrypt.entropy
+
+import android.graphics.Rect
+import android.os.SystemClock
+import android.view.Choreographer
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import androidx.test.runner.lifecycle.ActivityLifecycleMonitorRegistry
+import androidx.test.runner.lifecycle.Stage
+import androidx.test.uiautomator.By
+import androidx.test.uiautomator.StaleObjectException
+import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
+import androidx.test.uiautomator.Until
+import com.keepcrypt.entropy.Capture.launch
+import com.keepcrypt.entropy.Capture.onMain
+import com.keepcrypt.entropy.Capture.probe
+import com.keepcrypt.entropy.Capture.shellText
+import com.keepcrypt.entropy.ffi.WordPage
+import com.keepcrypt.entropy.screens.ASCII_KEYS
+import com.keepcrypt.entropy.screens.ASCII_PAGES
+import com.keepcrypt.entropy.screens.ASCII_PAGE_KEYS
+import com.keepcrypt.entropy.screens.CeremonyModel
+import com.keepcrypt.entropy.screens.DICE_KEYS
+import com.keepcrypt.entropy.screens.HEADPHONES_WARNING
+import com.keepcrypt.entropy.screens.INSERTS_PER_DEVICE
+import com.keepcrypt.entropy.screens.LETTER_KEYS
+import com.keepcrypt.entropy.screens.PadEntry
+import com.keepcrypt.entropy.screens.PressGuard
+import com.keepcrypt.entropy.screens.SECRET_TAG
+import com.keepcrypt.entropy.screens.Screen
+import com.keepcrypt.entropy.screens.asciiPage
+import com.keepcrypt.entropy.screens.keyLabel
+import com.keepcrypt.entropy.screens.screenId
+import com.keepcrypt.entropy.screens.shownView
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.regex.Pattern
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
+
+/**
+ * The flow tests' way through the screens (tasks/todo.md, M5 groups 15 and 16, and Stage U's U1b), shared
+ * by FlowTest, CheckTest, JourneyTest and SnapshotDrillTest: UI Automator taps controls by their resource
+ * ids (Compose test tags, group 6, which the tests' own in-process reading gives the shipping APK's nodes as ids:
+ * Tags, Q84) as a user would and reads what they show from the accessibility tree.
+ * A journey's every input goes through the UI (M5-72 (a)): its rolls pressed and confirmed on the dice pad
+ * (tapRolls), its code tapped on the Crockford pad (tapCode) and its letters touched on the Protected
+ * letter pad (typeLetters); the edge tests may still make the many rolls a minimum takes through the
+ * model's dice pick and confirmRoll, the entry points the pad and Confirm call (roll; group 6,
+ * "Driving"). No helper reads a node it found before a wait: each read finds its node afresh (fresh),
+ * since a redraw in between replaces it. Every helper that finds, reads, taps or touches a node scrolls
+ * it into view first (scrolledTo; Q85, lead decision M5-84 (a)): a screen's text column scrolls, its
+ * actions with it once they are tall (Kit.kt's KitScreen), and Compose leaves a node scrolled out of view
+ * out of the accessibility tree, so no search sees it there.
+ */
+internal object Ui {
+    /** The start-up self-test's and a start's time limit (a translated library is slower; NativeTest's). */
+    const val START_SECONDS = 120
+
+    /** How long a search waits for its node, and fresh tries again on a node a redraw replaced. */
+    private const val FIND_MS = 10_000L
+
+    /** The privacy gate's root (Screens.kt's PrivacyGate), which a Protected screen shows first (Capture.nodesOf's too). */
+    const val PRIVACY_GATE = "privacy_gate"
+
+    /** How long a press that must do nothing gets to land. */
+    private const val SETTLE_MS = 500L
+
+    /** At most this many pages of a screen's column each way (scrolledTo): more than any screen here holds. */
+    const val PAGES = 16
+
+    val device: UiDevice get() = UiDevice.getInstance(Capture.instrumentation)
+
+    /**
+     * A new MainActivity through First launch, the start-up self-test its Continue runs (lead decision
+     * M5-50) and Go offline's Start (the phone offline) to Home.
+     */
+    fun toHome(): MainActivity {
+        val activity = launch()
+        on(activity, Screen.FirstLaunch)
+        tap("first_launch_continue")
+        on(activity, Screen.GoOffline, START_SECONDS)
+        await("the app reads the phone offline", 30) { onMain { activity.model.state.value.offline } }
+        tap("start")
+        on(activity, Screen.Home)
+        return activity
+    }
+
+    /**
+     * count rolls through the model's dice pick and confirmRoll, as the pad and Confirm call them, faces in
+     * pattern's order: the edge tests' setup, in-process. A journey (JourneyTest; M5-72 (a)) makes its
+     * rolls through the UI alone, by tapRolls.
+     */
+    fun roll(activity: MainActivity, count: Int, pattern: String) {
+        onMain {
+            for (index in 0 until count) {
+                activity.model.dicePick.replace(pattern[index % pattern.length])
+                activity.model.confirmRoll()
+            }
+        }
+    }
+
+    /**
+     * Waits up to seconds for the activity to show screen, then up to 10 s for UI Automator to see it (its
+     * root by the screen's id, or the privacy gate's while the model holds the gate up before it), then
+     * for the screen to settle. The activity reports a screen once it is composed, and UI Automator reads
+     * the app's nodes through the platform's accessibility cache, which the app's content-change events
+     * bring up to date only after that: until then a search can match a node of the screen before, gone
+     * from the window. On kc37 at 720x1184 (local) a tap on Home's About just after Back from About so
+     * matched the About screen's root, which had the id of Home's About then, and clicked at that root's
+     * centre, between two of Home's buttons: run 40681107802's About failure (API 31). When UI Automator does
+     * not see the root in time, a probe line says what it does read there (Capture.treeFacts) before the failure.
+     */
+    fun on(activity: MainActivity, screen: Screen, seconds: Int = 10) {
+        await("the app shows " + screenId(screen), seconds) { onMain { activity.shownScreen } == screen }
+        val root = if (onMain { activity.model.state.value.gate }) PRIVACY_GATE else screenId(screen)
+        val seen = device.wait(Until.hasObject(By.res(root)), FIND_MS)
+        if (seen != true) {
+            Capture.probe("UI Automator's tree for " + root + ": " + Capture.treeFacts(activity.packageName, root))
+            val stage = onMain { ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(activity) }
+            Capture.probe("the activity's stage " + stage + "; " + Capture.windowFacts())
+        }
+        assertTrue("UI Automator does not see " + root + ", though the app shows " + screenId(screen), seen == true)
+        device.waitForIdle()
+        guardOpen(activity, screenId(screen))
+    }
+
+    /**
+     * Waits up to GUARD_SECONDS for the press guard (M5-79) to admit a touch made now on what the app shows, so a
+     * test's next press lands as a person's does once the screen has been seen; past that the test fails, the
+     * guard's facts (the view it holds, how long ago it was composed, the model's view) the probe line before it.
+     * A wait longer than the guard's own 300 ms is a probe line too.
+     */
+    fun guardOpen(activity: MainActivity, what: String) {
+        val begun = SystemClock.uptimeMillis()
+        fun open() = onMain { activity.pressGuard.admits(shownView(activity.model.state.value), SystemClock.uptimeMillis()) }
+        while (!open()) {
+            if (SystemClock.uptimeMillis() - begun > GUARD_SECONDS * 1_000L) {
+                Capture.probe(onMain { activity.pressGuard.facts(shownView(activity.model.state.value), SystemClock.uptimeMillis()) })
+                fail("the press guard did not open on $what within $GUARD_SECONDS s (its facts are the probe line before this)")
+            }
+            SystemClock.sleep(POLL_MS)
+        }
+        val waited = SystemClock.uptimeMillis() - begun
+        if (waited > PressGuard.GUARD_MILLIS) Capture.probe("the press guard opened on $what $waited ms after the screen was seen")
+    }
+
+    /** How long Ui.on waits for the press guard to open on a screen it has seen. */
+    private const val GUARD_SECONDS = 2
+
+    /** After a press that must do nothing: a moment for it to land, then the same screen. */
+    fun stays(activity: MainActivity, screen: Screen, what: String) {
+        device.waitForIdle()
+        SystemClock.sleep(SETTLE_MS)
+        assertEquals(what + " left the screen", screen, onMain { activity.shownScreen })
+    }
+
+    /** The control or text with resource id tag, scrolled into view (reveal) and waited for up to 10 s. */
+    fun find(tag: String): UiObject2 {
+        reveal(tag)
+        return device.wait(Until.findObject(By.res(tag)), FIND_MS) ?: throw AssertionError("not on screen: " + tag)
+    }
+
+    /**
+     * The privacy gate on screen (find), with the warning to use headphones that every gate gives (Q83: a screen
+     * reader speaks the words, the backup passphrase, D, the BIP39 passphrase and every letter typed on a
+     * Protected pad); every device test that meets a gate checks it here.
+     */
+    fun gate() {
+        find(PRIVACY_GATE)
+        awaitText("headphones_warning", HEADPHONES_WARNING)
+    }
+
+    /**
+     * Where a discard lands once the start-up self-test has passed (Q81; docs/pi-firmware.md's "returns Home"):
+     * Home while the phone is still offline (a leave, the idle wipe, 60 s away), Go offline once it went online,
+     * each saying why. The device tests' one statement of it, as Rig.assertDiscarded is the JVM tests'.
+     */
+    fun discardedTo(offline: Boolean): Screen = if (offline) Screen.Home else Screen.GoOffline
+
+    /**
+     * block's value, block run again while a node it found has been replaced by a redraw before it reads
+     * it, for up to 10 s. UI Automator reads a node it found (UiObject2) only after waiting for the screen
+     * to go idle, and then asks the app for the node again, which throws StaleObjectException once a redraw
+     * since the search has replaced it: run 40681107802 (API 31) so read the BIP39 entry's Delete, whose
+     * block of keys and buttons is drawn anew with each page of keys, from a search made just before that
+     * redraw reached UI Automator. block finds every node it reads itself, so each try reads the screen as
+     * it is then, and a node still replaced at every try after 10 s fails, never passes.
+     */
+    fun <T> fresh(what: String, block: () -> T): T {
+        val end = SystemClock.elapsedRealtime() + FIND_MS
+        while (true) {
+            try {
+                return block()
+            } catch (stale: StaleObjectException) {
+                if (SystemClock.elapsedRealtime() > end) throw AssertionError("replaced by a redraw at every read for 10 s: " + what, stale)
+                device.waitForIdle()
+            }
+        }
+    }
+
+    /** read of the control or text with resource id tag, found afresh for each try (find, fresh). */
+    fun <T> read(tag: String, read: (UiObject2) -> T): T = fresh(tag) { read(find(tag)) }
+
+    /**
+     * Taps the control tag once it is on screen (find's 10 s): two frames drawn first (framesDrawn), so the
+     * screen holds whatever the model last changed, then the control read afresh from the app (inView: its
+     * node scrolled into view and shown whole, refreshed, visible), and a touch at the middle of the part of
+     * it its window shows (touch, which logs no point). Not through UI Automator's selector, whose click goes
+     * to the bounds the accessibility cache holds: a state the test changed in-process just before (typed or
+     * rolled through the model) can be drawn after that cache was read, and the click then lands where the
+     * control was or presses it as it was. Run 43879000831 (at 0c4e4fc8) showed both: on API 34, Next keys
+     * after a passphrase typed in-process pressed the BIP39 entry's Back (the app on its question, no notice,
+     * still offline); on API 36, the dice's Done after 50 rolls confirmed in-process left the app on the dice
+     * (no notice, offline). Before the touch, the press guard must admit it (guardOpen, on the resumed
+     * MainActivity), as a person's press comes once the screen is seen: a gate reached through gate(), not
+     * on(), is touched no sooner than the guard's 300 ms after it was composed (on kc34, API 34, a touch made
+     * as soon as the gate was read was refused at every privacy gate; UI Automator's slower click had been
+     * late enough). A disabled control is touched as any other (a press that must do nothing is one,
+     * Ui.stays). Every tap here is followed by a check of the screen it leads to, which is the proof it
+     * landed; a tap comes after on() or gate() has seen its screen, and no control's id is a screen's id.
+     */
+    fun tap(tag: String) {
+        find(tag)
+        framesDrawn()
+        device.waitForIdle()
+        guardOpen(resumedActivity(), tag)
+        touch(poll("$tag on the screen, to touch") { inView(tag)?.takeIf { it.refresh() }?.let(::shownBounds) })
+        device.waitForIdle()
+    }
+
+    /** The resumed MainActivity, which every tap presses on; none fails the test. */
+    private fun resumedActivity(): MainActivity = onMain {
+        ActivityLifecycleMonitorRegistry.getInstance().getActivitiesInStage(Stage.RESUMED).filterIsInstance<MainActivity>().singleOrNull()
+    } ?: throw AssertionError("no single resumed MainActivity to tap on")
+
+    /**
+     * Two frames of the app's main thread's Choreographer run, each callback posted on the main thread
+     * and waited for up to 10 s: Compose recomposes and lays out in the frame after a state change, so
+     * after two the app's nodes show what the model holds now.
+     */
+    fun framesDrawn() {
+        repeat(2) {
+            val ran = CountDownLatch(1)
+            onMain { Choreographer.getInstance().postFrameCallback { ran.countDown() } }
+            assertTrue("no frame within 10 s", ran.await(FIND_MS, TimeUnit.MILLISECONDS))
+        }
+    }
+
+    fun text(tag: String): String = read(tag) { it.text }
+
+    fun enabled(tag: String): Boolean = read(tag) { it.isEnabled }
+
+    /**
+     * Presses the dice pad's key for face, as a tap on it picks the face, without naming the face to UI
+     * Automator, which logs the selector of every search and the point of every click (on the pad's fixed
+     * grid, a point names its key): a face picked is a roll once confirmed, and no roll goes into a log
+     * (lead decision M5-68 (e)). The pad's keys are found by a pattern that names none of them, the face's
+     * picked by its resource id in-process, and pressed by its accessibility click, as TalkBack presses it.
+     * A key replaced before the press is found again (fresh): the press is the last read of the key found.
+     */
+    fun pressFace(face: Char) {
+        find(screenId(Screen.Dice))
+        poll("the dice pad's keys in view") { scrolledTo { allInView(DICE_KEYS.length) { DICE_KEY.matcher(it.viewIdResourceName ?: "").matches() } } }
+        val pressed = fresh("the dice pad's keys") {
+            val key = device.findObjects(By.res(DICE_KEY)).singleOrNull { it.resourceName == "key_" + face }
+                ?: throw AssertionError("the dice pad has no single key for the face pressed (it is not printed)")
+            key.accessibilityNodeInfo.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        }
+        assertTrue("the dice pad's key did not take the press", pressed)
+        device.waitForIdle()
+    }
+
+    /**
+     * Waits up to 10 s for the dice screen's pick, empty before the press, to show a face, by a pattern
+     * that names none (its text changes in place, so it is waited for as UI Automator resolves it, and it
+     * is found again if a recomposition replaced it before its text is read, never read from a node found
+     * before), then compares that face with face in-process: a roll goes into no selector or message.
+     */
+    fun awaitPick(face: Char) {
+        reveal("dice_pick")
+        val same = fresh("dice_pick") {
+            val shown = device.wait(Until.findObject(By.res("dice_pick").text(A_FACE)), FIND_MS)
+                ?: throw AssertionError("the dice screen's pick shows no face after the press")
+            shown.text == face.toString()
+        }
+        assertTrue("the dice screen's pick is not the face pressed (neither is printed)", same)
+    }
+
+    /**
+     * count rolls through the UI alone, faces in pattern's order (Stage U's U1b, M5-72 (a)): for each, the
+     * face's key on the Public dice pad and then Confirm, once it is enabled, pressed by their accessibility
+     * click (as TalkBack presses them), and the count waited for until it shows one roll more. A press lost
+     * leaves Confirm disabled or the count unchanged, which fails here; a face pressed wrong shows in the
+     * seed the journey then checks (its Seal ID and words, vectors). The nodes are read and pressed through
+     * UiAutomation directly (appNode), not UI Automator's searches: each of those first waits for the
+     * accessibility events to be quiet for 500 ms (UiDevice.getWindowRoots' waitForIdle, UI Automator
+     * 2.4.0), and a tap's UiObject.click waits up to 3 s for an event after it, so a roll by pressFace and
+     * tap took 3.2 to 4.9 s (U1b's run, Entropy Android 41193839334); and nothing here goes into a log, so
+     * no face does (M5-68 (e)). The count before each roll is read in-process (to observe), the one after
+     * from the screen.
+     */
+    fun tapRolls(activity: MainActivity, count: Int, pattern: String) {
+        for (index in 0 until count) {
+            val before = onMain { activity.model.state.value.dice?.rolls } ?: throw AssertionError("not on the dice screen")
+            val roll = (before + 1).toString()
+            val key = poll("the dice pad's key for roll $roll") { inView("key_" + pattern[index % pattern.length])?.takeIf { it.isEnabled } }
+            assertTrue("the dice pad's key did not take the press (roll $roll)", key.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            val confirm = poll("Confirm enabled after a face's press (roll $roll)") { inView("confirm")?.takeIf { it.isEnabled } }
+            assertTrue("Confirm did not take the press (roll $roll)", confirm.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+            poll("the dice count showing $roll rolls after Confirm") {
+                inView("dice_count")?.takeIf { it.text?.toString()?.startsWith("$roll / ") == true }
+            }
+        }
+    }
+
+    /**
+     * The app's node with resource id tag, as it is now, or null: the first in appNodes' walk, which reads each
+     * node from the app (in-process, no idle wait and no log), so its state (enabled, text, visibility) is the
+     * app's and not the accessibility cache's. Null while no such node is in the tree.
+     */
+    private fun appNode(tag: String): AccessibilityNodeInfo? = appNodes().firstOrNull { it.viewIdResourceName == tag }
+
+    /**
+     * Every node of the app's windows as the app has them now, in tree order: an in-process walk down from each
+     * window root UiAutomation reports, each node read again from the app (refresh) before its children are, so
+     * the accessibility cache, which can keep a tree the app has changed, is passed by (on kc37, local, a walk
+     * through the cache missed the read-back's Next after a match and the reviewed insert's "Back to the
+     * read-back" for 10 s while UI Automator's tree held each, visible). No idle wait, no selector, so no log.
+     */
+    fun appNodes(): List<AccessibilityNodeInfo> {
+        val pkg = Capture.instrumentation.targetContext.packageName
+        return Capture.instrumentation.uiAutomation.windows.mapNotNull { it.root }.filter { it.packageName?.toString() == pkg }.flatMap(::under)
+    }
+
+    /**
+     * The showing screen's column, its one scrollable node (KitScreen's text column, with its actions once
+     * they are tall), refreshed from the app; null when the app's windows hold none.
+     */
+    fun column(): AccessibilityNodeInfo? = appNodes().firstOrNull { it.isScrollable && it.isVisibleToUser }
+
+    /**
+     * Scrolls the showing screen's column a page (its height) forward or back, by its accessibility scroll
+     * action, as TalkBack scrolls it, and waits for it to settle (settle: Compose animates the scroll); false
+     * when there is no column or it stands at that end already.
+     */
+    fun scrollPage(forward: Boolean): Boolean {
+        val action = if (forward) AccessibilityNodeInfo.ACTION_SCROLL_FORWARD else AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
+        if (column()?.performAction(action) != true) return false
+        settle()
+        return true
+    }
+
+    /**
+     * Waits until the column stands still after a scroll it was asked for: UI Automator's idle wait (the
+     * accessibility events quiet for 500 ms), then the bounds of the column's nodes, read from the app
+     * (appNodes' walk, not the accessibility cache), the same at two reads SETTLE_READ_MS apart, for up to 10 s. A
+     * touch while Compose still animates the scroll stops the scroll instead of pressing what it lands on.
+     */
+    private fun settle() {
+        device.waitForIdle()
+        val end = SystemClock.elapsedRealtime() + FIND_MS
+        var last: List<Rect>? = null
+        while (SystemClock.elapsedRealtime() < end) {
+            val now = column()?.let { column -> under(column).map { node -> Rect().also(node::getBoundsInScreen) } }
+            if (now == last) return
+            last = now
+            SystemClock.sleep(SETTLE_READ_MS)
+        }
+        throw AssertionError("the column did not stand still within 10 s of a scroll")
+    }
+
+    /** settle's interval between two reads of the column's nodes. */
+    private const val SETTLE_READ_MS = 100L
+
+    /**
+     * found's value, the showing screen's column scrolled to bring it into view (Q85, M5-84 (a)): found reads the
+     * app's nodes as they are (in-process, so nothing it looks for goes into a selector or a log), first where the
+     * column stands; while it gives null, the column is scrolled a page at a time to its end, then back to its
+     * top, found read after each page. Pages follow each other with no gap, so a node anywhere in the column
+     * shows, whole or in part, on one of them. Null when none does (or the screen has no column).
+     */
+    fun <T : Any> scrolledTo(found: () -> T?): T? {
+        found()?.let { return it }
+        for (forward in listOf(true, false)) {
+            var pages = 0
+            while (pages++ < PAGES && scrollPage(forward)) found()?.let { return it }
+        }
+        return null
+    }
+
+    /**
+     * node shown whole when its bounds reach the column's top or bottom edge, where the column may cut it: its
+     * accessibility action ACTION_SHOW_ON_SCREEN, for which Compose scrolls the column the least that shows the
+     * node whole (as for TalkBack's focus), then the column settles. A node outside the column (a screen's
+     * actions under it, the strip, the "More below" line) or holding it (the screen's root) is left as it is.
+     * Whether the column moved: node's bounds read again after.
+     */
+    fun showWhole(node: AccessibilityNodeInfo): Boolean {
+        val column = column() ?: return false
+        val edges = Rect().also(column::getBoundsInScreen)
+        val before = Rect().also(node::getBoundsInScreen)
+        if (!Rect.intersects(edges, before) || before.contains(edges)) return false
+        if (before.top > edges.top && before.bottom < edges.bottom) return false
+        if (!node.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_SHOW_ON_SCREEN.id)) return false
+        settle()
+        return node.refresh() && Rect().also(node::getBoundsInScreen) != before
+    }
+
+    /**
+     * The first node (in tree order) the showing screen's column cuts at its bottom edge: one inside it whose
+     * bounds reach that edge (Capture.nodesThrough shows it whole before the column moves a page on); null
+     * when there is none, or no column.
+     */
+    fun cutAtTheBottom(): AccessibilityNodeInfo? {
+        val column = column() ?: return null
+        val edges = Rect().also(column::getBoundsInScreen)
+        return under(column).drop(1).firstOrNull { node ->
+            val at = Rect().also(node::getBoundsInScreen)
+            !at.isEmpty && at.top < edges.bottom && at.bottom >= edges.bottom
+        }
+    }
+
+    /**
+     * The app's node tag, visible, scrolled into view first (scrolledTo) and shown whole (showWhole), as the app
+     * has it now; null when no page of the column shows it.
+     */
+    private fun inView(tag: String): AccessibilityNodeInfo? {
+        fun visible() = appNode(tag)?.takeIf { it.isVisibleToUser }
+        val node = scrolledTo(::visible) ?: return null
+        return if (showWhole(node)) visible() else node
+    }
+
+    /**
+     * The node tag scrolled into view (inView), waited for up to 10 s; past that the test fails, naming tag (an
+     * id, no secret), a probe line first saying what UI Automator's tree holds around tag and what the system
+     * shows (Capture.treeFacts and windowFacts: ids, classes, visibility and windows, never a node's text), and
+     * what the app's model holds (Capture.appFacts: its screen, gate, overlay and notice, never a secret).
+     */
+    fun reveal(tag: String): AccessibilityNodeInfo {
+        try {
+            return poll("$tag on the screen, scrolled into view") { inView(tag) }
+        } catch (missing: AssertionError) {
+            probe(
+                "UI Automator's tree for $tag: " + Capture.treeFacts(Capture.instrumentation.targetContext.packageName, tag) + "; " +
+                    Capture.windowFacts() + "; " + Capture.appFacts(),
+            )
+            throw missing
+        }
+    }
+
+    /**
+     * Whether the app shows a node tag anywhere in the showing screen's column, scrolled through to its end and
+     * back (scrolledTo): an absence holds only when no page holds it, since a node out of view is in no tree.
+     */
+    fun anywhere(tag: String): Boolean = scrolledTo { appNode(tag) } != null
+
+    /**
+     * The count nodes key picks (a pad's keys, found by what names none of them) when the app shows exactly
+     * that many and each is visible, else null: a pad is in view only once all its keys are.
+     */
+    private fun allInView(count: Int, key: (AccessibilityNodeInfo) -> Boolean): List<AccessibilityNodeInfo>? =
+        appNodes().filter(key).takeIf { keys -> keys.size == count && keys.all { it.isVisibleToUser } }
+
+    /** read's value once it is not null, read every 20 ms for up to 10 s; past that the test fails, naming what. */
+    private fun <T : Any> poll(what: String, read: () -> T?): T {
+        val end = SystemClock.elapsedRealtime() + FIND_MS
+        while (true) {
+            read()?.let { return it }
+            if (SystemClock.elapsedRealtime() > end) throw AssertionError("timed out after 10 s: " + what)
+            SystemClock.sleep(POLL_MS)
+        }
+    }
+
+    /** poll's interval. */
+    private const val POLL_MS = 20L
+
+    /** Taps code on the code entry's Crockford pad, key by key, and waits for it shown in two groups (a go-ahead code is public). */
+    fun tapCode(code: String) {
+        for (symbol in code) tap("key_" + symbol)
+        awaitText("code", Checker.grouped(code))
+    }
+
+    /** A single lower-case letter, as a node naming a letter pad's key would show it. */
+    private val A_LETTER = Regex("[a-z]")
+
+    /** Any one character, as a node naming an ASCII pad's key would show it. */
+    private val ANY_CHARACTER = Regex(".", RegexOption.DOT_MATCHES_ALL)
+
+    /** The dice pad's keys' resource ids, key_ and a face, and a face as the pick shows it: patterns that name no face. */
+    private val DICE_KEY: Pattern = Pattern.compile("key_[1-6]")
+    private val A_FACE: Pattern = Pattern.compile("[1-6]")
+
+    /**
+     * Touches the middle of bounds (a Protected pad's key's, in screen pixels) as a finger does: a touch
+     * down and up injected through UiAutomation, never UiObject2.click, which logs the point it taps at
+     * debug level ("Clicking on (x, y).") with no isLoggable guard, and on the pad's fixed grid a point names
+     * its key: a letter typed goes into no log (lead decision M5-68 (e)). A Protected key keeps its click
+     * action (Q79), for TalkBack, but a journey presses it with a touch, as a sighted user does; nothing here
+     * logs the point. The caller checks the press landed (typeLetters reads the pad's entry), so no idle wait
+     * follows.
+     */
+    fun touch(bounds: Rect) {
+        val down = SystemClock.uptimeMillis()
+        inject(MotionEvent.ACTION_DOWN, down, down, bounds.exactCenterX(), bounds.exactCenterY())
+        inject(MotionEvent.ACTION_UP, down, SystemClock.uptimeMillis(), bounds.exactCenterX(), bounds.exactCenterY())
+    }
+
+    /**
+     * A touch (touch: injected, no point logged) inside the showing screen's own padding: 12 dp right of and
+     * 8 dp below the top left of its root (the privacy gate's while one stands; KitScreen's content column is
+     * padded 24 dp across and 16 dp down inside it), where no control or text ever is, in any orientation or
+     * font scale. It is only an input, which starts the idle time again (the screens' pointer handler feeds
+     * it to the model before the press guard), and does nothing else. DeviceChangeTest makes one before each
+     * change, since a Protected screen's cover comes after 30 s with no input and would change the state the
+     * change must keep (run 41247649576: a text named instead, the dice count, was scrolled out of the
+     * landscape window).
+     */
+    fun touchMargin(activity: MainActivity) {
+        val root = onMain { activity.model.state.value.let { if (it.gate) PRIVACY_GATE else screenId(it.screen) } }
+        val bounds = poll("$root on the screen") { appNode(root)?.let(::shownBounds) }
+        val density = Capture.instrumentation.targetContext.resources.displayMetrics.density
+        val x = bounds.left + (12 * density).toInt()
+        val y = bounds.top + (8 * density).toInt()
+        touch(Rect(x, y, x + 1, y + 1))
+    }
+
+    /**
+     * A double tap on the Public control tag, once it is enabled, as a finger makes one: two touches at the
+     * middle of the part of it its window shows, injected (touch's events, no point logged), the second's
+     * down DOUBLE_TAP_MS after the first's, with no wait for the app between them, so the second lands on
+     * whatever the first one's press put there (Stage U's U2i, DoubleTapTest). The caller reads where it
+     * ended.
+     */
+    fun doubleTap(tag: String) {
+        val bounds = poll("$tag enabled on the screen") { inView(tag)?.takeIf { it.isEnabled }?.let(::shownBounds) }
+        val first = SystemClock.uptimeMillis()
+        touch(bounds)
+        SystemClock.sleep(maxOf(0L, first + DOUBLE_TAP_MS - SystemClock.uptimeMillis()))
+        touch(bounds)
+    }
+
+    /** doubleTap's interval, from the first touch's down to the second's: a quick finger's double tap. */
+    const val DOUBLE_TAP_MS = 60L
+
+    /** node's screen bounds cut to its window's, while it is visible and that part is not empty; null otherwise. */
+    private fun shownBounds(node: AccessibilityNodeInfo): Rect? {
+        if (!node.isVisibleToUser) return null
+        val shown = Rect().also(node::getBoundsInScreen)
+        val window = node.window?.let { Rect().also(it::getBoundsInScreen) } ?: return null
+        return shown.takeIf { it.intersect(window) && !it.isEmpty }
+    }
+
+    /** One touch-screen event at (x, y), injected through UiAutomation and handled before this returns. */
+    private fun inject(action: Int, downTime: Long, eventTime: Long, x: Float, y: Float) {
+        val event = MotionEvent.obtain(downTime, eventTime, action, x, y, 0)
+        event.source = InputDevice.SOURCE_TOUCHSCREEN
+        try {
+            assertTrue("a touch was not injected", Capture.instrumentation.uiAutomation.injectInputEvent(event, true))
+        } finally {
+            event.recycle()
+        }
+    }
+
+    /**
+     * The keys of the Protected pad on screen, in its order: the nodes under the screen's root with the
+     * button role whose text is one of labels (the pad's keys' labels, Pads.kt's keyLabel), which must be
+     * labels, in their order, each marked accessibility-data sensitive, clickable and with no description or
+     * resource id (Q79: a Protected key carries its label as its text, marked sensitive as a secret's node
+     * is, and keeps its click, so TalkBack reads and presses it); no other node there but the entry's own
+     * secret one has a text that names a key (a key's label, or any text names matches), and none has a
+     * Public key's id (key_ and a key). The entry's secret node (SECRET_TAG, the typed text the screen shows,
+     * under FLAG_SECURE) is left out of the label check: the BIP39 entry shows a passphrase as typed, so
+     * after one character it is one character long, a key's label (the review of U-4 found the check failing
+     * there, Entropy Android 41203734694). The texts are compared in-process, none printed. Read through
+     * UiAutomation's own nodes (appNode's walk, in tree order, as UI Automator's search returns them), with
+     * no idle wait and no selector logged (Stage U's U1c; U1b2 found a search costs 500 ms of quiet), and
+     * read again until all of labels are there, for up to 10 s. The pad is scrolled into view first
+     * (scrolledTo: every key visible, its last and first shown whole, showWhole), since a key out of view
+     * is in no tree.
+     */
+    private fun padKeys(screen: Screen, labels: List<String>, names: Regex): List<AccessibilityNodeInfo> =
+        poll("the pad's ${labels.size} keys on " + screenId(screen)) {
+            val shown = scrolledTo { keysNow(screen, labels, names)?.takeIf { keys -> keys.all { it.isVisibleToUser } } } ?: return@poll null
+            val moved = showWhole(shown.last()) or showWhole(shown.first())
+            if (moved) keysNow(screen, labels, names) else shown
+        }
+
+    /** padKeys' read of the pad's keys on screen as the app has them now, or null while not all of labels are there. */
+    private fun keysNow(screen: Screen, labels: List<String>, names: Regex): List<AccessibilityNodeInfo>? {
+        val nodes = under(appNode(screenId(screen)) ?: return null)
+        val labelled = labels.toSet()
+        val keys = nodes.filter { it.className?.toString() == BUTTON && it.text?.toString() in labelled }
+        if (keys.size != labels.size) return null
+        val id = screenId(screen)
+        assertTrue("the keys on $id are not the pad's keys in its order (no key is printed)", keys.map { it.text.toString() } == labels)
+        assertTrue("a key on $id is not marked accessibility-data sensitive", keys.all { it.isAccessibilityDataSensitive })
+        assertTrue("a key on $id takes no click", keys.all { it.isClickable })
+        assertTrue("a key on $id has a description or a resource id", keys.all { it.contentDescription.isNullOrEmpty() && it.viewIdResourceName.isNullOrEmpty() })
+        val others = nodes.filter { node -> node.viewIdResourceName != SECRET_TAG && keys.none { it == node } }
+        assertFalse(
+            "a node on $id that is no key names a key",
+            others.any { node -> node.text?.toString()?.let { it in labelled || it.matches(names) } == true },
+        )
+        assertFalse("a node on $id has a Public key's id", nodes.any { it.viewIdResourceName?.startsWith("key_") == true })
+        return keys
+    }
+
+    /** The letter pad's 26 keys on screen (the read-back entry, the backup's confirm or Check a backup's entry), as padKeys reads them. */
+    fun letterKeys(screen: Screen): List<AccessibilityNodeInfo> = padKeys(screen, LETTER_KEYS.map(::keyLabel), A_LETTER)
+
+    /** The ASCII pad's keys on its page page (the BIP39 passphrase's entry), as padKeys reads them: no other node there shows any one character. */
+    fun asciiKeys(page: Int): List<AccessibilityNodeInfo> = padKeys(Screen.Bip39Entry, asciiPage(page).map(::keyLabel), ANY_CHARACTER)
+
+    /**
+     * Touches the key keys() gives at index (read afresh from the app before the touch, its node
+     * refreshed and visible) at the middle of the part of it its window shows (its screen bounds cut to
+     * the window's, so a key the window clips is touched where it is drawn; touch, which logs no point: a
+     * click's logged point would name the key on the pad's fixed grid), then waits in-process, for up to
+     * 10 s, until entry, the model's pad entry, holds length keys, so the next touch is on the pad as this
+     * one left it. The press guard admits the touch first (guardOpen), as Ui.tap's: the first key after a
+     * gate is on a view the guard holds closed for 300 ms (kc34, API 34: JourneyTest's backup check entry's
+     * first letter, refused); a key after a key is on the same view, which the guard keeps open.
+     */
+    private fun touchKey(activity: MainActivity, keys: () -> List<AccessibilityNodeInfo>, index: Int, entry: (CeremonyModel) -> PadEntry, length: Int) {
+        guardOpen(activity, "the pad")
+        val bounds = poll("the pad's key, visible") { keys()[index].takeIf { it.refresh() }?.let(::shownBounds) }
+        touch(bounds)
+        poll("the pad's touch typed (key " + length + ")") { onMain { entry(activity.model).length == length }.takeIf { it } }
+    }
+
+    /** Whether entry holds typed after its first from keys (in-process, compared, never printed). */
+    private fun holds(activity: MainActivity, entry: (CeremonyModel) -> PadEntry, from: Int, typed: CharSequence): Boolean = onMain {
+        val pad = entry(activity.model)
+        pad.length == from + typed.length && typed.indices.all { pad.keyAt(from + it) == typed[it] }
+    }
+
+    /**
+     * The Public control tag pressed by its accessibility click (as TalkBack presses it) once it is
+     * enabled, through UiAutomation's own nodes: no UI Automator selector, so what is pressed, and how
+     * often, goes into no log (typeAscii's page turns, which follow a passphrase's characters).
+     */
+    private fun press(tag: String) {
+        val node = poll("$tag enabled") { inView(tag)?.takeIf { it.isEnabled } }
+        assertTrue("$tag did not take the press", node.performAction(AccessibilityNodeInfo.ACTION_CLICK))
+    }
+
+    /**
+     * Types letters on screen's letter pad, a touch on each key (touchKey), and checks entry, the model's
+     * pad entry of screen, holds them after any it held before (compared, never printed). letters may be a
+     * CharBuffer over an array the caller zeroes after (a secret's letters, JourneyTest).
+     */
+    fun typeLetters(activity: MainActivity, screen: Screen, letters: CharSequence, entry: (CeremonyModel) -> PadEntry) {
+        val before = onMain { entry(activity.model).length }
+        for ((at, letter) in letters.withIndex()) {
+            touchKey(activity, { letterKeys(screen) }, LETTER_KEYS.indexOf(letter), entry, before + at + 1)
+        }
+        assertTrue("the letter pad's touches did not type the letters touched", holds(activity, entry, before, letters))
+    }
+
+    /**
+     * Types text (printable ASCII) on the BIP39 passphrase's ASCII pad, a touch on each key (touchKey), its
+     * page of keys first turned by Next keys or Previous keys (Public buttons, pressed by their accessibility
+     * click, press) to the one that holds the key, the page's line read from the app until it names it;
+     * then checks the model's entry holds text after any it held before (compared, never printed). Nothing
+     * here goes through a UI Automator selector, so the pages a passphrase's characters fall on (which
+     * would tell its kinds of character) go into no log (the review of U-4); the page is read in-process.
+     */
+    fun typeAscii(activity: MainActivity, text: CharSequence) {
+        val before = onMain { activity.model.bip39Letters.length }
+        for ((at, key) in text.withIndex()) {
+            val index = ASCII_KEYS.indexOf(key)
+            assertTrue("a passphrase character is not on the ASCII pad (it is not printed)", index >= 0)
+            val page = index / ASCII_PAGE_KEYS
+            while (true) {
+                val shown = onMain { activity.model.state.value.page }
+                if (shown == page) break
+                press(if (shown < page) "keys_next" else "keys_previous")
+                await("the ASCII pad's page turned", 10) { onMain { activity.model.state.value.page } != shown }
+            }
+            val line = "Keys, page " + (page + 1) + " of " + ASCII_PAGES
+            poll("the ASCII pad's page line") { inView("keys_page")?.takeIf { it.text?.toString() == line } }
+            touchKey(activity, { asciiKeys(page) }, index % ASCII_PAGE_KEYS, { it.bip39Letters }, before + at + 1)
+        }
+        assertTrue("the ASCII pad's touches did not type the passphrase touched", holds(activity, { it.bip39Letters }, before, text))
+    }
+
+    /** Whether insert's word is word, byte by byte, its copy wiped (the words are public vectors, never printed). */
+    fun sameWord(insert: WordPage, word: String): Boolean {
+        val bytes = insert.word()
+        val same = bytes.size == word.length && word.indices.all { bytes[it] == word[it].code.toByte() }
+        bytes.wipe()
+        return same
+    }
+
+    /** The words page shows insert index + 1 of words on device of devices, read in-process (the word compared, never printed) and its header from the screen. */
+    fun assertInsert(activity: MainActivity, words: List<String>, index: Int, device: Int, devices: Int) {
+        assertInsertAt(activity, index, words.size, device, devices)
+        val same = onMain { sameWord(checkNotNull(activity.model.state.value.insert), words[index]) }
+        assertTrue("insert " + (index + 1) + ": its page is not the vector's word", same)
+    }
+
+    /**
+     * The words page shows insert index + 1 of count on device of devices, read in-process (its position,
+     * count, device and sequence; not its word, for a seed that is no vector's) and its header from the screen.
+     */
+    fun assertInsertAt(activity: MainActivity, index: Int, count: Int, device: Int, devices: Int) {
+        val what = "insert " + (index + 1)
+        await(what + " on the words page", 10) {
+            onMain { activity.model.state.value.let { it.screen == Screen.Words && it.page == index && !it.gate } }
+        }
+        val at = onMain {
+            val insert = checkNotNull(activity.model.state.value.insert)
+            insert.position == index + 1 && insert.count == count && insert.device == device && insert.devices == devices &&
+                insert.sequence == index % INSERTS_PER_DEVICE + 1
+        }
+        assertTrue(what + ": its page is not that position and device", at)
+        awaitText("insert_header", "Insert " + two(index + 1) + DOT + "device " + device + " of " + devices)
+    }
+
+    /** Between a header's parts, as WordsScreens.kt (and the Pi) write it: a middle dot. */
+    const val DOT = " \u00B7 "
+
+    /** number as two digits, zero first (a position on the words' headers). */
+    fun two(number: Int): String = number.toString().padStart(2, '0')
+
+    /**
+     * CAMERA granted from the shell (pm grant; dumpsys package reads it back), so the scan screen opens
+     * with no prompt and reaches the camera's absence on these emulators (SnapshotDrillTest, JourneyTest).
+     */
+    fun grantCamera() {
+        val pkg = Capture.instrumentation.targetContext.packageName
+        val out = shellText("pm grant " + pkg + " " + CAMERA_PERMISSION)
+        val facts = Capture.permission(pkg, CAMERA_PERMISSION)
+        probe("pm grant $pkg $CAMERA_PERMISSION: '$out'; dumpsys package: ${facts.state}")
+        assertTrue("CAMERA is not granted after pm grant", facts.granted)
+    }
+
+    /** The permission the scan screen asks for. */
+    private const val CAMERA_PERMISSION = "android.permission.CAMERA"
+
+    /** Waits up to 10 s for the node tag, scrolled into view (reveal), to show text. */
+    fun awaitText(tag: String, text: String) {
+        reveal(tag)
+        val shown = device.wait(Until.hasObject(By.res(tag).text(text)), FIND_MS)
+        assertTrue(tag + " does not show " + text + " (it shows " + text(tag) + ")", shown == true)
+    }
+
+    /**
+     * Whether a node of screen (its root found by its id, find's 10 s) has text as its text, anywhere in its
+     * column: scrolled through to its end and back (scrolledTo), since a node out of view is in no tree;
+     * false when no page shows it. The nodes are read in-process and compared there, so text goes into no
+     * selector or log.
+     */
+    fun shown(screen: Screen, text: String): Boolean {
+        val id = screenId(screen)
+        find(id)
+        return scrolledTo { appNode(id)?.let { root -> under(root).firstOrNull { it.text?.toString() == text } } } != null
+    }
+
+    /** root and every node under it, in tree order, each read again from the app first (refresh); one gone is left out with its subtree. */
+    private fun under(root: AccessibilityNodeInfo): List<AccessibilityNodeInfo> {
+        val nodes = ArrayList<AccessibilityNodeInfo>()
+        fun walk(node: AccessibilityNodeInfo) {
+            if (!node.refresh()) return
+            nodes.add(node)
+            for (index in 0 until node.childCount) node.getChild(index)?.let(::walk)
+        }
+        walk(root)
+        return nodes
+    }
+
+    /** UI Automator's class name for a node with the button role (Compose's Role.Button). */
+    const val BUTTON = "android.widget.Button"
+
+    /**
+     * A Public pad keeps its labels (lead decision M5-46's other half; Pads.kt): each of keys is found by
+     * its resource id, key_ and the key, clickable, with its key as the text of the node its label draws
+     * inside it, which TalkBack reads with the key. Its class name is not read: on kc37 (local) a Public
+     * key, whose label is a node under it, reports android.view.View, not BUTTON, which a Protected key
+     * (its semantics set whole on it, its label its own text, so with no node under it) reports. Each key's three reads are of one node,
+     * found afresh while a redraw replaces it (fresh).
+     */
+    fun assertPublicPadLabelled(what: String, keys: String) {
+        for (key in keys) {
+            val (text, label, clickable) = read("key_$key") { node ->
+                Triple(node.text, node.text == key.toString() || node.hasObject(By.text(key.toString())), node.isClickable)
+            }
+            assertTrue(what + ": key " + key + " shows no label " + key + " (its text: " + text + ")", label)
+            assertTrue(what + ": key " + key + " is not clickable", clickable)
+        }
+    }
+
+    fun stage(activity: MainActivity): Stage =
+        onMain { ActivityLifecycleMonitorRegistry.getInstance().getLifecycleStageOf(activity) }
+
+    /** Waits up to seconds for condition, checked every 100 ms. */
+    fun await(what: String, seconds: Int, condition: () -> Boolean) {
+        val end = SystemClock.elapsedRealtime() + seconds * 1_000L
+        while (!condition()) {
+            if (SystemClock.elapsedRealtime() > end) fail("timed out: " + what)
+            SystemClock.sleep(100)
+        }
+    }
+}

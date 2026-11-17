@@ -1,0 +1,1 @@
+dependencyLocking { ignoredDependencies.add("*:*") }

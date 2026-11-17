@@ -1,0 +1,1 @@
+enum class Screen { FirstLaunch }

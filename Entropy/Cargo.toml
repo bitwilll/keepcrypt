@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["core", "ffi", "pi/app", "pi/sim"]
+members = ["core", "ffi", "ffi/guard", "ffi/jni", "pi/app", "pi/sim"]
 # Gate canaries are standalone crates that must fail CI checks; they are never members.
 exclude = ["scripts/testdata"]
 
@@ -13,6 +13,8 @@ publish = false
 
 [workspace.dependencies]
 keepcrypt-core = { path = "core" }
+keepcrypt-ffi = { path = "ffi" }
+keepcrypt-guard = { path = "ffi/guard" }
 keepcrypt-pi = { path = "pi/app" }
 
 # Stated explicitly, not left to the default: a panic unwinds, which drops the session's
@@ -20,8 +22,18 @@ keepcrypt-pi = { path = "pi/app" }
 [profile.release]
 panic = "unwind"
 
-# Integer overflow in core panics (and so wipes) in release builds too, instead of wrapping.
+# Integer overflow in core and the three FFI crates panics (and so wipes) in release builds too,
+# instead of wrapping: a wrong length at the boundary halts (tasks/todo.md, M5 group 7).
 [profile.release.package.keepcrypt-core]
+overflow-checks = true
+
+[profile.release.package.keepcrypt-ffi]
+overflow-checks = true
+
+[profile.release.package.keepcrypt-guard]
+overflow-checks = true
+
+[profile.release.package.keepcrypt-jni]
 overflow-checks = true
 
 # Dependencies at full speed in dev and test builds, so scrypt, PBKDF2 and SHA run fast in the

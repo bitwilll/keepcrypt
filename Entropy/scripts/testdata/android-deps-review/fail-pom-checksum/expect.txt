@@ -1,0 +1,2 @@
+1
+licence: annotation-1.9.1.pom: the POM does not match its checksum

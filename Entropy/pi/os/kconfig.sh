@@ -120,8 +120,12 @@ work=$5
 [ -f "$fragment" ] || die "no fragment: $fragment"
 case $work in /?*) ;; *) die "WORK_DIR must be an absolute path: $work" ;; esac
 
+# RUSTC=false: the kernel's Kconfig probes the rustc it finds and records its version
+# (CONFIG_RUSTC_VERSION, CONFIG_RUSTC_LLVM_VERSION, CONFIG_RUSTC_HAS_*), so a runner image with another
+# default rustc gave a different .config (Pi image run 39331183327: 109900 on one leg, 109901 on the
+# other). The kernel has no Rust (CONFIG_RUST is off), so it is given none to probe.
 kmake() {
-  make -s -C "$src" O="$work" ARCH=arm CROSS_COMPILE="$cross" "$@"
+  make -s -C "$src" O="$work" ARCH=arm CROSS_COMPILE="$cross" RUSTC=false "$@"
 }
 
 rm -rf "$work" && mkdir -p "$work" || die "cannot make $work"

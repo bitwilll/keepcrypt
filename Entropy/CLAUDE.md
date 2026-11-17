@@ -46,7 +46,10 @@ pass. If one seems to block you, ask the owner.
    Python `random`, `mt19937`, `rand()`/`srand()`, and any hand-written PRNG.
    Games get their bytes from core's separate `game_random` call, which makes its own
    `getrandom` call and never touches the pool. `game_random` is never used for dice, D,
-   nonces, passphrases or any pool input.
+   nonces, passphrases or any pool input. The bans bind KeepCrypt's own code, checked in our
+   sources by the grep gate and in the built app by a scan of our compiled classes; library
+   classes our code never reaches (for example Kotlin's own `Random` inside its standard
+   library) are allowed.
 2. **Never narrow the pipe:** nothing between the pool and the seed is narrower than 256 bits.
    No truncation to `u32`/`u64`, no integer casts of secret material, no "reseed with 4 bytes".
 3. **Fail closed:** no fallback source, no default value, no `unwrap_or*` and no
@@ -68,7 +71,9 @@ pass. If one seems to block you, ask the owner.
    firmware also reads `/dev/hwrng`, its root partition (for the boot hash) and fixed entries and
    patterns under `/proc` and `/sys` (the board and USB sticks), drives its GPIO and SPI device
    nodes, and mounts only the USB stick, at `/mnt/usb`. pi-firmware.md's Process rules list every
-   path, and a grep gate holds the firmware to that list.
+   path, and a grep gate holds the firmware to that list. Files the operating system keeps about
+   an app (compiled code, runtime profiles, package records) are not files the app writes; the
+   app's own storage stays empty, which an emulator test proves after every full ceremony.
 9. **Apps:** Android has no `INTERNET` permission and sets `FLAG_SECURE` on every window,
    including dialogs and popups. iOS has no networking code and uses capture-state redaction,
    discard-on-screenshot and an app-switcher cover. No analytics, crash or ad SDKs.
@@ -216,7 +221,33 @@ scripts/banned-api-check.sh --image-lists IMG KCONFIG          # the listing pi/
 scripts/banned-api-check.sh --selftest-image IMG KCONFIG       # the scan's positive controls, as mutations of the built image
 scripts/banned-api-check.sh --image IMG pi/os/expected KCONFIG BIN_SHA256   # the scan; a hit fails the leg before
                                      # leg a's upload, so an uploaded image passed it
-scripts/canaries.sh                  # 73 checks: proves every gate still fires, the scan's positive controls included
+# The phone FFI (ffi/: keepcrypt-ffi, keepcrypt-guard, keepcrypt-jni), release and test-registry configurations:
+cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked
+cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked --features keepcrypt-core/test-registry
+# The Android app (mobile/android; CI: .github/workflows/entropy-android.yml, not a required check; needs the
+# Android SDK, NDK and JDK the workflow pins). Rust libraries for both flavours, then the strict Gradle build:
+sh scripts/android-rust.sh shipping
+sh scripts/android-rust.sh withTestRegistry
+sh scripts/android-gradle.sh --dependency-verification strict :app:assembleShippingRelease :app:assembleWithTestRegistryRelease :app:assembleShippingReleaseAndroidTest :app:assembleWithTestRegistryReleaseAndroidTest :capture-control:assembleRelease :core-ffi:testAndroidHostTest :screens:testAndroidHostTest test
+python3 -I scripts/android-deps-review.py classpath   # every Maven module on the shipped classpath, against expected/
+sh scripts/android-deps-review.sh DIR   # the dependency review on a mirror of the locked artifacts (CI-only)
+scripts/banned-api-check.sh --apk VARIANT APK mobile/android/expected MERGER_REPORT CERT_SHA256 mobile/android/app/src/VARIANT/jniLibs
+                                     # VARIANT shipping or withTestRegistry: the manifest summary (no INTERNET), the
+                                     # merger report, the signing cert, the native libraries and the dex reference scan
+scripts/banned-api-check.sh --selftest-apk   # --apk's positive controls on stub APKs (INTERNET among them)
+sh scripts/android-emulator.sh --part PART --booted API   # CI's leg jobs (CI-only): PART capture, journeys, ui or
+                                     # registry on a booted API 34 or 36 emulator; its header lists what each runs
+sh scripts/android-local.sh [--part PART] [APK_DIR]   # the same parts on the owner's Mac (kc37 AVD), reported as local
+# Their selftests, each on stand-ins (no device, no SDK):
+sh scripts/android-rust.sh --selftest
+python3 -I scripts/android-deps-review.py --selftest   # needs gpg (CI's runner has it)
+python3 -I scripts/android-frames.py --selftest       # the raw-frame checker the capture tests' recording uses
+python3 -I scripts/android-age-check.py --selftest    # the age -d hand-off of BackupTest's backup (needs age)
+sh scripts/android-instrument.sh --selftest
+sh scripts/android-emulator.sh --selftest
+sh scripts/android-handoff.sh --selftest
+sh scripts/android-local.sh --selftest
+scripts/canaries.sh                  # 94 checks: proves every gate still fires, the scan's positive controls included
 ```
 
 ## Definition of done (every task)

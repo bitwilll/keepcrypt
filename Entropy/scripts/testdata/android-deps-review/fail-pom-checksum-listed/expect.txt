@@ -1,0 +1,2 @@
+1
+licence: listenablefuture-1.0.pom: the POM does not match its checksum

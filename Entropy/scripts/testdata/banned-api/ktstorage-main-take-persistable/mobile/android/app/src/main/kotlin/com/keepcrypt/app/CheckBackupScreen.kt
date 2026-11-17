@@ -1,0 +1,1 @@
+resolver.takePersistableUriPermission(uri, flags)

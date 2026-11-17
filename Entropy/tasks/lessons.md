@@ -46,3 +46,63 @@ accepted for a question the pinned sources answer.
 with every failure mode it introduces resolved first: read the pinned source of each component that sees the
 change, or take the conservative option, and put the proof in the commit and todo.md. A known unproven risk is never
 handed to the owner's hardware session.
+
+## Read-only means read-only on the owner's machine (2026-10-20)
+**Mistake:** While researching Compose Multiplatform, a research agent ran `xcrun simctl list runtimes` on the owner's
+Mac to read the simulator runtimes. It made Xcode install its simulator components (CoreSimulator 1174.9.2), a change to
+the owner's machine nobody approved. The agent also ran `xcodebuild -version`, which changed nothing.
+**Root Cause:** The research brief forbade edits to the repo but not tool invocations on the host, and Xcode's command-line
+tools can install components as a side effect of a query.
+**Rule:** Facts about a toolchain come from its published documentation, runner-image readmes or CI runs, never from
+running its tools on the owner's Mac. No `xcrun`, `simctl`, `xcodebuild`, simulator, emulator, SDK manager or device
+command runs on the owner's machine without the owner's yes, and every research brief says so.
+
+## An intermittent failure's closing bar must need the fix (2026-10-31)
+**Mistake:** The open item for UI Automator not seeing first_launch on API 36 was set to close "when a CI run passes
+with U1a8 in". The fix only acts when the launcher's not-responding dialog comes up, and the failure comes and goes,
+so a run without the dialog would have met that bar without exercising the fix at all (75349ee had passed with no
+fix). The lead caught it when reading run 41187953910 at 29af0bc, which passed without printing a line of U1a8's.
+**Root Cause:** The bar was written as "the job is green" rather than "the fix's own path ran and worked", and an
+intermittent failure is green most of the time whatever the code does.
+**Rule:** For an intermittent failure, the closing evidence is the fix's own path running on the real target (its
+probe lines printed and the job passing), never a green run alone. A fix that cannot show itself acting gets a probe
+line first, and the item names that line as its closing bar.
+
+## A script that reads another's structure runs its selftest when that structure changes (2026-10-31)
+**Mistake:** U1b added JourneyTest to android-emulator.sh's journeys part and U1e split it into a ui part with a new
+gone: form, and each commit ran android-emulator.sh's and android-instrument.sh's selftests but not
+android-local.sh's, which reads android-emulator.sh's part blocks and judges their runs. The kc37 local runner was
+broken from U1b on (its selftest 4 failed); a U-4 review found it, not the lead.
+**Root Cause:** The suite the lead ran per commit was the scripts the diff touched; android-local.sh was not in the
+diff, and no CI job runs its selftest, so nothing failed.
+**Rule:** A change to android-emulator.sh's parts, its classes or android-instrument.sh's run forms runs
+android-local.sh --selftest too, and the commit's proof names its count. More generally: before a commit, list the
+scripts that read the changed one (grep for its name and its markers) and run their selftests.
+
+## A timing a fix rests on is measured, and an unseen cause is gathered, not guessed (2026-11-01)
+- Mistake: the press guard's first two CI failures were each "fixed" by a timing story (U2i2, U2i3): that UI
+  Automator's idle wait gave every press at least 500 ms after a screen appeared, and then that a late frame report
+  opened the guard late. Neither was measured; the same presses failed at the same lines after the second fix, and the
+  run that printed the guard's own facts showed the tests pressing under 300 ms after composition.
+- Root cause: a claim about how long a test framework waits was taken as fact, and a deterministic failure was read as
+  a timing one without a line that showed the timing.
+- Rule: before a fix rests on a duration, a run or a test prints that duration. When a failure's cause cannot be seen in
+  its lines, the next push adds the lines that show it (a probe of the deciding state), rather than a second guess.
+
+## 2026-11-16: a message to a running workflow agent started a second copy of it
+- Mistake: the lead sent SendMessage to a workflow's running implementer; it resumed a second instance of that agent,
+  which worked the same tree and emulator in parallel, edited scripts/android-emulator.sh in place to run two methods
+  while the first instance's ui run was executing it (sh reads a script as it runs: a bogus syntax error and a doubled
+  result), and the workflow's own call hung.
+- Root cause: the lead treated a running workflow agent as addressable; a send resumes a new instance instead.
+- Rule: never message a running workflow agent; steer by stopping the workflow and relaunching with a note, or wait for
+  its report. Never edit or restore a runner script while any run may be executing it: copy it elsewhere instead.
+
+
+## 2026-11-17: a test-harness fix pushed without the banned-API gate turned Entropy CI red
+- Mistake: 012aa5e7 named the text-input widget class in androidTest's Picker.kt; the gate's KtInput refuses it in every
+  scope, so Entropy CI's gates job and every canary that counts hits failed (run 43917696155). The owner had to ask why.
+- Root cause: only the emulator suites were run before the push; the Kotlin change was treated as test-only, outside
+  the gate's reach, which it is not (KtInput, KtLog and others scan androidTest too).
+- Rule: before every push that touches any source, scripts/banned-api-check.sh runs clean locally, and canaries.sh
+  too when hit counts could move. A gate hit is fixed in the code, never by relaxing or dodging the rule.

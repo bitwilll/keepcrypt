@@ -1,0 +1,1 @@
+AccessibilityDebugLogger.enabled = true

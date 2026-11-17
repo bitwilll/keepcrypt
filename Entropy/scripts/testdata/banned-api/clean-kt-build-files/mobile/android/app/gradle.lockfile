@@ -1,0 +1,4 @@
+# To regenerate this file, run: ./gradlew :app:dependencies --write-locks
+# Gradle lockfile
+androidx.activity:activity-compose:1.13.0=releaseRuntimeClasspath
+empty=

@@ -1,0 +1,1 @@
+gradle.startParameter.dependencyVerificationMode = org.gradle.api.artifacts.verification.DependencyVerificationMode.LENIENT

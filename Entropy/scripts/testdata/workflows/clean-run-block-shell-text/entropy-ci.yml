@@ -1,0 +1,28 @@
+# A block scalar's text is not YAML, so a run step's script and a path list may hold backslashes,
+# quotes left open at a line's end and a line that ends in a backslash. A comment is not YAML
+# either: 'its quotes are text, as "a\ b" is, and so are a plain value's quotes.
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: The build's shell text, its "a\ b" quoted
+        run: |
+          "$RUNNER_TEMP/tool" --pattern 'a\.b' >"$RUNNER_TEMP/out"
+          printf '%s\n' "it's \"quoted\"" 'a \ b' >>"$RUNNER_TEMP/out"
+          grep -E "^[a-z]+\\$" "$RUNNER_TEMP/out" || echo 'no match
+          on one line'
+          cargo test --workspace \
+            --locked
+          echo note: "the last line's quote, \
+          closed here"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: logs
+          path: |
+            "Entropy/target/a\b"
+            'Entropy/target/it''s'

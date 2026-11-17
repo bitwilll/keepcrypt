@@ -1,0 +1,3 @@
+# The lockfiles name every target's configurations, which the DSL rule leaves alone.
+org.jetbrains.compose.ui:ui-iosarm64:1.12.1=iosArm64CompileKlibraries,iosArm64MainResolvableDependenciesMetadata
+org.jetbrains.skiko:skiko-iossimulatorarm64:0.150.1=iosSimulatorArm64CompileKlibraries

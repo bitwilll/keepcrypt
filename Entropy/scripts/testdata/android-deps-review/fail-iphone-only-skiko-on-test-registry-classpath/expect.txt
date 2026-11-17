@@ -1,0 +1,2 @@
+1
+classpath: org.jetbrains.skiko:skiko:0.150.1 is an iPhone-only artifact (Q67) on mobile/android/app/gradle.lockfile's withTestRegistryReleaseRuntimeClasspath

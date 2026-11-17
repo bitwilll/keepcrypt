@@ -886,7 +886,9 @@ KCR_SPEC = {
     "before (Duplicate, Unsorted) and its count (ZeroCount); the root recomputed from the leaf and the path "
     "equals the header's (RootMismatch)",
     "proof_qr": "a single-part 'ur:keepcrypt-proof/...' whose CBOR is one byte string holding the KCP1 bytes, "
-    "read by the strict decoder of watchonly.json (spec ur_decoder); a decoder failure is Ur(UrError)",
+    "read by the strict decoder of watchonly.json (spec ur_decoder); a decoder failure is Ur(UrError). The "
+    "phones' go-ahead QR fixtures, clear-empty-bucket and collision-dice-50, also carry that text as ur: the UR "
+    "of their kcp1_hex bytes",
     "negatives": "each rejected case breaks exactly one check, signed (or re-signed with the root its entries "
     "give) so that every other check passes; only a case too short, of the wrong length, or (for a snapshot) "
     "counting over 2^22 entries also spoils the checks that read past it. Each order-* case breaks two or "
@@ -1912,6 +1914,12 @@ def kcp1_ur(proof):
     return ur_single(KCP_UR_TYPE, cbor_encode(cbor_byte_string(proof)))
 
 
+# The phones' go-ahead QR fixtures (tasks/todo.md, M5 lead decision M5-42): kcr.json carries these two
+# proofs' QR text, kcp1_ur of their bytes, as ur beside kcp1_hex, so the Android app's tests render and
+# reveal the same text the P4 drill scans, and the FFI's own UR encoder is checked against it.
+KCR_PROOFS_WITH_UR = ("clear-empty-bucket", "collision-dice-50")
+
+
 def kcr_seed(name, rolls_name, words):
     """One kcr.json seed: its mnemonic, S, seal code, T, Seal ID, bucket and the go-ahead code for seal
     vector 1's nonce."""
@@ -2211,7 +2219,11 @@ def kcr_vectors_json():
         if ur:
             proof_json.append({"name": name, "ur": data, "expect": expect_of(*kcp1_verify_ur(data, test_key))})
         else:
-            proof_json.append({"name": name, "kcp1_hex": data.hex(), "expect": expect_of(*kcp1_verify(data, test_key))})
+            case = {"name": name, "kcp1_hex": data.hex()}
+            if name in KCR_PROOFS_WITH_UR:
+                case["ur"] = kcp1_ur(data)
+            case["expect"] = expect_of(*kcp1_verify(data, test_key))
+            proof_json.append(case)
     empty = merkle_empty_levels()
     left_aligned = (v1_bucket << 4).to_bytes(3, "big")
     node_left, node_right = empty[0][:32], empty[0][32:64]
@@ -3806,8 +3818,9 @@ def kcr_failures_problem(section, case, error, failures):
 def check_kcr_contents(vectors_dir):
     """The committed kcr.json: every case's outcome and seed equal to the pins above, each case's
     outcome reproduced by verify.py's verifier from its bytes, and each rejected case failing the
-    checks KCR_SPEC "negatives" allows; the pinned key and roots; the Merkle section; and its seeds
-    equal to seal.json's vector 1 and to rolls.json's dice words."""
+    checks KCR_SPEC "negatives" allows; the pinned key and roots; the two proofs that carry their QR
+    text beside their bytes (M5-42), each text its bytes' UR; the Merkle section; and its seeds equal
+    to seal.json's vector 1 and to rolls.json's dice words."""
     path = vectors_dir / "kcr.json"
     if not path.is_file():
         return []  # check_generated_file reports it missing
@@ -3847,6 +3860,14 @@ def check_kcr_contents(vectors_dir):
                 problem = kcr_failures_problem(section, case, pin[1], kcr_case_failures(section, case, key))
                 if problem:
                     problems.append(problem)
+    # M5-42: the phones' two fixtures carry their QR text beside their bytes, and it is their bytes' UR.
+    both = [c for c in doc.get("proofs", []) if "kcp1_hex" in c and "ur" in c]
+    if [c["name"] for c in both] != list(KCR_PROOFS_WITH_UR):
+        problems.append("kcr.json proofs with both kcp1_hex and ur: %r, pinned %r" % ([c["name"] for c in both],
+                                                                                    list(KCR_PROOFS_WITH_UR)))
+    for case in both:
+        if case["ur"] != kcp1_ur(bytes.fromhex(case["kcp1_hex"])):
+            problems.append("kcr.json proof %s: ur is not the UR of its kcp1_hex" % case["name"])
     merkle = doc["merkle"]
     if merkle["empty_root_hex"] != KCR_PINNED["empty_root_hex"]:
         problems.append("kcr.json empty root %s, pinned %s" % (merkle["empty_root_hex"], KCR_PINNED["empty_root_hex"]))

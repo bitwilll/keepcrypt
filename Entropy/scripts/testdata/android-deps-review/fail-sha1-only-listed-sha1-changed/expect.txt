@@ -1,0 +1,2 @@
+1
+interpolator-1.0.0.pom (Google's Maven): Google's Maven publishes no .sha256 for it, only .sha1 and .md5 (its SHA-256 equals the metadata's, its SHA-1 differs from the published .sha1)

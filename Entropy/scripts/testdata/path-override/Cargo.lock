@@ -7,6 +7,14 @@ name = "canary-ffi"
 version = "0.0.0"
 
 [[package]]
+name = "canary-guard"
+version = "0.0.0"
+
+[[package]]
+name = "canary-jni"
+version = "0.0.0"
+
+[[package]]
 name = "canary-path-override"
 version = "0.0.0"
 dependencies = [

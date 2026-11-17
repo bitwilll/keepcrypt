@@ -1,0 +1,1 @@
+context.startActivities(arrayOf(next))

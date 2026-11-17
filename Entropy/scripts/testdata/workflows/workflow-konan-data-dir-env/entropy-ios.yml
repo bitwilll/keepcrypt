@@ -1,0 +1,9 @@
+permissions:
+  contents: read
+jobs:
+  a:
+    runs-on: macos-26
+    env:
+      KONAN_DATA_DIR: /Users/runner/.konan
+    steps:
+      - run: sh scripts/android-gradle.sh --dependency-verification strict :core-ffi:iosSimulatorArm64Test

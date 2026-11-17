@@ -1,0 +1,2 @@
+1
+mobile/android/app/gradle.lockfile has no withTestRegistryReleaseRuntimeClasspath

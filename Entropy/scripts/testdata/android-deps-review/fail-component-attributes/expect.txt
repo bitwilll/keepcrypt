@@ -1,0 +1,2 @@
+1
+a component that is not group, name and version

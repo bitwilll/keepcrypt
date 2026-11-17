@@ -1,0 +1,1 @@
+let handle: JoinHandle<()> = start();
