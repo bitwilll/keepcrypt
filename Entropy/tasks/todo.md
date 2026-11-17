@@ -18354,6 +18354,23 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
 - M6-9 (2026-11-17, from D4's report): the scan screen shows "Open Settings" after a refused camera, since iOS
   asks for the camera once; it goes through `OpenSettings.swift`, the gate's one allowed URL. iOS cannot open the
   airplane-mode settings page, so Go offline has no such button (D3's deviation 1).
+- M6-10 (2026-11-17, from D6's report): the backup's save is SwiftUI's `.fileExporter` over an in-memory
+  FileDocument (BackupDocument) whose bytes are the model's Secret of core's age file, copied once into the Data the
+  exporter writes, only as it asks to write. The exporter may stage the document in a temporary file of its own
+  (SwiftUI's writeToTemporaryLocation) and keeps its Data: ciphertext alone, the system's, which the app neither
+  names nor can wipe (the gate keeps the app out of its own directories). Rule 8 holds: the only file the app
+  causes is the .age backup. iOS 27's direct-write document API would avoid the staging but needs iOS 27 (the
+  target is 17). I2 looks at the app's container (tmp) after a save and after a cancel; anything left there is
+  named in the gate report.
+- M6-11 (2026-11-17, from D6's report): the shell's picker seam for the backup is `create(name:bytes:)`, not
+  Android's place-then-write: the exporter writes as it opens, so it takes the bytes then. The read-back goes
+  through the URL it returns (ExportedPlace), the same one-read path as a picked file; a read that fails shows the
+  save's failure line, never "Backup verified".
+- M6-12 (2026-11-17, from D6's report): KeepCryptTests links CommonCrypto (SHA-256) and Core Image (the QR
+  detector, in ZXing's place on Android) for the exports' tests; both are system frameworks, in the test target
+  alone, so no dependency is added and the shipped app links neither for this. Android's account, descriptor and
+  registration QR screens are Protected; the iPhone also draws those QRs inside SecureLayer, as D4's report QR.
+  The BIP39 passphrase entry uses the ASCII pad, as Android's does.
 
 ### Stage B: the bridge (M6 commits 2-4)
 - [x] B1. `ffi/capi` (`keepcrypt-capi`): `[lib] name = "keepcrypt_capi"`, `crate-type = ["staticlib", "rlib"]`,
@@ -19277,7 +19294,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Entropy CI 44116499411 (14 jobs), Entropy Android 44116500229 (the dependency review passed: 924 artifacts; the
   earlier 429 was transient, its rerun at e30192c2 passed the review too) and Entropy Pi image green. Lead decisions
   M6-7 to M6-9 record D4's choices for the gate.
-- [ ] D5. The words: the privacy gate ("I'm alone, show words"), insert view (the word, its SeedBook number, five braille
+- [x] D5. The words: the privacy gate ("I'm alone, show words"), insert view (the word, its SeedBook number, five braille
   faces, blank faces and mirror pairs flagged) drawn inside SecureLayer, the overview, the device swap, the read-back
   entry, its mismatch and its end, the wallet summary.
   As built (plan, 2026-11-17): WordsScreens.kt's screens, words, order and identifiers, the fixed texts pinned to
@@ -19326,6 +19343,17 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   clean (500 files); on the final tree (a worktree at D5b): `--selftest` 4 x "486 passed, 0 failed", `sh
   scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
   checks ran" (1477 s, on a loaded Mac).
+  CI proof (2026-11-17): Entropy iPhone run 44131627368 at 0f58a71d: WordsUITests passed in TestHooks on both legs
+  (75 s on macos-26), the words' screens and SecureLayer's sizing drawn; its one failure, CoreDiscardTests on
+  macos-26 WithTestRegistry, was the test's timing (the discard returned in 0 ms after the long call had ended: a
+  slow single baseline put the cut past it), fixed at 9e34caee (the fastest of three baselines; each try judged by
+  the call's reply, an inconclusive one retried sooner) and tightened after D6 (every cut, landed or not, under half
+  the baseline, so a cut that waits for the main lock fails by name; the stand-in's planted wait showed the need).
+  Run 44138018119 at 9e34caee green: "Executed 112 tests, with 0 failures" in Shipping and WithTestRegistry on
+  macos-15 (Xcode 16.4, iPhone 16 iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17 iOS 26.5), CoreDiscardTests passing
+  in all four, every UI test (StartUp, Capture, Offline, Scan, Words) passing on both; the jobs took 1225 s and
+  1442 s, so the budget is 31 minutes (d5f39cb1). Entropy CI 44138018147 (14 jobs) and Entropy Android 44138018043
+  green.
 - [ ] D6. The exports: the backup's passphrase, confirm and save (`.fileExporter` in DocumentPicker.swift, the file read
   back and verified, "Backup verified"), the watch-only offer, the BIP39 question and entry, the summary, the account
   and descriptor QRs, the registration offer and QR, Reveal D, the checklist and Finish.

@@ -76,10 +76,12 @@ final class CoreDiscardTests: XCTestCase {
                 let took = millisSince(start)
                 finished.wait()
                 XCTAssertTrue(isDone(reply), "\(what): done")
+                // Every cut returns at once, landed or not: one that waited for the long call's lock lets the call
+                // end first, so its try looks inconclusive, and only this names the wait.
+                XCTAssertLessThan(took * 2, length, "\(what) took \(took) ms, the long call \(length) ms: it waited")
                 switch handed.reply {
                 case .discarded?:
                     landed = true
-                    XCTAssertLessThan(took * 2, length, "\(what) took \(took) ms, the long call \(length) ms: it waited")
                 case .done?:
                     delay /= 2
                 default:
