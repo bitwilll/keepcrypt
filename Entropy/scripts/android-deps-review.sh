@@ -78,11 +78,14 @@ while :; do
         printf 'url = "%s"\noutput = "%s/%s.part"\n' "$url" "$mirror" "$path" >>"$work/curl.cfg"
     done <"$work/list"
     curl --parallel --parallel-max 16 --silent --show-error --location --proto '=https' --proto-redir '=https' \
-        --retry 3 --create-dirs --connect-timeout 30 --max-time 600 \
-        --write-out '%{http_code} %{filename_effective}\n' --config "$work/curl.cfg" >"$work/codes"
-    # curl's own status is non-zero on a failed transfer; each transfer's code is judged below.
-    while read -r code part; do
+        --retry 3 --retry-all-errors --create-dirs --connect-timeout 30 --max-time 600 \
+        --write-out '%{exitcode} %{http_code} %{filename_effective}\n' --config "$work/curl.cfg" >"$work/codes"
+    # curl's own status is non-zero on a failed transfer; each transfer is judged below by its own exit
+    # code first (a connection reset after a 200 header leaves a short file or none), then its HTTP code.
+    # A retried transfer is reported once, by its last try; whatever is kept is still checked by the review.
+    while read -r status code part; do
         file=${part%.part}
+        [ "$status" = 0 ] || fail "transfer of $file failed (curl exit $status, HTTP $code)"
         case $code in
             200) mv "$part" "$file" || fail "cannot move $part" ;;
             404) rm -f "$part" && : >"$file.404" || fail "cannot mark $file as 404" ;;
