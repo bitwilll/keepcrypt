@@ -524,12 +524,12 @@ never "workspace member"
 verdict
 
 # The workspace members are pinned in scripts/check-path-deps.sh (core, ffi, ffi/guard, ffi/jni,
-# pi/app, pi/sim). A vendored crate as a plain path dependency becomes a member unseen; it must fail
-# as a member outside the pinned six.
-pinned_six="core, ffi, ffi/guard, ffi/jni, pi/app, pi/sim"
+# ffi/capi, pi/app, pi/sim). A vendored crate as a plain path dependency becomes a member unseen; it
+# must fail as a member outside the pinned seven.
+pinned_seven="core, ffi, ffi/guard, ffi/jni, ffi/capi, pi/app, pi/sim"
 expect_failure "path-member" sh "$root/scripts/check-path-deps.sh" \
     "$root/scripts/testdata/path-member/Cargo.toml"
-need "check-path-deps: workspace member not one of $pinned_six: getrandom 0.4.3 at "
+need "check-path-deps: workspace member not one of $pinned_seven: getrandom 0.4.3 at "
 need "scripts/testdata/path-member/vendor/getrandom/Cargo.toml"
 never "not from crates.io"
 never "pinned workspace member missing"
@@ -539,7 +539,7 @@ verdict
 # not read that list.
 expect_failure "path-member-listed" sh "$root/scripts/check-path-deps.sh" \
     "$root/scripts/testdata/path-member-listed/Cargo.toml"
-need "check-path-deps: workspace member not one of $pinned_six: secrecy 0.10.3 at "
+need "check-path-deps: workspace member not one of $pinned_seven: secrecy 0.10.3 at "
 need "scripts/testdata/path-member-listed/vendor/secrecy/Cargo.toml"
 never "not from crates.io"
 never "pinned workspace member missing"
@@ -818,7 +818,7 @@ sys.exit(1 if bad else 0)
 #   plain or as `dep/feature` or `dep?/feature`;
 # - the root [profile] tables are exactly the ones below. Release must unwind, so a panic drops
 #   and wipes the session (abort skips that wipe, and cargo test always unwinds, so no test would
-#   notice a switch); core and the three FFI crates keep overflow checks in release, so a wrong
+#   notice a switch); core and the four FFI crates keep overflow checks in release, so a wrong
 #   length at the boundary halts (tasks/todo.md, M5 group 7).
 # - the Pi hardware crates, rppal and nix, are named only in pi/app/Cargo.toml's Linux
 #   dependencies, with exactly the specs below (tasks/todo.md, M4 group 2; Q36 (a), (e)), so
@@ -837,6 +837,7 @@ PROFILE = {
         "keepcrypt-ffi": {"overflow-checks": True},
         "keepcrypt-guard": {"overflow-checks": True},
         "keepcrypt-jni": {"overflow-checks": True},
+        "keepcrypt-capi": {"overflow-checks": True},
     }},
     "dev": {"package": {"*": {"opt-level": 3}}},
 }
@@ -937,15 +938,15 @@ sys.exit(1 if bad else 0)
 static_check "core [features], the root [profile] and the Pi hardware crates exactly as pinned; no manifest turns on a test feature" \
     python3 -I -c "$manifest_pins" "$root"
 
-# ... and the check must fire, on a copy of the seven manifests. One copy carries every route by
+# ... and the check must fire, on a copy of the eight manifests. One copy carries every route by
 # which a manifest could turn a test feature on (the [features] probe in each FFI crate), a widened
 # nix spec and rppal outside keepcrypt-pi, the other the profile changes; each must be named.
 fresh_manifests() {
     m="$work/manifests"
     rm -rf "$m"
-    mkdir -p "$m/core" "$m/ffi/guard" "$m/ffi/jni" "$m/pi/app" "$m/pi/sim" || exit 1
+    mkdir -p "$m/core" "$m/ffi/guard" "$m/ffi/jni" "$m/ffi/capi" "$m/pi/app" "$m/pi/sim" || exit 1
     for f in Cargo.toml core/Cargo.toml ffi/Cargo.toml ffi/guard/Cargo.toml ffi/jni/Cargo.toml \
-        pi/app/Cargo.toml pi/sim/Cargo.toml; do
+        ffi/capi/Cargo.toml pi/app/Cargo.toml pi/sim/Cargo.toml; do
         cp "$root/$f" "$m/$f" || exit 1
     done
 }
@@ -1030,42 +1031,26 @@ need "Cargo.toml: profile.release.package: missing key keepcrypt-jni, needs {'ov
 never "turns on"
 verdict
 
-# keepcrypt-capi, the iPhone boundary, is M6's (Q73; lead decision M5-32): a member at ffi/capi,
-# listed in the root Cargo.toml of a copy of the real workspace, must fail
-# scripts/check-path-deps.sh as a member outside the pinned six.
-name=path-member-capi
+# keepcrypt-capi, the iPhone boundary, is a pinned member from M6 (item B1): a copy of the real
+# workspace whose root Cargo.toml no longer lists ffi/capi must fail scripts/check-path-deps.sh as a
+# pinned member gone missing, so `cargo clippy --workspace` cannot stop linting the boundary unseen.
+name=path-member-capi-missing
 mem="$work/members"
 copy_tree "$root" "$mem"
-mkdir -p "$mem/ffi/capi/src" || exit 1
-cat > "$mem/ffi/capi/Cargo.toml" <<'EOF'
-# Gate canary (scripts/canaries.sh, temp copy only): the iPhone boundary as a member in M5.
-[package]
-name = "keepcrypt-capi"
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-publish.workspace = true
-
-[dependencies]
-keepcrypt-guard.workspace = true
-EOF
-: > "$mem/ffi/capi/src/lib.rs" || exit 1
-replace "$mem/Cargo.toml" '"ffi/jni", "pi/app"' '"ffi/jni", "ffi/capi", "pi/app"'
+replace "$mem/Cargo.toml" '"ffi/jni", "ffi/capi", "pi/app"' '"ffi/jni", "pi/app"'
 if ! out=$(cargo update --offline --workspace --manifest-path "$mem/Cargo.toml" 2>&1); then
     printf '%s\n' "$out" | tail -n 30
-    echo "FAIL: $name: could not add keepcrypt-capi to the copy's Cargo.lock offline"
+    echo "FAIL: $name: could not drop keepcrypt-capi from the copy's Cargo.lock offline"
     status=1
 else
     expect_failure "$name" sh "$root/scripts/check-path-deps.sh" "$mem/Cargo.toml"
-    need "check-path-deps: workspace member not one of $pinned_six: keepcrypt-capi 0.0.0 at "
-    need "/ffi/capi/Cargo.toml"
-    never "pinned workspace member missing"
+    need "check-path-deps: pinned workspace member missing: ffi/capi/Cargo.toml"
+    never "workspace member not one of"
     never "not from crates.io"
     verdict
 fi
 cp "$root/Cargo.toml" "$mem/Cargo.toml" || exit 1
 cp "$root/Cargo.lock" "$mem/Cargo.lock" || exit 1
-rm -r "$mem/ffi/capi" || exit 1
 
 # keepcrypt-jni reaches the safe layer only through keepcrypt_guard::guarded (lead decision M5-35):
 # its direct dependencies, of every kind and for every target, are exactly keepcrypt-guard (the

@@ -3,6 +3,10 @@
 version = 4
 
 [[package]]
+name = "canary-capi"
+version = "0.0.0"
+
+[[package]]
 name = "canary-ffi"
 version = "0.0.0"
 

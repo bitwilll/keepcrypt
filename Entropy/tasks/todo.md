@@ -18329,6 +18329,33 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Proof: `ffi/capi/tests/` call the two functions by Rust path over vectors/ (self-test, a dice-only 50-roll ceremony to
   Ready and its words page reply, every halt case above, a short `out_cap`, a planted panic under the guard's test
   op), in both configurations (release and `--features keepcrypt-core/test-registry`).
+  Proof (M6 commit B1, partial: local; CI at the next push; the planted panic is open, below): ffi/capi as specified,
+  keepcrypt-guard its one dependency, jni's lint tables, a clippy.toml identical to core's, `overflow-checks = true` in
+  release. kc_call copies the input once (none for a zero length, a null pointer allowed then), runs
+  `keepcrypt_guard::guarded(op, input)` in its own body, copies the reply once into `out` (copy_nonoverlapping) and drops
+  it; -1 with the slot halted through `HALT` (op 0) on a null input with a non-zero length, `input_len > MAX_INPUT`
+  (75,497,598, jni's), a null `out` and a reply past `out_cap` (wiped unread); lengths through TryFrom; four unsafe blocks,
+  one operation and a SAFETY: line each. ffi/capi/tests/call.rs runs each case on a fresh slot in a child process
+  (`each_case_passes_on_a_fresh_slot`): self-test (also a null input of length 0 and a buffer of exactly the reply),
+  ceremony (dice-50-words12 to Ready, all 12 words pages against kcr.json's mnemonic and braille.json's SeedBook numbers,
+  Finish), null-input, past-the-input-cap, null-out, short-out-cap (Ready's words page into a buffer one byte short:
+  -1, nothing written, the slot halted for good), zero-out-cap, guard-test-op; and
+  `the_reply_bound_and_the_input_cap`. `cargo test -p keepcrypt-capi --locked` 3 passed; `cargo test -p keepcrypt-ffi
+  -p keepcrypt-guard -p keepcrypt-jni -p keepcrypt-capi --locked --features keepcrypt-core/test-registry` 3 passed (ffi
+  16 + 28, guard 4, jni 11). Cargo refuses `--features keepcrypt-core/test-registry` on `-p keepcrypt-capi` alone (no
+  keepcrypt-core edge, as on jni), so the registry configuration runs with the FFI's other crates selected.
+  Open: the planted panic under the guard's test op. keepcrypt-guard's `PLANTED` op is `#[cfg(test)]`, in the guard's
+  own unit tests only, so no capi test can reach it, and no other route plants a panic under the catch without a change
+  to the guard (M5's old plan had a panic planted under `test-sources`). The guard-test-op case shows that op is no op
+  of the table in this build (halts as internal). For the lead.
+  Pulled forward from B4 so this tree passes check-path-deps and canaries.sh: check-path-deps pins seven members
+  (ffi/capi); canaries.sh's `pinned_seven`, its manifest copies and profile pin grown by ffi/capi, and
+  `path-member-capi` (a member in M5) now `path-member-capi-missing` (the copy without ffi/capi fails as a pinned member
+  missing); the four testdata workspaces (path-member, path-member-listed, path-override, source-replacement) gain an
+  ffi/capi stand-in. On the commit's own tree (a worktree at it): fmt, both clippy runs, deny ok, Vetting Succeeded (18
+  fully audited, 86 exempted), check-path-deps clean (104 packages; members exactly core, ffi, ffi/guard, ffi/jni,
+  ffi/capi, pi/app, pi/sim), the gate clean (419 files), `--workflows` clean, `--selftest` 414 + 414 + 414 + 413 passed,
+  0 failed, `scripts/canaries.sh` PASS, all 94 checks ran (8 min 31 s).
 - [ ] B2. `MAX_OUT`: a test in keepcrypt-ffi drives every op over the vectors and records the longest reply (the age
   backup's armored file, the QR matrices, the watch-only export), and asserts it is under `MAX_OUT` with room; the
   bound and the measured longest are named in the Proof.
