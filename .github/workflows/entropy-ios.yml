@@ -126,8 +126,9 @@ jobs:
     # journeys' test cases (ScanUITests 68 s, WordsUITests 85 s, CheckBackupUITests 59 s) is 1408 s, and
     # 1408 s x 1.25 is 1760 s, 30 minutes. D8's run 44159274507 at 61b24aec took 1836 s on macos-26 (its
     # journeys' cases 89 s, 93 s and 67 s): less those, 1587 s, x 1.25 is 1984 s, 34 minutes, kept until
-    # the first green run of this layout re-measures it.
-    timeout-minutes: 34
+    # the first green run of this layout re-measures it: run 44167434703 at 427e0dc1 took 1139 s on
+    # macos-26 and 1279 s on macos-15, so 1279 s x 1.25 is 1599 s, 27 minutes.
+    timeout-minutes: 27
     strategy:
       fail-fast: false
       matrix:

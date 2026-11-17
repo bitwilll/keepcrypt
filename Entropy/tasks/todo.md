@@ -18422,6 +18422,15 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   network_state, none holding a secret. The capture and app-switcher covers post a screen change as they come and
   go (iPhone only: Android has no whole-scene capture cover). XCUITest cannot read the header trait; the unit table
   and I5 cover it.
+- M6-19 (2026-11-18, from U5's report): entropy-ios.yml's legs are a unit job and journeys jobs (one per group of
+  TestHooks UI test classes, KC_JOURNEYS, checked against the matrix by the unit job); each job builds its own Rust
+  library from the pinned toolchain, and only the crate registry's sources are cached (Cargo checks them against
+  Cargo.lock). Each job's budget is its measured time plus 25% (M5-30).
+- M6-20 (2026-11-18, the lead's, from U1's report): Q84's answer ("shipping builds drop testTagsAsResourceId") on
+  the iPhone: an accessibility identifier on a node that holds a secret (a word, the backup passphrase, D, the
+  letters typed back, the BIP39 passphrase, the dice pick in dice-only mode) is compiled in under KC_TEST_HOOKS
+  alone, never in Shipping or WithTestRegistry. iOS has no third-party accessibility services, so the exposure is
+  smaller than Android's, but the shipping app names no secret node, as the owner chose for Android.
 
 ### Stage B: the bridge (M6 commits 2-4)
 - [x] B1. `ffi/capi` (`keepcrypt-capi`): `[lib] name = "keepcrypt_capi"`, `crate-type = ["staticlib", "rlib"]`,
@@ -19593,7 +19602,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   (macos-26 near its 34 minutes: U5 splits the job). Entropy CI 44159274470, Entropy Android 44159274518 (all nine
   jobs, both API 34 jobs included) and Entropy Pi image 44159274514 green.
 ### Stage U: the end-to-end pass (M6 commits U1-U5, after Stage D; refined 2026-11-18)
-- [ ] U5. CI room for the journeys, first: entropy-ios.yml's one job per leg (about 27 of its 34 minutes at 3a13ac60)
+- [x] U5. CI room for the journeys, first: entropy-ios.yml's one job per leg (about 27 of its 34 minutes at 3a13ac60)
   cannot hold U1-U2's UI-alone journeys. Each leg becomes jobs of its own on the same two images, as Entropy Android's
   legs are: the unit, capture and scan jobs (the three schemes' builds, scans and today's UI tests) and journeys jobs
   (TestHooks UI tests by group), the Rust library built once per job from the same pinned toolchain (or cached by
@@ -19632,6 +19641,15 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
   checks ran" (its workflow canaries among them: workflow-hardening, workflow-bootstrap and
   workflow-review-before-gradle failed as intended, workflow-bootstrap-exception-empty passed; 1016 s in all).
+  CI proof (2026-11-18): Entropy iPhone run 44167434703 at 427e0dc1, the first of this layout, green: iphone unit
+  1139 s (macos-26) and 1279 s (macos-15), "Executed 128 tests, with 0 failures" in Shipping and WithTestRegistry on
+  both, the capture, offline and start-up UI tests passing; the UI test groups check passing ("2 journeys rows;
+  ScanUITests WordsUITests CheckBackupUITests run in the journeys jobs"); iphone journeys journeys-1 780 s and 589 s,
+  the three classes passing on both legs (the fixed part about 570 s, as estimated). The unit job's budget is
+  re-measured to 27 minutes (1279 s x 1.25 = 1599 s); journeys-1's is U1's to set. Lead decision M6-19 (U5's
+  report): each job builds its own Rust library from the pinned toolchain (about 86 s), nothing built is cached or
+  passed between jobs, the crate registry cache alone (sources, checked against Cargo.lock); one KC_JOURNEYS list and
+  the groups check over the matrix. Entropy CI 44167435061 and Entropy Pi image 44167434907 green.
 - [ ] U1. User journeys through the UI alone, one XCUITest per journey from First launch to Finish on both simulators,
   as M5's U1: mixed and dice-only, 12 and 24 words (24 with the device swap); the check by a typed code, a scanned
   proof (the Scan hook, M6-7, the camera's own path), a loaded snapshot and Skip; Match found and a scanned collision
