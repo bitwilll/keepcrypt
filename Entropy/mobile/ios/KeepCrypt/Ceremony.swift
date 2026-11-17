@@ -613,13 +613,18 @@ final class CeremonyModel: ObservableObject {
     /// left over from a screen or a page that has gone types nothing.
     func padKey(screen: Screen, page: Int, key: Character) {
         let current = state
-        guard current.page == page, let entry = padEntry(current), pressOn(screen) else { return }
-        if current.screen == .bip39Entry, !asciiPage(current.page).contains(key) { return }
-        if current.screen == .dice {
-            entry.replace(key)
-        } else {
-            entry.type(key)
+        guard current.page == page, let entry = padEntry(current), pressOn(screen) else {
+            #if KC_TEST_HOOKS
+            hookLastPress = "key: not taken on " + screen.id
+            #endif
+            return
         }
+        if current.screen == .bip39Entry, !asciiPage(current.page).contains(key) { return }
+        let typed = current.screen == .dice ? entry.replace(key) : entry.type(key)
+        #if KC_TEST_HOOKS
+        hookLastPress = typed ? "key: typed" : "key: not typed (no room, or not the pad's)"
+        #endif
+        _ = typed
     }
 
     /// The Delete beside the showing screen's pad, made on screen and page: the last key typed (the dice
@@ -705,10 +710,24 @@ final class CeremonyModel: ObservableObject {
     /// The dice screen's confirm: the face picked on the pad is pushed to core and the pick is wiped.
     /// Nothing with no face picked or at 256 rolls, where its button is disabled.
     func confirmRoll() {
-        guard pressOn(.dice), let dice = state.dice else { return }
-        guard dicePick.length == 1, dice.rolls < maxRolls, let face = dicePick.keyAt(0).wholeNumberValue else { return }
+        guard pressOn(.dice), let dice = state.dice else {
+            #if KC_TEST_HOOKS
+            hookLastPress = "confirm: not taken on the dice screen"
+            #endif
+            return
+        }
+        guard dicePick.length == 1, dice.rolls < maxRolls, let face = dicePick.keyAt(0).wholeNumberValue else {
+            #if KC_TEST_HOOKS
+            hookLastPress = "confirm: no face picked, or the cap"
+            #endif
+            return
+        }
         dicePick.wipe()
-        if short({ $0.pushRoll(face) }) { showDice() }
+        let pushed = short({ $0.pushRoll(face) })
+        if pushed { showDice() }
+        #if KC_TEST_HOOKS
+        hookLastPress = pushed ? "confirm: roll pushed, \(state.dice?.rolls ?? -1) rolls" : "confirm: core did not take the roll"
+        #endif
     }
 
     /// The dice screen's undo: the last roll goes (the pick stays); nothing with no roll.
@@ -1878,6 +1897,34 @@ final class CeremonyModel: ObservableObject {
     }
 
     private func stopped() -> Bool { state.screen == .stop }
+
+    #if KC_TEST_HOOKS
+    /// What the last pad key or Confirm did, by fixed names and counts alone (the TestHooks panel's facts, U1f).
+    @Published private(set) var hookLastPress = "none"
+
+    /// The TestHooks panel's facts line (U1f; Android's appFacts): what the model holds, by fixed names, counts
+    /// and yes or no alone, never a face, a roll or anything else secret, for a UI test's probe at a press that
+    /// did nothing.
+    func hookFacts(sceneActive: Bool) -> String {
+        let current = state
+        let overlay = current.overlay.map { $0 == .cover ? "cover" : "warning" } ?? "none"
+        let notice = current.notice.map { String(describing: $0) } ?? "none"
+        let dice = current.dice.map { "\($0.rolls) rolls, minimum \($0.minimum), cap \(maxRolls)" } ?? "none"
+        let refusals = [
+            current.entryRefusal.map { "entry " + String(describing: $0) },
+            current.scanRefusal.map { "scan " + String(describing: $0) },
+            current.snapshotRefusal.map { "snapshot " + String(describing: $0) },
+            current.fileRefusal.map { "file " + String(describing: $0) },
+            current.codeRefused ? "code" : nil,
+        ].compactMap { $0 }
+        return "screen \(current.screen.id); gate \(current.gate ? "yes" : "no"); overlay \(overlay); working "
+            + "\(current.screen.isWorking ? "yes" : "no"); long call \(running == nil ? "no" : "yes"); notice \(notice); "
+            + "dice \(dice); pick \(dicePick.length == 1 ? "yes" : "no"); refusals "
+            + "\(refusals.isEmpty ? "none" : refusals.joined(separator: ", ")); halt \(current.halt.map { String(describing: $0) } ?? "none"); "
+            + "held \(holds() ? "yes" : "no"); foreground \(foreground ? "yes" : "no"); picker up \(pickerUp ? "yes" : "no"); "
+            + "timers \(timers.hookFacts()); scene \(sceneActive ? "active" : "not active"); last press \(hookLastPress)"
+    }
+    #endif
 
     /// A long call runs, or the stop screen shows: input goes no further.
     private func busy() -> Bool { stopped() || state.screen.isWorking }

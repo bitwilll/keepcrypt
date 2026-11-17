@@ -19788,6 +19788,32 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Proof (M6 commit U1e, on the final tree, a worktree at U1d): `--selftest` 4 x "486 passed, 0 failed", `sh
   scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
   checks ran" (1025 s in all).
+  As built (M6 commit U1f, from run 44185394720 at 8112f0d5: every journey green but WordsUITests on macos-26,
+  where every Confirm from roll 32 on "reached the app and was admitted, and did nothing", the count staying at
+  31; and the unit job on macos-26, whose simulator had not booted). The dead Confirms, as far as the code
+  shows: the model's confirm path cannot stay dead while its face keys work. confirmRoll and padKey pass the
+  same pressOn(.dice) (screen, overlay, gate, no long call); a pick the face check saw (its label is drawn from
+  the pick only while it holds one face) is the pick Confirm reads; a core refusal or halt of pushRoll ends on
+  the stop screen, never on the dice; the press guard closes only on a new view, and the probe saw none refused;
+  the timers act on the dice screen only after 60 s away or 10 minutes idle. So either confirmRoll returned
+  early for a reason the code above does not show, or the Confirm button never ran its action (disabled, or the
+  touch landed off it). The face check cannot pass with no face picked. U1f makes CI say which: the TestHooks
+  panel's facts line (hook_facts; Android's appFacts), by fixed names, counts and yes or no alone (the screen,
+  gate, overlay, working, a long call, the notice, the dice's rolls, minimum and cap, whether a face is picked,
+  the refusals held, the halt, held, foreground, a picker up, the timers' idle and away seconds and picker
+  rule, the scene's activity, and what the last pad key or Confirm did: typed, not taken and why, pushed with
+  the count, or core's refusal), printed in every probe line and failure with the pressed button's enabled,
+  hittable and frame. A last press that is not a Confirm's means the button never ran its action. All of it is
+  compiled in under KC_TEST_HOOKS alone (the shipped binaries hold none of its strings). The fix waits for
+  that line, as the lead asked; if it shows a model defect, U4's failing unit test comes first.
+  The boot check: both jobs' Simulator steps fail by name when simctl boot or bootstatus exits non-zero, or when
+  simctl's list gives the device another state than Booted (run 44185394720's bootstatus printed
+  Status=4294967295 and exited 0). Not a retry.
+  Proof (M6 commit U1f, local; CI at the next push): the three schemes built for testing and the device build,
+  no Swift warning; `--ios-app` clean on the three shipped apps, the facts' strings in the TestHooks binary
+  alone; `--selftest-ios-app` 36 passed; the stand-in "Executed 126 tests, with 0 failures" both ways; the
+  Simulator step's state reader, run locally on a list, gives Booted, Shutdown and missing as they are;
+  `--workflows` and the gate clean (514 files), `cargo fmt --all --check` clean.
 - [ ] U2. Edge cases where the phone matters (the JVM-ported unit tests of D2 hold the model's): Back and a double tap
   on every screen; leaving the app at every stage (Public: 59 s kept, 61 s wiped; Protected and Working: at once) by
   XCUIDevice's home and a re-activation; the app killed at every stage, back at First launch with an empty slot; going

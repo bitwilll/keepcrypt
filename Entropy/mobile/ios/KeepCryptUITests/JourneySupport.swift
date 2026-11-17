@@ -134,6 +134,12 @@ extension XCUIApplication {
         (Int(element("hook_touches_seen").label) ?? -1, Int(element("hook_touches_refused").label) ?? -1)
     }
 
+    /// The TestHooks panel's facts line (U1f): what the model holds, by fixed names, counts and yes or no
+    /// alone, nothing secret (TestHooks.swift, the model's hookFacts).
+    func facts() -> String {
+        element("hook_facts").label
+    }
+
     /// button pressed as a person presses it (U1d): once, then its effect awaited. A press that does nothing is
     /// told apart by the panel's touch counts: one the press guard refused (a view shown under 300 ms before, the
     /// app working as designed) or one that never reached the app's window is pressed again, the screen settled
@@ -147,12 +153,17 @@ extension XCUIApplication {
             button.tap()
             if effect() || within(5, effect) { return }
             let after = touchCounts()
+            let frame = button.frame
+            let held = facts() + "; the button enabled \(button.isEnabled ? "yes" : "no"), hittable \(button.isHittable ? "yes" : "no"), at "
+                + "\(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))"
             if after.refused > before.refused {
-                pass("probe: \(what): press \(attempt) refused by the press guard (touches \(before) to \(after)); pressed again")
+                pass("probe: \(what): press \(attempt) refused by the press guard (touches \(before) to \(after)); \(held); pressed again")
             } else if after.seen == before.seen {
-                pass("probe: \(what): press \(attempt) never reached the app (touches \(before) to \(after)); pressed again")
+                pass("probe: \(what): press \(attempt) never reached the app (touches \(before) to \(after)); \(held); pressed again")
             } else {
-                XCTFail("\(what): press \(attempt) reached the app and was admitted, and did nothing (touches \(before) to \(after))", file: file, line: line)
+                XCTFail(
+                    "\(what): press \(attempt) reached the app and was admitted, and did nothing (touches \(before) to \(after)); \(held)",
+                    file: file, line: line)
                 return
             }
         }
@@ -162,7 +173,7 @@ extension XCUIApplication {
     /// The button id pressed once it is enabled, as a person presses a control that is offered.
     func pressEnabled(_ id: String, file: StaticString = #filePath, line: UInt = #line) {
         let button = buttons[id]
-        XCTAssertTrue(within(30) { button.exists && button.isEnabled }, id + " never enabled", file: file, line: line)
+        XCTAssertTrue(within(30) { button.exists && button.isEnabled }, id + " never enabled; " + facts(), file: file, line: line)
         button.tap()
     }
 

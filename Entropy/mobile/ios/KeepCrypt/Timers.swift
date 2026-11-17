@@ -80,6 +80,16 @@ final class Timers {
         picker = false
     }
 
+    #if KC_TEST_HOOKS
+    /// The timers' state for the TestHooks panel's facts (U1f): seconds since the last input, whether the app
+    /// is away and for how long, and the picker rule, by counts and yes or no alone.
+    func hookFacts() -> String {
+        let now = clock.nowMillis()
+        let away = leftAt.map { String((now - $0) / 1_000) + " s" } ?? "no"
+        return "idle \((now - lastInput) / 1_000) s, away \(away), picker \(picker ? "yes" : "no")"
+    }
+    #endif
+
     /// The step due now on a screen that is Protected or not, while a session is held or not; nil for none.
     func step(onProtected: Bool, holdsSecrets: Bool) -> TimerStep? {
         let now = clock.nowMillis()

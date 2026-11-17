@@ -337,6 +337,9 @@ extension SecretNode {
 /// The hook panel, drawn under the scene in the TestHooks build (outside the press guard), covers included.
 struct TestHookPanel: View {
     @ObservedObject private var hooks = TestHooks.shared
+    /// The model, whose facts line the panel shows (U1f), and whether the scene is active.
+    @ObservedObject var model: CeremonyModel
+    let sceneActive: Bool
 
     var body: some View {
         VStack(spacing: 4) {
@@ -349,6 +352,11 @@ struct TestHookPanel: View {
                 Text(String(hooks.touchesRefused))
                     .accessibilityIdentifier("hook_touches_refused")
             }
+            // What the model holds, by fixed names and counts alone (U1f), for a UI test's probe.
+            Text(model.hookFacts(sceneActive: sceneActive))
+                .font(.system(size: 6))
+                .lineLimit(1)
+                .accessibilityIdentifier("hook_facts")
             HStack {
                 Button("Capture") { hooks.captured.toggle() }
                     .accessibilityIdentifier("hook_capture")

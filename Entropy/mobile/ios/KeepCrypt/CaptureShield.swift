@@ -80,7 +80,7 @@ struct CaptureShield<Content: View>: View {
             model.tick()
         }
         #if KC_TEST_HOOKS
-        .safeAreaInset(edge: .bottom, spacing: 0) { TestHookPanel() }
+        .safeAreaInset(edge: .bottom, spacing: 0) { TestHookPanel(model: model, sceneActive: active) }
         #endif
     }
 

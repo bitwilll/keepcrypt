@@ -257,8 +257,22 @@ jobs:
           )
           echo "simulator: $KC_DEVICE, iOS $KC_IOS, $udid"
           echo "KC_SIM=$udid" >> "$GITHUB_ENV"
-          xcrun simctl boot "$udid"
-          xcrun simctl bootstatus "$udid" -b
+          fail() { echo "FAIL: simulator $udid ($KC_DEVICE, iOS $KC_IOS): $1" >&2; exit 1; }
+          xcrun simctl boot "$udid" || fail "simctl boot failed"
+          xcrun simctl bootstatus "$udid" -b || fail "simctl bootstatus failed (exit $?)"
+          # Fail closed (run 44185394720: bootstatus printed Status=4294967295 and exited 0): the device's own
+          # state, from simctl's list, must be Booted. Not a retry: a failed boot is the runner's, and stays a
+          # visible failure.
+          xcrun simctl list devices -j > "$RUNNER_TEMP/booted.json" || fail "simctl list failed"
+          state=$(python3 -I - "$RUNNER_TEMP/booted.json" "$udid" <<'PY'
+          import json, sys
+          devices = json.load(open(sys.argv[1]))["devices"]
+          found = [d.get("state", "") for runtime in devices.values() for d in runtime if d.get("udid") == sys.argv[2]]
+          print(found[0] if len(found) == 1 else "missing")
+          PY
+          ) || fail "its state could not be read"
+          [ "$state" = Booted ] || fail "its state is $state, not Booted"
+          echo "simulator: $udid Booted"
       # Each scheme: built for testing, tested on the simulator, and its simulator app scanned.
       - name: Shipping (build-for-testing, test-without-building, --ios-app)
         run: |
@@ -464,8 +478,22 @@ jobs:
           )
           echo "simulator: $KC_DEVICE, iOS $KC_IOS, $udid"
           echo "KC_SIM=$udid" >> "$GITHUB_ENV"
-          xcrun simctl boot "$udid"
-          xcrun simctl bootstatus "$udid" -b
+          fail() { echo "FAIL: simulator $udid ($KC_DEVICE, iOS $KC_IOS): $1" >&2; exit 1; }
+          xcrun simctl boot "$udid" || fail "simctl boot failed"
+          xcrun simctl bootstatus "$udid" -b || fail "simctl bootstatus failed (exit $?)"
+          # Fail closed (run 44185394720: bootstatus printed Status=4294967295 and exited 0): the device's own
+          # state, from simctl's list, must be Booted. Not a retry: a failed boot is the runner's, and stays a
+          # visible failure.
+          xcrun simctl list devices -j > "$RUNNER_TEMP/booted.json" || fail "simctl list failed"
+          state=$(python3 -I - "$RUNNER_TEMP/booted.json" "$udid" <<'PY'
+          import json, sys
+          devices = json.load(open(sys.argv[1]))["devices"]
+          found = [d.get("state", "") for runtime in devices.values() for d in runtime if d.get("udid") == sys.argv[2]]
+          print(found[0] if len(found) == 1 else "missing")
+          PY
+          ) || fail "its state could not be read"
+          [ "$state" = Booted ] || fail "its state is $state, not Booted"
+          echo "simulator: $udid Booted"
       # The group's journeys on the TestHooks app (M6-5), its classes alone; the app holds the hooks' marker.
       - name: TestHooks (build-for-testing, the group's journeys, the hooks' marker)
         run: |
