@@ -18907,6 +18907,40 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   The capture state did not read active on either runner with nothing recording. The secure layer hosts its
   content on both iOS versions in CaptureLayerTests; whether it hides that content from a screenshot is I1's (Q88).
   The job's budget: 874 s x 1.25, 19 minutes (M5-30).
+### Stage D: the screens (M6 commits D1-D8)
+- [ ] D1. One screen table, `mobile/screens.json`: each of the 49 screens of `:screens`' `Screen` enum, in its order,
+  with its id, its fixed title (screenTitle) and its kind (Protected or Public, isProtected). A JVM test in :screens'
+  commonTest holds the Kotlin enum, screenTitle and isProtected to the table, and an XCTest holds the Swift `Screen`
+  enum and its title and kind to it, so the two apps cannot drift (MA:17, MA:34).
+- [ ] D2. `Ceremony.swift`'s CeremonyModel, the Swift port of `:screens`' CeremonyModel.kt: the same states, screens,
+  gate, overlays (the 30-second cover, the idle warning at 9 minutes and the wipe at 10), leaving rules (Protected:
+  discard at once; Public: the privacy cover and a wipe after 60 s away), the press guard (300 ms after a new view),
+  every refusal table, the offline rule and the halt path, over Core and Wire. XCTest mirroring the JVM walk
+  (Walk.kt's 48 screens: Back once and twice, leaving, idle, a configuration change being no leaving, every refusal)
+  at the same expectations. A discard while a long call runs must not wait for it (ffi's
+  `ffi_discard_during_call` rule): Core gains a second, small reply buffer for DISCARD and WIPE_ALL alone, called
+  outside the main call's lock.
+- [ ] D3. The kit and the start: SwiftUI's fixed text, headings and pane titles; the pads (dice 1-6 with undo, letters
+  for the first four letters, the go-ahead code, the BIP39 passphrase) as buttons only, never the system keyboard;
+  First launch, Self-test, Go offline, Home, Length, Device entropy (Core Motion's accelerometer and gyroscope and
+  touch timing as zero-credit extras, M5's encoding), Commitment, Dice.
+- [ ] D4. The collision check: the prompt, Skip's confirm, the seal card and its check QR, the scan screen (AVFoundation's
+  QR reader, the camera asked for only there), the code entry, Match found's and Cannot check's confirms, the
+  collision result, its report QR, the result before the words; Load registry snapshot through the document picker
+  (`.kcr`, kept in memory only).
+- [ ] D5. The words: the privacy gate ("I'm alone, show words"), insert view (the word, its SeedBook number, five braille
+  faces, blank faces and mirror pairs flagged) drawn inside SecureLayer, the overview, the device swap, the read-back
+  entry, its mismatch and its end, the wallet summary.
+- [ ] D6. The exports: the backup's passphrase, confirm and save (`.fileExporter` in DocumentPicker.swift, the file read
+  back and verified, "Backup verified"), the watch-only offer, the BIP39 question and entry, the summary, the account
+  and descriptor QRs, the registration offer and QR, Reveal D, the checklist and Finish.
+- [ ] D7. Check a backup (the `.age` file through the picker, the passphrase on the letter pad, the result, the words only
+  if asked, the re-check), About, Working and the stop screen.
+- [ ] D8. VoiceOver: each screen's title read as it opens, headings, live lines, every QR named by its kind and never its
+  data, each Protected pad key reading its letter; reading counts as input for the idle rule (Q80 (b)'s answer on
+  Android). iOS has no accessibility-data-sensitive mark, so VoiceOver reads the words as any screen reader would:
+  named as an iPhone residual for the owner's I5 check.
+
 ### Verification (each maps to a gate item; refined with the plan)
 - [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest
   with the capture hook on both simulators); I1 on the owner's iPhone (a Control Center recording, AirPlay mirroring,
