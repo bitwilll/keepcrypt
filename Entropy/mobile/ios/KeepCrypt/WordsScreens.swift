@@ -20,7 +20,7 @@ private struct InsertWord: View {
             + Text(String(word.dropFirst(lighterFrom))).foregroundColor(KitColors.muted))
             .font(KitType.large)
             .padding(.vertical, 6)
-            .accessibilityIdentifier("insert_word")
+            .secretIdentifier(.insertWord)
     }
 }
 
@@ -51,10 +51,10 @@ struct WordsInsertScreen: View {
                     SecureLayer {
                         VStack(alignment: .leading, spacing: 0) {
                             InsertWord(insert: insert)
-                            KitText(seedbookText(insert.seedbook))
+                            KitText(seedbookText(insert.seedbook)).secretIdentifier(.insertSeedbook)
                             HStack(spacing: 0) {
                                 ForEach(1...5, id: \.self) { n in
-                                    BrailleFaceView(face: insert.face(n))
+                                    BrailleFaceView(face: insert.face(n)).secretIdentifier(.insertFace)
                                 }
                             }
                         }
@@ -106,7 +106,7 @@ struct WordsOverviewScreen: View {
                     SecureLayer {
                         VStack(alignment: .leading, spacing: 0) {
                             ForEach(0..<inserts.count, id: \.self) { index in
-                                KitText(overviewLine(inserts[index]), style: .hex)
+                                KitText(overviewLine(inserts[index]), style: .hex).secretIdentifier(.overviewLine)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
@@ -179,6 +179,7 @@ struct ReadbackEntryScreen: View {
                                 .font(.system(size: 48, weight: .bold, design: .monospaced))
                                 .foregroundColor(KitColors.text)
                                 .padding(.vertical, 6)
+                                .secretIdentifier(.typedLetters)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         LetterPad(onKey: onKey)
@@ -213,7 +214,7 @@ struct ReadbackMismatchScreen: View {
                     SecureLayer {
                         VStack(alignment: .leading, spacing: 0) {
                             ForEach(1...4, id: \.self) { face in
-                                KitText(verdictLine(face, mismatch.face(face)))
+                                KitText(verdictLine(face, mismatch.face(face))).secretIdentifier(.verdictLine)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)

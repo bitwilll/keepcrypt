@@ -94,7 +94,7 @@ final class MixedJourneyUITests: XCTestCase {
         app.press("show_d")
         app.passGate("D")
         app.on("reveal_d", "D")
-        let leg = hexBytes(app.element("device_leg_text").label)
+        let leg = hexBytes(app.element("kc_secret_device_leg_text").label)
         XCTAssertEqual(leg.count, 32, "D as 32 bytes")
         XCTAssertTrue(sha256(Array("KCE/v1/commit".utf8) + leg) == commitment, "SHA-256(\"KCE/v1/commit\" || D) is the C shown (neither printed)")
         app.press("d_done")

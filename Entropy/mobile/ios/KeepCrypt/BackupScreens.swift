@@ -63,7 +63,7 @@ struct BackupPassphraseScreen: View {
                             .foregroundColor(KitColors.text)
                             .lineSpacing(10)
                             .padding(.vertical, 6)
-                            .accessibilityIdentifier("passphrase_text")
+                            .secretIdentifier(.passphraseText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 } actions: {
@@ -107,6 +107,7 @@ struct BackupConfirmScreen: View {
                                 HStack(spacing: 0) {
                                     ForEach(first..<min(first + 2, question.choices.count), id: \.self) { index in
                                         Text(choiceText(question.choices[index]))
+                                            .secretIdentifier(.confirmChoice)
                                             .font(KitType.hex)
                                             .foregroundColor(KitColors.text)
                                             .padding(.vertical, 4)
@@ -143,6 +144,7 @@ struct LetterEntry: View {
                 .font(.system(size: 48, weight: .bold, design: .monospaced))
                 .foregroundColor(KitColors.text)
                 .padding(.vertical, 6)
+                .secretIdentifier(.typedLetters)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         LetterPad(onKey: onKey)

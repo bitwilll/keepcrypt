@@ -1,6 +1,6 @@
 // What U1's journeys share (tasks/todo.md, M6 item U1; Android's Journeys.kt and Ui.kt), each step a press on
 // the screen by its identifier or its label, as a person makes it: the way to Home, the dice pressed face by
-// face, the privacy gate passed, the words read from the screen (insert_word, inside SecureLayer, reachable
+// face, the privacy gate passed, the words read from the screen (kc_secret_insert_word, inside SecureLayer, reachable
 // to the accessibility tree as M6-16 found) and read back on the letter pad, the backup made and saved through
 // the Save hook, Check a backup of the saved copy, and the go-ahead code a checker builds from the check QR,
 // read back from a picture of the drawn QR (Core Image's QR detector) and typed on the code pad. Every seed is
@@ -183,7 +183,7 @@ extension XCUIApplication {
                 press("next")
             }
             waitLabel("insert_header", String(format: "Insert %02d \u{00B7} device %d of %d", position, device, devices), file: file, line: line)
-            words.append(element("insert_word").label)
+            words.append(element("kc_secret_insert_word").label)
         }
         if let expected {
             XCTAssertTrue(words == expected, "the inserts are not the seed's words (none printed)", file: file, line: line)
@@ -223,7 +223,7 @@ extension XCUIApplication {
                 press("next")
                 waitLabel("passphrase_page", "Words 5-8 of 8", file: file, line: line)
             }
-            let lines = element("passphrase_text").label.split(separator: "\n").map(String.init)
+            let lines = element("kc_secret_passphrase_text").label.split(separator: "\n").map(String.init)
             XCTAssertEqual(lines.count, 4, "four words a page", file: file, line: line)
             for (index, text) in lines.enumerated() {
                 let number = String(page * 4 + index + 1) + " "
@@ -273,7 +273,7 @@ extension XCUIApplication {
         for position in 1...words.count {
             if position > 1 { press("next") }
             waitLabel("insert_header", String(format: "Insert %02d \u{00B7} device 1 of 1", position), file: file, line: line)
-            read.append(element("insert_word").label)
+            read.append(element("kc_secret_insert_word").label)
         }
         XCTAssertTrue(read == words, "the checked backup holds the ceremony's words (none printed)", file: file, line: line)
         press("backup_words_done")

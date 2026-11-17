@@ -19727,6 +19727,37 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Proof (M6 commit U1b, on the final tree, a worktree at U1a): `--selftest` 4 x "486 passed, 0 failed", `sh
   scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
   checks ran" (1025 s in all).
+  As built (M6 commit U1c, lead decision M6-20): one way to name a secret node, Kit.swift's
+  `.secretIdentifier(SecretNode)`, which applies an accessibility identifier under KC_TEST_HOOKS alone and
+  nothing otherwise; the names live in TestHooks.swift (compiled into the TestHooks app alone), each kc_secret_
+  and the node's name, 16 bytes or more (Swift keeps a string of 15 or fewer inside its code, out of a byte
+  scan's sight; and core's Rust symbols spell passphrase_text, which a shorter name would have hit), listed in
+  mobile/ios/expected/secret-identifiers.txt. Used on every node whose text is a secret: the insert's word (the
+  insert view and the read-back's match), its SeedBook number and each braille face; each overview line; the
+  letters typed (the read-back's entry, and LetterEntry: the confirm and Check a backup); each mismatch
+  verdict; the backup passphrase's page and each confirm choice; the BIP39 passphrase typed; D; and the dice
+  pick (a roll of R). The audit of every `.accessibilityIdentifier(` and KitText/KitButton/KitScreen id in the
+  app: the three U1a added (insert_word, passphrase_text, device_leg_text) and D3's dice_pick named a secret
+  node and are now secret identifiers; every other one is a public node's and stays in all configurations
+  (screens' roots, the gate, covers and overlays, buttons, the Public pads' keys, the headers and lines of
+  positions, devices, counts, pages and refusals, C, the seal card and Seal ID, the check QR, the go-ahead code,
+  the fingerprints and first addresses, the backup's name, About's lines). Shipping's and WithTestRegistry's
+  UI test (StartUpUITests) uses public identifiers alone. The check: --ios-app's new IosSecretId rule refuses
+  each listed name's bytes in a shipped app's binary and exits 2 on a listed name under 16 bytes; the workflow's
+  TestHooks steps (unit and journeys) require every listed name in the TestHooks binary. The journeys read
+  kc_secret_insert_word, kc_secret_passphrase_text and kc_secret_device_leg_text.
+  Proof (M6 commit U1c, local; CI at the next push): the three schemes built for testing and the device build,
+  no Swift warning; `--ios-app` clean on the three shipped apps; the 11 names in the TestHooks binary, 0 in
+  each of the three shipped binaries; the hooks marker 1 line in TestHooks alone; with one name planted in
+  Shipping's build (a copy of the modifier applying kc_secret_insert_word outside the hooks, restored),
+  `--ios-app` gives "IosSecretId: ...KeepCrypt: kc_secret_insert_word: a secret node's identifier"; 
+  `--selftest-ios-app` "36 passed, 0 failed" (33 and three new: a planted name refused, a clean app, a name under
+  16 bytes refused with exit 2); the stand-in "Executed 126 tests, with 0 failures" both ways; `--workflows`
+  clean (its first draft's `grep -F -e` read as Gradle's -F and hit; the check greps without -F); the gate
+  clean (514 files), `cargo fmt --all --check` clean.
+  On the final tree (a worktree at U1c before this line): `--selftest` 4 x "486 passed, 0 failed" (--selftest-ios-app
+  is a mode of its own, above), `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed",
+  `scripts/canaries.sh` "PASS: all 102 checks ran" (1037 s in all).
 - [ ] U2. Edge cases where the phone matters (the JVM-ported unit tests of D2 hold the model's): Back and a double tap
   on every screen; leaving the app at every stage (Public: 59 s kept, 61 s wiped; Protected and Working: at once) by
   XCUIDevice's home and a re-activation; the app killed at every stage, back at First launch with an empty slot; going

@@ -377,3 +377,32 @@ func announcePolitely(_ text: String) {
     let queued = NSAttributedString(string: text, attributes: [.accessibilitySpeechQueueAnnouncement: true])
     UIAccessibility.post(notification: .announcement, argument: queued)
 }
+
+/// A node whose text is a secret (lead decision M6-20, Q84's answer on Android: the shipping app names no secret
+/// node). Its identifier, the UI tests' name for it, is compiled in under KC_TEST_HOOKS alone (TestHooks.swift
+/// holds the names); in Shipping and WithTestRegistry the node has none, and --ios-app refuses each name
+/// (mobile/ios/expected/secret-identifiers.txt) in those apps' binaries.
+enum SecretNode: CaseIterable {
+    /// An insert's word (the insert view and the read-back's match), its SeedBook number and each braille face.
+    case insertWord, insertSeedbook, insertFace
+    /// An overview line, the letters typed (the read-back, the confirm, Check a backup) and a mismatch's verdict.
+    case overviewLine, typedLetters, verdictLine
+    /// The backup passphrase's page and a confirm choice.
+    case passphraseText, confirmChoice
+    /// The BIP39 passphrase typed and D.
+    case bip39Text, deviceLeg
+    /// The dice face picked before its Confirm (a roll of R, the seed's own in dice-only mode).
+    case dicePick
+}
+
+extension View {
+    /// A secret node's identifier, in the TestHooks build alone (SecretNode).
+    @ViewBuilder
+    func secretIdentifier(_ node: SecretNode) -> some View {
+        #if KC_TEST_HOOKS
+        accessibilityIdentifier(node.testIdentifier)
+        #else
+        self
+        #endif
+    }
+}

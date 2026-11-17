@@ -464,6 +464,11 @@
 #              AuthenticationServices, MultipeerConnectivity, CoreBluetooth, CloudKit, AdSupport,
 #              AppTrackingTransparency, MetricKit).
 #   Clipboard  an undefined UIPasteboard or NSItemProvider symbol.
+#   IosSecretId a secret node's accessibility identifier (lead decision M6-20; EXPECTED_DIR's
+#              secret-identifiers.txt, one a line): its bytes anywhere in the main executable, which only
+#              the TestHooks build may hold (its SecretNode names are compiled in under KC_TEST_HOOKS alone).
+#              Each listed name must be 16 bytes or more (exit 2 otherwise): Swift builds a string of 15
+#              or fewer in the code itself, where no byte scan finds it.
 #   IosLink    a linked library outside /System/Library/Frameworks/ and /usr/lib/ (an @rpath or
 #              @executable_path one, embedded).
 # Exit 0 clean, 1 hits, 2 usage, a missing expected summary or tool, an unreadable plist, or no main
@@ -10084,6 +10089,7 @@ ios_app_scan() {
   [ -d "$exp" ] || iosfail "EXPECTED_DIR $3 is not a directory"
   readable "$exp/$iconfig-Info.json" --ios-app
   readable "$exp/$iconfig-PrivacyInfo.json" --ios-app
+  readable "$exp/secret-identifiers.txt" --ios-app
   command -v python3 >/dev/null 2>&1 || iosfail 'no python3 on PATH'
   toolchain_bin
   [ -x "$bin/llvm-objdump" ] || iosfail "no llvm-objdump in $bin (rust-toolchain.toml lists llvm-tools-preview)"
@@ -10176,6 +10182,14 @@ ios_app_scan() {
   if bytes_found "$(hexbytes "$ios_hooks_marker")"; then
     ahit Marker "$mo" "$ios_hooks_marker"
   fi
+  # A secret node's identifier (M6-20): the TestHooks build's alone.
+  while IFS= read -r sid; do
+    case $sid in '' | '#'*) continue ;; esac
+    [ ${#sid} -ge 16 ] || iosfail "$exp/secret-identifiers.txt: $sid is under 16 bytes, which Swift keeps in its code, out of a byte scan's sight"
+    if bytes_found "$(hexbytes "$sid")"; then
+      ahit IosSecretId "$mo" "$sid: a secret node's identifier (the TestHooks build's alone)"
+    fi
+  done <"$exp/secret-identifiers.txt"
   if [ "$isym" = yes ]; then
     grep -E -e "$ios_net" "$atmp/undefined" >"$atmp/hits"
     [ $? -le 1 ] || exit 2
@@ -10359,6 +10373,7 @@ EOF
   cbuild "$st/registry" -DKC_TEXT="$reg" -DKC_KEY="$ckey"
   cbuild "$st/registry-no-key" -DKC_TEXT="$reg"
   cbuild "$st/hooks" -DKC_TEXT='"KC_TEST_HOOKS_DO_NOT_SHIP"'
+  cbuild "$st/secret-id" -DKC_TEXT='"kc_secret_passphrase_text"'
   cbuild "$st/source" -DKC_TEXT='"KC_TEST_SOURCE_DO_NOT_SHIP"'
   cbuild "$st/no-import" -DKC_TEXT="$text" -DKC_NO_IMPORT
   cbuild "$st/arc4" -DKC_TEXT="$text" -DKC_ARC4
@@ -10431,6 +10446,7 @@ EOF
     >/dev/null || exit 2
   ios_py privacy "$st/PrivacyInfo.xcprivacy" "$st/expected/Shipping-PrivacyInfo.json" >/dev/null || exit 2
   cp "$st/expected/Shipping-PrivacyInfo.json" "$st/expected/WithTestRegistry-PrivacyInfo.json" || exit 2
+  printf '%s\n' '# the secret nodes' kc_secret_insert_word kc_secret_passphrase_text >"$st/expected/secret-identifiers.txt" || exit 2
   # inew NAME BINARY [PLIST]: a stand-in app $c/KeepCrypt.app, BINARY as its executable, the
   # stand-in Info.plist (or PLIST) and privacy manifest and a PkgInfo.
   inew() {
@@ -10476,6 +10492,15 @@ EOF
   icase ios-test-registry-without-its-marker WithTestRegistry 1 "no KC_TEST_REGISTRY_DO_NOT_SHIP: not the test-registry build" ": 2 hit(s)"
   inew hooks "$st/hooks"
   icase ios-test-hooks-marker Shipping 1 "Marker: $a/KeepCrypt: KC_TEST_HOOKS_DO_NOT_SHIP" ": 1 hit(s)"
+  inew secret-id "$st/secret-id"
+  icase ios-secret-identifier Shipping 1 "IosSecretId: $a/KeepCrypt: kc_secret_passphrase_text: a secret node's identifier" ": 1 hit(s)"
+  inew secret-id-clean "$st/clean"
+  icase ios-secret-identifiers-none Shipping 0 "--ios-app Shipping $a: clean"
+  inew secret-id-short "$st/clean"
+  mkdir "$c/expected" && cp "$st/expected/"* "$c/expected/" && printf '%s\n' dice_pick >"$c/expected/secret-identifiers.txt" || exit 2
+  iexp=$c/expected
+  icase ios-secret-identifier-under-16-bytes Shipping 2 "secret-identifiers.txt: dice_pick is under 16 bytes"
+  iexp=
   inew source "$st/source"
   icase ios-test-source-marker Shipping 1 "Marker: $a/KeepCrypt: KC_TEST_SOURCE_DO_NOT_SHIP" ": 1 hit(s)"
   inew no-import "$st/no-import"

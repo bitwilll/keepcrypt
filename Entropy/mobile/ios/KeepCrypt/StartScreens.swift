@@ -213,7 +213,7 @@ struct DiceScreen: View {
                         .font(KitType.large)
                         .foregroundColor(KitColors.text)
                         .padding(.horizontal, 16)
-                        .accessibilityIdentifier("dice_pick")
+                        .secretIdentifier(.dicePick)
                 }
                 DicePad(enabled: open, onKey: onKey)
                 HStack(spacing: 12) {

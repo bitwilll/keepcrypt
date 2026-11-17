@@ -80,6 +80,7 @@ struct Bip39EntryScreen: View {
                         .font(KitType.hex)
                         .foregroundColor(KitColors.text)
                         .padding(.vertical, 6)
+                        .secretIdentifier(.bip39Text)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 AsciiPad(page: keys, onKey: onKey)
@@ -257,7 +258,7 @@ struct RevealDScreen: View {
                             .font(KitType.hex)
                             .foregroundColor(KitColors.text)
                             .padding(.vertical, 6)
-                            .accessibilityIdentifier("device_leg_text")
+                            .secretIdentifier(.deviceLeg)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     KitText(ExportTexts.dNote, style: .small)

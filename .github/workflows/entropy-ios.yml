@@ -20,8 +20,8 @@
 #   app scan of the built simulator app (scripts/banned-api-check.sh --ios-app against
 #   mobile/ios/expected/); the UI-test scheme, KeepCrypt-TestHooks in its TestHooks configuration (the
 #   UI tests' hooks compiled into the app, M6-5), built for testing and tested the same way with the
-#   journeys left out (KC_JOURNEYS), its app required to hold the hooks' marker and never scanned as a
-#   shipped one; a device build of Shipping (generic iOS, unsigned), scanned the same way; and the check
+#   journeys left out (KC_JOURNEYS), its app required to hold the hooks' marker and the secret nodes'
+#   identifiers (M6-20; --ios-app refuses each in the shipped apps) and never scanned as a shipped one; a device build of Shipping (generic iOS, unsigned), scanned the same way; and the check
 #   that the journeys jobs' groups are KC_JOURNEYS, each class once a leg, each a file of
 #   KeepCryptUITests, so a class runs in exactly one job of each leg (one not named runs here).
 # - The journeys jobs (a group of the TestHooks UI tests, the user journeys, a job, on each leg): the
@@ -292,6 +292,13 @@ jobs:
           exe=$dd/Build/Products/TestHooks-iphonesimulator/KeepCrypt.app/KeepCrypt
           n=$(grep -c -a KC_TEST_HOOKS_DO_NOT_SHIP "$exe") || { echo "FAIL: no KC_TEST_HOOKS_DO_NOT_SHIP in $exe" >&2; exit 1; }
           echo "$exe: KC_TEST_HOOKS_DO_NOT_SHIP on $n line(s)"
+          # The secret nodes' identifiers (lead decision M6-20): in this app, and refused by --ios-app in the two
+          # shipped ones.
+          while IFS= read -r sid; do
+            case $sid in '' | '#'*) continue ;; esac
+            grep -q -a -e "$sid" "$exe" || { echo "FAIL: no secret node identifier $sid in $exe" >&2; exit 1; }
+          done < mobile/ios/expected/secret-identifiers.txt
+          echo "$exe: every identifier of mobile/ios/expected/secret-identifiers.txt"
       # The device build of the shipping app (generic iOS, unsigned), scanned the same way.
       - name: Shipping for the device (build, --ios-app)
         run: |
@@ -454,3 +461,10 @@ jobs:
           exe=$dd/Build/Products/TestHooks-iphonesimulator/KeepCrypt.app/KeepCrypt
           n=$(grep -c -a KC_TEST_HOOKS_DO_NOT_SHIP "$exe") || { echo "FAIL: no KC_TEST_HOOKS_DO_NOT_SHIP in $exe" >&2; exit 1; }
           echo "$exe: KC_TEST_HOOKS_DO_NOT_SHIP on $n line(s)"
+          # The secret nodes' identifiers (lead decision M6-20): in this app, and refused by --ios-app in the two
+          # shipped ones.
+          while IFS= read -r sid; do
+            case $sid in '' | '#'*) continue ;; esac
+            grep -q -a -e "$sid" "$exe" || { echo "FAIL: no secret node identifier $sid in $exe" >&2; exit 1; }
+          done < mobile/ios/expected/secret-identifiers.txt
+          echo "$exe: every identifier of mobile/ios/expected/secret-identifiers.txt"

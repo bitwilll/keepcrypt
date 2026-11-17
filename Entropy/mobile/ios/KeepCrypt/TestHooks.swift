@@ -299,6 +299,29 @@ private extension Array where Element == UInt8 {
     }
 }
 
+/// The secret nodes' identifiers (lead decision M6-20): compiled into the TestHooks app alone, each listed in
+/// mobile/ios/expected/secret-identifiers.txt, which --ios-app refuses in the shipped apps. Each is kc_secret_
+/// and the node's name, 16 bytes or more, so Swift keeps it as bytes in the binary (a string of 15 or fewer is
+/// built in the code itself, which no byte scan sees) and no other name holds it (core's Rust symbols spell
+/// passphrase_text, say).
+extension SecretNode {
+    var testIdentifier: String {
+        switch self {
+        case .insertWord: return "kc_secret_insert_word"
+        case .insertSeedbook: return "kc_secret_insert_seedbook"
+        case .insertFace: return "kc_secret_insert_face"
+        case .overviewLine: return "kc_secret_overview_line"
+        case .typedLetters: return "kc_secret_typed_letters"
+        case .verdictLine: return "kc_secret_verdict_line"
+        case .passphraseText: return "kc_secret_passphrase_text"
+        case .confirmChoice: return "kc_secret_confirm_choice"
+        case .bip39Text: return "kc_secret_bip39_text"
+        case .deviceLeg: return "kc_secret_device_leg_text"
+        case .dicePick: return "kc_secret_dice_pick"
+        }
+    }
+}
+
 /// The hook panel, drawn under the scene in the TestHooks build (outside the press guard), covers included.
 struct TestHookPanel: View {
     @ObservedObject private var hooks = TestHooks.shared
