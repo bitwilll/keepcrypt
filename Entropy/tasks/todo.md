@@ -20328,6 +20328,36 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   (its tools are not in the verified dependencies); the APK check (--apk, signed APKs) was left to CI. iOS: the
   three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean;
   `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  As built (M6 commit U3i, U3h's regression): Entropy Android run 44398792258 at 78c6e338 failed CheckTest on API
+  34 and 36 at font scale 1.0, "the check QR ... is not wholly inside its column's viewport": U3h's KitPair stacked
+  a pair whenever a whole label did not fit its half on one line (its max intrinsic width), so the check QR's four
+  answers stood one per row, the fixed actions grew and the column's viewport fell below the 480 px QR. Q97 asks
+  for no break inside a word; a label may wrap between words. KitPair now stacks only when one word of either
+  label is wider than a half's text width: Android by the labels' min intrinsic width (the widest word, with the
+  button's padding), the iPhone by its labels' words measured in the button's face at the user's size
+  (KitType.buttonFont), the labels now passed to KitPair(first, second). Measured in SF Bold (the Mac's, local):
+  at 20 pt the widest words are "go-ahead" 90.9 (the hyphenated word kept whole), "Previous" 81.7, "Confirm" 76.2,
+  "Cannot" 68.3, all under a half's text width of 125.5 pt on a 375 pt iPhone (327 pt column) and 118 dp on a
+  360 dp screen (312 dp column); whole labels "Type go-ahead code" 192.7, "Scan go-ahead QR" 175.0, "Cannot check"
+  129.5 and "Previous keys" 129.4 were over it, which is why U3h stacked. At 40 pt (2x) "Confirm" 150.0, "Previous"
+  160.2 and "go-ahead" 180.4 are over it (their pairs stack, no word broken) and "Delete" 120.4, "Done" 97.6
+  under it (Delete/Done stays two-up on the iPhone). The twelve pairs at the default size on a 375 pt / 360 dp
+  screen, all two-up again as before U3h: Undo/Confirm (dice), Delete/Done on the code entry, the read-back entry,
+  the backup confirm and Check a backup's entry, and the BIP39 entry, Previous keys/Next keys (BIP39 entry),
+  Previous/Next on the words, the overview and the backup passphrase, Scan/Type and Match found/Cannot check (the
+  check QR), Previous/Done (the descriptor QR). The Protected and scannable screens among them (the words, the
+  overview, the backup passphrase, the BIP39 entry, the descriptor QR, the check QR) so keep their actions as
+  compact as before U3h at 1.0; at 2.0 only pairs with a word too wide stack, as U3h's run asked. Tests: the
+  iPhone's CannotCheckJourneyUITests now asserts at the check QR, at the default size, that the four answers stand
+  two to a row (each pair's tops equal) and that the check QR is wholly shown above the TestHooks panel
+  (wholeInView; scrollViewHolding now finds any element's scroll view, not only a button's); on 78c6e338's KitPair
+  the answers stacked, so the first fails (on CI). Android's CheckTest already asserts the QR wholly in its
+  viewport and failed on 78c6e338. U3g's DynamicTypeUITests assertion (Undo and Confirm one line high at the
+  largest size) stands: each is one word, so one line is no word broken; U3h's walk asserts no broken word. Proof
+  (local): Android, scripts/android-gradle.sh --dependency-verification strict with CI's build step's tasks "BUILD
+  SUCCESSFUL", exit 0, :screens' host tests 210, :core-ffi's 34, :app's 11 and 11, :secure-ui's 5, none failed;
+  iOS, the three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean;
+  `--selftest-ios-app` exit 0, "36 passed, 0 failed".
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 

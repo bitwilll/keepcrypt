@@ -222,9 +222,12 @@ const val WHOLE_SCALE = 0.5f
 private val PAIR_GAP = 12.dp
 
 /**
- * Two buttons sharing a row (Q97): side by side, each half the row, when both labels fit their half on one line
- * (each one's widest, its max intrinsic width); otherwise one per row, each the row's width, so no label breaks
- * inside a word. The iPhone's KitPair (Kit.swift).
+ * Two buttons sharing a row (Q97; U3i): side by side, each half the row, a label wrapping between its words as any
+ * text does, unless one word of either label is wider than a half's text width (the label's min intrinsic width,
+ * its widest word, with the button's padding), which would break it inside the word; then one per row, each the
+ * row's width. U3h stacked whenever a whole label did not fit its half on one line (its max intrinsic width), so at
+ * font scale 1.0 the check QR's four answers stood one per row and the check QR lost its full view (CheckTest, run
+ * 44398792258). The iPhone's KitPair (Kit.swift).
  */
 @Composable
 fun KitPair(content: @Composable () -> Unit) {
@@ -232,7 +235,7 @@ fun KitPair(content: @Composable () -> Unit) {
         val width = constraints.maxWidth
         val gap = PAIR_GAP.roundToPx()
         val half = (width - gap) / 2
-        if (measurables.all { it.maxIntrinsicWidth(Constraints.Infinity) <= half }) {
+        if (measurables.all { it.minIntrinsicWidth(Constraints.Infinity) <= half }) {
             val placeables = measurables.map { it.measure(Constraints.fixedWidth(half)) }
             layout(width, placeables.maxOf { it.height }) {
                 placeables.forEachIndexed { index, placeable -> placeable.placeRelative(index * (half + gap), 0) }

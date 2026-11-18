@@ -69,7 +69,7 @@ struct WordsInsertScreen: View {
                     if state.reviewing {
                         KitButton(WordsTexts.backToReadback, id: "back_to_readback", action: onBackToReadback)
                     } else {
-                        KitPair {
+                        KitPair(WordsTexts.previous, WordsTexts.next) {
                             KitButton(WordsTexts.previous, id: "previous", enabled: state.page > 0, action: onPrevious)
                             KitButton(WordsTexts.next, id: "next", enabled: !last, action: onNext)
                         }
@@ -114,7 +114,7 @@ struct WordsOverviewScreen: View {
                     }
                     KitText(WordsTexts.overviewNote, style: .small)
                 } actions: {
-                    KitPair {
+                    KitPair(WordsTexts.previous, WordsTexts.next) {
                         KitButton(WordsTexts.previous, id: "previous", enabled: state.page > 0, action: onPrevious)
                         KitButton(WordsTexts.next, id: "next", enabled: more, action: onNext)
                     }
@@ -185,7 +185,7 @@ struct ReadbackEntryScreen: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         LetterPad(onKey: onKey)
-                        KitPair {
+                        KitPair(CheckTexts.delete, StartTexts.done) {
                             KitButton(CheckTexts.delete, id: "letters_delete", enabled: letters.length > 0, action: onDelete)
                             KitButton(
                                 StartTexts.done, id: "letters_done", enabled: letters.length >= readbackMinLetters, action: onDone)

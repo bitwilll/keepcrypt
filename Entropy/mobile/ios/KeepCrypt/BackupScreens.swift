@@ -67,7 +67,7 @@ struct BackupPassphraseScreen: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 } actions: {
-                    KitPair {
+                    KitPair(WordsTexts.previous, WordsTexts.next) {
                         KitButton(WordsTexts.previous, id: "previous", enabled: last, action: onPrevious)
                         KitButton(WordsTexts.next, id: "next", enabled: !last, action: onNext)
                     }
@@ -150,7 +150,7 @@ struct LetterEntry: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         LetterPad(onKey: onKey)
-        KitPair {
+        KitPair(CheckTexts.delete, StartTexts.done) {
             KitButton(CheckTexts.delete, id: "letters_delete", enabled: canDelete ?? (letters.length > 0), action: onDelete)
             KitButton(StartTexts.done, id: done, enabled: letters.length >= readbackMinLetters, action: onDone)
         }

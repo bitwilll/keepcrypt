@@ -35,6 +35,14 @@ final class CannotCheckJourneyUITests: XCTestCase {
         let sealId = app.element("seal_id").label
         app.press("show_check_qr")
         app.on("check_qr", "the check QR")
+        // U3i: at the default size the four answers stay two to a row (no word of their labels needs a whole row)
+        // and the check QR is wholly shown above them, as Android's CheckTest asserts. U3h's KitPair stacked them
+        // one per row, and on Android the QR lost its full view (run 44398792258).
+        for (left, right) in [("scan_qr", "type_code"), ("match_found", "cannot_check")] {
+            XCTAssertEqual(
+                app.buttons[left].frame.minY, app.buttons[right].frame.minY, accuracy: 1, left + " and " + right + " are not side by side")
+        }
+        XCTAssertTrue(app.wholeInView(app.element("check_request")), "the check QR is not wholly shown: " + app.place(app.element("check_request")))
         // U3b: the check QR's Back, the seal card again with the same check (Android's system Back; the note
         // says "compare ... with the seal card (Back)"). Before U3b the iPhone drew no Back here.
         app.pressTo("back", "seal_card")

@@ -224,7 +224,7 @@ struct DiceScreen: View {
                         .secretIdentifier(.dicePick)
                 }
                 DicePad(enabled: open, onKey: onKey)
-                KitPair {
+                KitPair(StartTexts.undo, StartTexts.confirm) {
                     KitButton(StartTexts.undo, id: "undo", enabled: dice.rolls > 0, action: onUndo)
                     KitButton(StartTexts.confirm, id: "confirm", enabled: open && pick.length == 1, action: onConfirm)
                 }

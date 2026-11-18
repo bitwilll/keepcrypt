@@ -84,11 +84,11 @@ struct Bip39EntryScreen: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 AsciiPad(page: keys, onKey: onKey)
-                KitPair {
+                KitPair(ExportTexts.previousKeys, ExportTexts.nextKeys) {
                     KitButton(ExportTexts.previousKeys, id: "keys_previous", enabled: keys > 0, action: onPreviousKeys)
                     KitButton(ExportTexts.nextKeys, id: "keys_next", enabled: keys < asciiPages - 1, action: onNextKeys)
                 }
-                KitPair {
+                KitPair(CheckTexts.delete, StartTexts.done) {
                     KitButton(CheckTexts.delete, id: "bip39_delete", enabled: letters.length > 0, action: onDelete)
                     KitButton(StartTexts.done, id: "bip39_done", enabled: letters.length > 0, action: onDone)
                 }
@@ -166,7 +166,7 @@ struct WatchDescriptorQrScreen: View {
                     ExportQr(matrix: watch.descriptors, kind: .descriptor)
                     KitText(ExportTexts.coreHow, style: .small)
                 } actions: {
-                    KitPair {
+                    KitPair(WordsTexts.previous, StartTexts.done) {
                         KitButton(WordsTexts.previous, id: "watch_previous", action: onPrevious)
                         KitButton(StartTexts.done, id: "watch_done", action: onDone)
                     }

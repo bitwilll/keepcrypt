@@ -91,9 +91,9 @@ final class DynamicTypeUITests: XCTestCase {
         for id in ["key_1", "key_2", "key_3", "key_4", "key_5", "key_6", "undo", "confirm", "dice_done"] {
             reach(app, id)
         }
-        // Q97: no label breaks inside a word. At the largest size "Undo" and "Confirm" do not both fit half the row, so
-        // the pair stands one per row and each is one line high, as Done is (before U3g they shared the row and
-        // "Confirm" broke inside the word, two lines high).
+        // Q97: no label breaks inside a word. At the largest size the word "Confirm" is wider than half the row's text
+        // width, so the pair stands one per row and each one-word label is one line high, as Done is: no word broken
+        // (before U3g they shared the row and "Confirm" broke inside the word, two lines high).
         let oneLine = app.buttons["dice_done"].frame.height
         for id in ["undo", "confirm"] {
             let height = app.buttons[id].frame.height

@@ -157,10 +157,10 @@ extension XCUIApplication {
         return false
     }
 
-    /// The scroll view whose column holds the control id, if the control scrolls with one (a KitScreen's
-    /// actions do once they are taller than half the screen).
+    /// The scroll view whose column holds the element id (a control, or a QR code), if it scrolls with one (a
+    /// KitScreen's actions do once they are taller than half the screen).
     func scrollViewHolding(_ id: String) -> XCUIElement? {
-        let scroll = scrollViews.containing(.button, identifier: id).firstMatch
+        let scroll = scrollViews.containing(.any, identifier: id).firstMatch
         return scroll.exists ? scroll : nil
     }
 

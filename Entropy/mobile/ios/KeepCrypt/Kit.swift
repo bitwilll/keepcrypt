@@ -35,7 +35,10 @@ enum KitType {
     /// Notes under the running text.
     static var small: Font { Font.system(size: scaled(16)) }
     /// A button's label.
-    static var button: Font { Font.system(size: scaled(20), weight: .bold) }
+    static var button: Font { Font.system(size: scaled(buttonPoints), weight: .bold) }
+    /// A button label's size before scaling, and its face as UIKit measures it (KitPair).
+    static let buttonPoints: CGFloat = 20
+    static var buttonFont: UIFont { UIFont.systemFont(ofSize: scaled(buttonPoints), weight: .bold) }
     /// Hex groups (C), in a monospace face so the columns line up.
     static var hex: Font { Font.system(size: scaled(22), design: .monospaced) }
     /// A value read at a glance (the dice pick).
@@ -273,20 +276,39 @@ extension View {
     }
 }
 
-/// Two buttons sharing a row (Q97): side by side, each half the row, when both labels fit their half on one line;
-/// otherwise one per row, each the row's width, so no label breaks inside a word. Android's KitPair (Kit.kt).
+/// Two buttons sharing a row (Q97; U3i): side by side, each half the row, a label wrapping between its words as
+/// any text does, unless one word of either label is wider than a half's text width, which would break it inside
+/// the word; then one per row, each the row's width. U3h stacked whenever a whole label did not fit its half on one
+/// line, so at the default size the check QR's four answers stood one per row and the check QR lost its full view
+/// (Android's CheckTest, run 44398792258). Android's KitPair (Kit.kt) asks its labels' min intrinsic width, their
+/// widest word; here the words are measured in the button's face (KitType.buttonFont).
 struct KitPair: Layout {
     /// The space between the two, side by side (the rows' 12 before Q97).
     static let spacing: CGFloat = 12
+    /// What a KitButton adds around its label's text: its padding, 16 a side.
+    static let labelInset: CGFloat = 32
 
-    private func sideBySide(_ width: CGFloat, _ subviews: Subviews) -> Bool {
-        let half = (width - KitPair.spacing) / 2
-        return subviews.allSatisfy { $0.sizeThatFits(.unspecified).width <= half }
+    /// The two buttons' labels, whose widest word decides.
+    let labels: [String]
+
+    init(_ first: String, _ second: String) {
+        labels = [first, second]
+    }
+
+    /// The widest word of either label, at the user's text size, rounded up.
+    private var widestWord: CGFloat {
+        let font = KitType.buttonFont
+        let words = labels.flatMap { $0.split(separator: " ") }
+        return ceil(words.map { (String($0) as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0)
+    }
+
+    private func sideBySide(_ width: CGFloat) -> Bool {
+        widestWord + KitPair.labelInset <= (width - KitPair.spacing) / 2
     }
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.replacingUnspecifiedDimensions().width
-        if sideBySide(width, subviews) {
+        if sideBySide(width) {
             let half = (width - KitPair.spacing) / 2
             let height = subviews.map { $0.sizeThatFits(ProposedViewSize(width: half, height: nil)).height }.max() ?? 0
             return CGSize(width: width, height: height)
@@ -296,7 +318,7 @@ struct KitPair: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        if sideBySide(bounds.width, subviews) {
+        if sideBySide(bounds.width) {
             let half = (bounds.width - KitPair.spacing) / 2
             for (index, subview) in subviews.enumerated() {
                 let x = bounds.minX + CGFloat(index) * (half + KitPair.spacing)
