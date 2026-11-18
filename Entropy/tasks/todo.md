@@ -20289,6 +20289,22 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   fixed and that assertion fails (on CI, the leg's device and the narrow iPhone). Proof (local): the three schemes
   built for testing and the Shipping device build, no Swift warning; `--ios-app` clean; `--selftest-ios-app` exit
   0, "36 passed, 0 failed".
+  As built (M6 commit U3g, Q97 on the iPhone): no line break inside a seed word, the code or a hex group. Whole-
+  line texts (wholeLines: lineLimit plus minimumScaleFactor) shrink instead of wrapping: the insert's word, the
+  typed go-ahead code, the typed letters (read-back, the backup confirm's and Check a backup's entries), the
+  backup confirm's choices (seed words two to a row), the Seal ID (one line each), and C's and D's four rows of
+  four groups (four lines). The fixed 48 and 36 of the code, the letters and the Seal ID now follow the text size
+  too, as Android's KitType.large and 36 sp, shrinking to fit. The minimum scale is one half (KitType.fitScale): at
+  the largest scale (2x) such a text is never drawn smaller than at the default size, and at the default size the
+  longest seed word (8 letters at 48), the code (9 characters at 48 monospaced) and C's rows (19 characters at 22
+  monospaced) fit a 375 pt iPhone's 327 pt column whole, so nothing shrinks below what everyone reads today. Two-up
+  buttons go through KitPair (a Layout, Android's KitPair): side by side when both labels fit their half on one
+  line, else one per row at the row's width; the twelve pairs (Undo/Confirm, Delete/Done on four pads, Previous/
+  Next on three screens, the keys' pages, Scan/Type and Match found/Cannot check, Previous/Done). DynamicTypeUITests
+  asserts, at the largest size on the dice, that Undo and Confirm are each one line high (as Done): before U3g they
+  shared the row and "Confirm" broke inside the word, two lines high (fails on CI's devices and the narrow
+  iPhone). Proof (local): the three schemes built for testing and the Shipping device build, no Swift warning;
+  `--ios-app` clean; `--selftest-ios-app` exit 0, "36 passed, 0 failed".
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 

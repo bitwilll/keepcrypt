@@ -67,7 +67,7 @@ struct BackupPassphraseScreen: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 } actions: {
-                    HStack(spacing: 12) {
+                    KitPair {
                         KitButton(WordsTexts.previous, id: "previous", enabled: last, action: onPrevious)
                         KitButton(WordsTexts.next, id: "next", enabled: !last, action: onNext)
                     }
@@ -109,6 +109,7 @@ struct BackupConfirmScreen: View {
                                         Text(choiceText(question.choices[index]))
                                             .secretIdentifier(.confirmChoice)
                                             .font(KitType.hex)
+                                            .wholeLines()
                                             .foregroundColor(KitColors.text)
                                             .padding(.vertical, 4)
                                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -141,14 +142,15 @@ struct LetterEntry: View {
     var body: some View {
         SecureLayer {
             Text(typedFaces(letters))
-                .font(.system(size: 48, weight: .bold, design: .monospaced))
+                .font(.system(size: KitType.scaled(48), weight: .bold, design: .monospaced))
+                .wholeLines()
                 .foregroundColor(KitColors.text)
                 .padding(.vertical, 6)
                 .secretIdentifier(.typedLetters)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         LetterPad(onKey: onKey)
-        HStack(spacing: 12) {
+        KitPair {
             KitButton(CheckTexts.delete, id: "letters_delete", enabled: canDelete ?? (letters.length > 0), action: onDelete)
             KitButton(StartTexts.done, id: done, enabled: letters.length >= readbackMinLetters, action: onDone)
         }

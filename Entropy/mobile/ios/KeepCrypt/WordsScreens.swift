@@ -19,6 +19,7 @@ private struct InsertWord: View {
         (Text(String(word.prefix(lighterFrom))).foregroundColor(KitColors.text)
             + Text(String(word.dropFirst(lighterFrom))).foregroundColor(KitColors.muted))
             .font(KitType.large)
+            .wholeLines()
             .padding(.vertical, 6)
             .secretIdentifier(.insertWord)
     }
@@ -68,7 +69,7 @@ struct WordsInsertScreen: View {
                     if state.reviewing {
                         KitButton(WordsTexts.backToReadback, id: "back_to_readback", action: onBackToReadback)
                     } else {
-                        HStack(spacing: 12) {
+                        KitPair {
                             KitButton(WordsTexts.previous, id: "previous", enabled: state.page > 0, action: onPrevious)
                             KitButton(WordsTexts.next, id: "next", enabled: !last, action: onNext)
                         }
@@ -113,7 +114,7 @@ struct WordsOverviewScreen: View {
                     }
                     KitText(WordsTexts.overviewNote, style: .small)
                 } actions: {
-                    HStack(spacing: 12) {
+                    KitPair {
                         KitButton(WordsTexts.previous, id: "previous", enabled: state.page > 0, action: onPrevious)
                         KitButton(WordsTexts.next, id: "next", enabled: more, action: onNext)
                     }
@@ -176,14 +177,15 @@ struct ReadbackEntryScreen: View {
                     } else {
                         SecureLayer {
                             Text(typedFaces(letters))
-                                .font(.system(size: 48, weight: .bold, design: .monospaced))
+                                .font(.system(size: KitType.scaled(48), weight: .bold, design: .monospaced))
+                                .wholeLines()
                                 .foregroundColor(KitColors.text)
                                 .padding(.vertical, 6)
                                 .secretIdentifier(.typedLetters)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         LetterPad(onKey: onKey)
-                        HStack(spacing: 12) {
+                        KitPair {
                             KitButton(CheckTexts.delete, id: "letters_delete", enabled: letters.length > 0, action: onDelete)
                             KitButton(
                                 StartTexts.done, id: "letters_done", enabled: letters.length >= readbackMinLetters, action: onDone)

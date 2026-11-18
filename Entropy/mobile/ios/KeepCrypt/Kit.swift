@@ -44,6 +44,11 @@ enum KitType {
     /// The largest scale the kit's text takes: Android's 2.0 (Q78).
     static let maxScale: CGFloat = 2
 
+    /// The smallest share of its size a whole-line text shrinks to rather than break a line (Q97): one half, so at
+    /// the largest scale (2x) it is never drawn smaller than at the default size, and at the default size the
+    /// longest seed word, the code and C's rows fit a 375 pt iPhone whole without shrinking.
+    static let fitScale: CGFloat = 0.5
+
     /// points at the user's text size (UIFontMetrics' body scaling for the app's content size category, the
     /// one Settings or a launch's -UIPreferredContentSizeCategoryName sets), at most maxScale times.
     static func scaled(_ points: CGFloat) -> CGFloat {
@@ -230,11 +235,14 @@ struct KitText: View {
     let text: String
     var style = KitStyle.body
     var id: String?
+    /// Kept to this many whole lines, shrinking instead of wrapping (Q97: C's four rows), or wrapping freely (nil).
+    var whole: Int?
 
-    init(_ text: String, style: KitStyle = .body, id: String? = nil) {
+    init(_ text: String, style: KitStyle = .body, id: String? = nil, whole: Int? = nil) {
         self.text = text
         self.style = style
         self.id = id
+        self.whole = whole
     }
 
     private var live: Bool { id.map(liveLineIds.contains) ?? false }
@@ -243,6 +251,8 @@ struct KitText: View {
         let line = Text(text)
             .font(style.font)
             .foregroundColor(style.color)
+            .lineLimit(whole)
+            .minimumScaleFactor(whole == nil ? 1 : KitType.fitScale)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.vertical, 6)
             .modifier(LiveLine(text: text, live: live))
@@ -250,6 +260,55 @@ struct KitText: View {
             line.accessibilityIdentifier(id)
         } else {
             line
+        }
+    }
+}
+
+extension View {
+    /// Q97: a text kept to its own lines (lines, its hard lines), shrunk down to KitType.fitScale of its size instead
+    /// of breaking a line: no line break inside a seed word, the go-ahead code, the typed letters, the Seal ID or a
+    /// row of C's and D's hex groups.
+    func wholeLines(_ lines: Int = 1) -> some View {
+        lineLimit(lines).minimumScaleFactor(KitType.fitScale)
+    }
+}
+
+/// Two buttons sharing a row (Q97): side by side, each half the row, when both labels fit their half on one line;
+/// otherwise one per row, each the row's width, so no label breaks inside a word. Android's KitPair (Kit.kt).
+struct KitPair: Layout {
+    /// The space between the two, side by side (the rows' 12 before Q97).
+    static let spacing: CGFloat = 12
+
+    private func sideBySide(_ width: CGFloat, _ subviews: Subviews) -> Bool {
+        let half = (width - KitPair.spacing) / 2
+        return subviews.allSatisfy { $0.sizeThatFits(.unspecified).width <= half }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let width = proposal.replacingUnspecifiedDimensions().width
+        if sideBySide(width, subviews) {
+            let half = (width - KitPair.spacing) / 2
+            let height = subviews.map { $0.sizeThatFits(ProposedViewSize(width: half, height: nil)).height }.max() ?? 0
+            return CGSize(width: width, height: height)
+        }
+        let height = subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }.reduce(0, +)
+        return CGSize(width: width, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        if sideBySide(bounds.width, subviews) {
+            let half = (bounds.width - KitPair.spacing) / 2
+            for (index, subview) in subviews.enumerated() {
+                let x = bounds.minX + CGFloat(index) * (half + KitPair.spacing)
+                subview.place(at: CGPoint(x: x, y: bounds.minY), proposal: ProposedViewSize(width: half, height: bounds.height))
+            }
+            return
+        }
+        var y = bounds.minY
+        for subview in subviews {
+            let height = subview.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil)).height
+            subview.place(at: CGPoint(x: bounds.minX, y: y), proposal: ProposedViewSize(width: bounds.width, height: height))
+            y += height
         }
     }
 }

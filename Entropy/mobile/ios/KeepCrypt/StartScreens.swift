@@ -175,7 +175,7 @@ struct CommitmentScreen: View {
     var body: some View {
         KitScreen(Screen.commitment.id, testRegistry: testRegistry) {
             Heading(Screen.commitment.title)
-            KitText(state.commitment ?? "", style: .hex, id: "commitment_hex")
+            KitText(state.commitment ?? "", style: .hex, id: "commitment_hex", whole: 4)
             KitText(StartTexts.commitmentNote, style: .small)
         } actions: {
             KitButton(StartTexts.continueButton, id: "continue", action: onContinue)
@@ -224,7 +224,7 @@ struct DiceScreen: View {
                         .secretIdentifier(.dicePick)
                 }
                 DicePad(enabled: open, onKey: onKey)
-                HStack(spacing: 12) {
+                KitPair {
                     KitButton(StartTexts.undo, id: "undo", enabled: dice.rolls > 0, action: onUndo)
                     KitButton(StartTexts.confirm, id: "confirm", enabled: open && pick.length == 1, action: onConfirm)
                 }

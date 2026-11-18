@@ -72,11 +72,11 @@ struct CheckQrScreen: View {
             KitText(CheckTexts.checkQrNote, style: .small)
             KitText(CheckTexts.actions, style: .small)
         } actions: {
-            HStack(spacing: 12) {
+            KitPair {
                 KitButton(CheckTexts.scanQr, id: "scan_qr", action: onScan)
                 KitButton(CheckTexts.typeCode, id: "type_code", action: onTypeCode)
             }
-            HStack(spacing: 12) {
+            KitPair {
                 KitButton(CheckTexts.matchFound, id: "match_found", action: onMatchFound)
                 KitButton(CheckTexts.cannotCheck, id: "cannot_check", action: onCannotCheck)
             }
@@ -150,12 +150,13 @@ struct CodeEntryScreen: View {
                 KitText(CheckTexts.codeRefused, style: .warning, id: "code_refused")
             }
             Text(codeShown(code))
-                .font(.system(size: 48, weight: .bold, design: .monospaced))
+                .font(.system(size: KitType.scaled(48), weight: .bold, design: .monospaced))
+                .wholeLines()
                 .foregroundColor(KitColors.text)
                 .padding(.vertical, 6)
                 .accessibilityIdentifier("code")
             CrockfordPad(onKey: onKey)
-            HStack(spacing: 12) {
+            KitPair {
                 KitButton(CheckTexts.delete, id: "code_delete", enabled: code.length > 0, action: onDelete)
                 KitButton(StartTexts.done, id: "code_done", enabled: code.isFull, action: onDone)
             }
