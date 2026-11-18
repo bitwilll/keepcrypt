@@ -1919,7 +1919,7 @@ final class CeremonyModel: ObservableObject {
             current.fileRefusal.map { "file " + String(describing: $0) },
             current.codeRefused ? "code" : nil,
         ].compactMap { $0 }
-        return "screen \(current.screen.id); gate \(current.gate ? "yes" : "no"); overlay \(overlay); working "
+        return "screen \(current.screen.id); gate \(current.gate ? "yes" : "no"); overlay \(overlay); offline \(current.offline ? "yes" : "no"); working "
             + "\(current.screen.isWorking ? "yes" : "no"); long call \(running == nil ? "no" : "yes"); notice \(notice); "
             + "dice \(dice); pick \(dicePick.length == 1 ? "yes" : "no"); refusals "
             + "\(refusals.isEmpty ? "none" : refusals.joined(separator: ", ")); halt \(current.halt.map { String(describing: $0) } ?? "none"); "

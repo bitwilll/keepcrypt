@@ -314,6 +314,10 @@ struct KitButton: View {
     var body: some View {
         let colour = enabled ? KitColors.text : KitColors.muted
         Button(action: {
+            #if KC_TEST_HOOKS
+            // U2j's probe: the Button's closure ran at all, before the press gate decides.
+            MainActor.assumeIsolated { TestHooks.shared.noteFired(id) }
+            #endif
             pressGate {
                 #if KC_TEST_HOOKS
                 MainActor.assumeIsolated { TestHooks.shared.noteAction(id) }

@@ -119,12 +119,26 @@ extension XCUIApplication {
     }
 
     /// Launched, past First launch and the self-test, the offline path reported, Start: Home.
-    func toHome() {
-        launchedToGoOffline()
+    func toHome(file: StaticString = #filePath, line: UInt = #line) {
+        launchedToGoOffline(file: file, line: line)
+        offlineToHome(file: file, line: line)
+    }
+
+    /// On Go offline: the No path hook, Start once the model has the phone offline (Start is enabled only then;
+    /// U2j: run 44348225943's Start was tapped before the hook's report reached the model, and did nothing),
+    /// then Start pressed to Home.
+    func offlineToHome(file: StaticString = #filePath, line: UInt = #line) {
         buttons["hook_path_none"].tap()
-        pastPressGuard()
-        press("start")
-        on("home", "Home")
+        waitEnabled("start", file: file, line: line)
+        pressTo("start", "home", file: file, line: line)
+    }
+
+    /// Waits up to 30 s for the button id to be enabled (one a hook's state enables); fails with the facts.
+    func waitEnabled(_ id: String, file: StaticString = #filePath, line: UInt = #line) {
+        let button = buttons[id]
+        if !within(30, { button.exists && button.isEnabled }) {
+            XCTFail(id + " never enabled; " + facts(), file: file, line: line)
+        }
     }
 
     /// The privacy gate before a Protected screen, passed.
@@ -248,6 +262,7 @@ extension XCUIApplication {
                 bringIntoView(button, what + ", press \(attempt)", placed: placed)
             }
             let before = touchCounts()
+            let factsBefore = facts()
             button.tap()
             if effect() || within(5, effect) { return }
             let after = touchCounts()
@@ -262,7 +277,8 @@ extension XCUIApplication {
                 pass("probe: \(what): press \(attempt) never reached the app (touches \(before) to \(after)); \(held); pressed again")
             } else {
                 XCTFail(
-                    "\(what): press \(attempt) reached the app and was admitted, and did nothing (touches \(before) to \(after)); \(held)",
+                    "\(what): press \(attempt) reached the app and was admitted, and did nothing, \(whyNothing(factsBefore, held)) "
+                        + "(touches \(before) to \(after)); \(held)",
                     file: file, line: line)
                 return
             }
@@ -272,9 +288,38 @@ extension XCUIApplication {
 
     /// The button id pressed once it is enabled, as a person presses a control that is offered.
     func pressEnabled(_ id: String, file: StaticString = #filePath, line: UInt = #line) {
-        let button = buttons[id]
-        XCTAssertTrue(within(30) { button.exists && button.isEnabled }, id + " never enabled; " + facts(), file: file, line: line)
-        button.tap()
+        waitEnabled(id, file: file, line: line)
+        buttons[id].tap()
+    }
+
+    /// The number a facts line gives right after marker, if it gives one.
+    private func factNumber(_ facts: String, after marker: String) -> Int64? {
+        guard let range = facts.range(of: marker) else { return nil }
+        return Int64(String(facts[range.upperBound...].prefix { $0.isNumber }))
+    }
+
+    /// The uptime of "last fired" (a KitButton's id or "overlay" before it, or nothing for a pad's key), if any.
+    private func firedAt(_ facts: String) -> Int64? {
+        guard let start = facts.range(of: "last fired ") else { return nil }
+        let entry = facts[start.upperBound...].prefix { $0 != ";" }
+        guard let at = entry.range(of: "at ") else { return nil }
+        return Int64(String(entry[at.upperBound...].prefix { $0.isNumber }))
+    }
+
+    /// Why an admitted press did nothing (U2j), from the facts before and after it: the button's closure never
+    /// ran after the touch went down ("last fired" older than "last touch down"), it ran and the press gate
+    /// dropped its action ("presses dropped" grew), or it ran and the model took nothing.
+    func whyNothing(_ before: String, _ after: String) -> String {
+        let down = factNumber(after, after: "last touch down at ")
+        let fired = firedAt(after)
+        let dropped = (factNumber(before, after: "presses dropped "), factNumber(after, after: "presses dropped "))
+        if let down, fired.map({ $0 < down }) ?? true {
+            return "the button never fired"
+        }
+        if let was = dropped.0, let now = dropped.1, now > was {
+            return "fired, the gate dropped it"
+        }
+        return "fired and ran, the model took nothing"
     }
 
     /// rolls pressed on the dice pad, then Done once enabled: the check prompt.

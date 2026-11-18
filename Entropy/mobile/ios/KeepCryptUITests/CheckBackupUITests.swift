@@ -51,10 +51,7 @@ final class CheckBackupUITests: XCTestCase {
         app.launchEnvironment["KC_HOOK_BACKUP_NAME"] = "keepcrypt-backup-0123abcd.age"
         app.launchEnvironment["KC_HOOK_BACKUP_HEX"] = file.map { String(format: "%02x", $0) }.joined()
         app.launchedToGoOffline()
-        app.buttons["hook_path_none"].tap()
-        pastPressGuard()
-        app.buttons["start"].tap()
-        on(app, "home", "Home")
+        app.offlineToHome()
         app.buttons["check_backup"].tap()
         app.buttons["hook_backup_file"].tap()
         on(app, "privacy_gate", "the privacy gate before the entry")

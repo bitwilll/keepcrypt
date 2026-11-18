@@ -20087,6 +20087,31 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   them) and the Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps, the probe's
   new strings in the TestHooks binary alone; `--selftest-ios-app` exit 0, "36 passed, 0 failed"; the gate exit 0
   (519 files) and `--workflows ../.github/workflows` exit 0; `cargo fmt --all --check` exit 0.
+  As built (M6 commit U2j, from run 44348225943 at 6f269a58, the lead's reading of its logs; M6-23 proven on iOS 26:
+  "the privacy gate's pass reaches nothing behind it" passed on macos-26; 12 of 14 jobs green, journeys-6 on both
+  legs; the two failures with presses dropped 0):
+  - MixedJourneyUITests (macos-15), "Home never came" in toHome: Go offline, the last action First launch's
+    Continue, and Start (enabled only while the model has the phone offline) tapped before the No path hook's
+    report reached the model, a plain tap never pressed again. A test race: toHome and every Start after the path
+    hook now wait up to 30 s for Start enabled (waitEnabled, failing with the facts), then press it through pressTo
+    (pressUntil's classification). Converted: JourneySupport's toHome (its new offlineToHome), WordsUITests,
+    CheckBackupUITests and ScanUITests (each their own No path, wait, Start, Home), OfflineUITests' Start once
+    enabled, and DynamicTypeUITests' wait before its reach. No other plain tap waits on a hook's state: every
+    other button with an enabled: rule (Undo, Confirm, Done, Delete, Previous, Next, the code's and the keys'
+    pages) follows the presses, and the helpers press those through pressUntil or pressEnabled already. The facts
+    line says "offline yes/no".
+  - CheckEdgesUITests (macos-26), roll 14's face "reached the app and was admitted, and did nothing": the model
+    and the gate's dropped count unmoved, the panel redrawn for the touch count alone. Not yet explained; a probe,
+    no fix: "last fired" in the facts line, set first thing in a press's closure, before the press gate (KitButton
+    with its id, as noteAction; a pad's key by its uptime alone, no key and no count, a count of letters giving a
+    word's length; the overlay's tap and VoiceOver action as "overlay"). pressUntil's admitted-and-nothing failure
+    now says which: "the button never fired" (last fired older than the touch down), "fired, the gate dropped it"
+    (presses dropped grew over the press), or "fired and ran, the model took nothing". It still fails there
+    (M6-21). Neither the recognizer nor the press path changed.
+  Proof (M6 commit U2j, local; the UI tests run on CI): the three schemes built for testing and the Shipping device
+  build, no Swift warning; `--ios-app` clean on the three shipped apps, the hooks marker in the TestHooks binary
+  alone; `--selftest-ios-app` exit 0, "36 passed, 0 failed"; the gate exit 0 and `--workflows ../.github/workflows`
+  exit 0; `cargo fmt --all --check` exit 0.
 - [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
   do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
   docs is fixed with a test; a change the docs do not allow becomes a question for the owner.

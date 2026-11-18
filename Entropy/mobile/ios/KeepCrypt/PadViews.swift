@@ -77,6 +77,11 @@ private struct KeyGrid: View {
         let label = keyLabel(key)
         let colour = enabled ? Color.white : Color.gray
         let button = Button {
+            #if KC_TEST_HOOKS
+            // U2j's probe: a key's closure ran, by its uptime alone (no key, no count: a count of letters would
+            // give a word's length).
+            MainActor.assumeIsolated { TestHooks.shared.noteFired(nil) }
+            #endif
             pressGate { press(key) }
         } label: {
             Text(label)

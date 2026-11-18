@@ -57,7 +57,7 @@ final class DynamicTypeUITests: XCTestCase {
         reach(app, "first_launch_continue")
         app.pressTo("first_launch_continue", "go_offline", passing: ["self_test"])
         app.buttons["hook_path_none"].tap()
-        pastPressGuard()
+        app.waitEnabled("start")
         reach(app, "start")
         app.pressTo("start", "home")
         for id in ["new_seed", "dice_only_seed", "check_backup", "load_snapshot", "show_about"] {

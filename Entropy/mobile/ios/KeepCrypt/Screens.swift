@@ -351,6 +351,14 @@ struct OverlayScreen: View {
     /// The tap and VoiceOver's action run through the press gate (Kit.swift, M6-23).
     @Environment(\.pressGate) private var pressGate
 
+    /// The tap or VoiceOver's action: the overlay dismissed if the press gate permits it.
+    private func tapped() {
+        #if KC_TEST_HOOKS
+        MainActor.assumeIsolated { TestHooks.shared.noteFired("overlay") }
+        #endif
+        pressGate(dismiss)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             if testRegistry {
@@ -376,10 +384,10 @@ struct OverlayScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(KitColors.background.ignoresSafeArea())
         .contentShape(Rectangle())
-        .onTapGesture { pressGate(dismiss) }
+        .onTapGesture(perform: tapped)
         .accessibilityElement(children: .combine)
         .spoken(.overlay)
-        .accessibilityAction { pressGate(dismiss) }
+        .accessibilityAction { tapped() }
         .accessibilityIdentifier(overlay == .cover ? "cover" : "idle_warning")
     }
 }

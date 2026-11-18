@@ -82,11 +82,19 @@ final class TestHooks: ObservableObject {
     /// admitted press that did nothing was lost), by uptimes and KitButton ids alone (navigation names; the pads'
     /// keys are no KitButtons), nothing that could stand for secret input.
     @Published private(set) var lastTouch = "none"
+    /// The last press closure that ran at all, before the press gate (U2j): a KitButton's id or "overlay" and
+    /// the uptime, or a pad key's uptime alone (no key, and no count, which would give a word's length).
+    @Published private(set) var lastFired = "none"
     @Published private(set) var lastDownRefused = false
     @Published private(set) var pressesDropped = 0
     @Published private(set) var lastAction = "none"
     @Published private(set) var layoutChanges = 0
     @Published private(set) var lastLayout = "none"
+
+    /// A press's closure ran (U2j): name, a KitButton's id or "overlay", nil for a pad's key.
+    func noteFired(_ name: String?) {
+        lastFired = (name.map { $0 + " " } ?? "") + "at \(uptimeMillis()) ms"
+    }
 
     /// The press gate dropped a press's action, its touch refused (M6-23).
     func notePressDropped() {
@@ -106,7 +114,7 @@ final class TestHooks: ObservableObject {
 
     /// The probe's part of the facts line.
     var probeFacts: String {
-        "last touch down \(lastTouch), refused \(lastDownRefused ? "yes" : "no"); presses dropped \(pressesDropped); last action \(lastAction); layout changes \(layoutChanges), last \(lastLayout); now \(uptimeMillis()) ms"
+        "last touch down \(lastTouch), refused \(lastDownRefused ? "yes" : "no"); last fired \(lastFired); presses dropped \(pressesDropped); last action \(lastAction); layout changes \(layoutChanges), last \(lastLayout); now \(uptimeMillis()) ms"
     }
     /// The app's offline check, whose state the path hooks force.
     var offlineCheck: OfflineCheck?

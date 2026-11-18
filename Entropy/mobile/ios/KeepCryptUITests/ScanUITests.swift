@@ -33,12 +33,7 @@ final class ScanUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["KC_HOOK_SCAN_TEXT"] = text
         app.launchedToGoOffline()
-        app.buttons["hook_path_none"].tap()
-        let start = app.buttons["start"]
-        XCTAssertTrue(start.waitForExistence(timeout: 10))
-        pastPressGuard()
-        start.tap()
-        XCTAssertTrue(app.element("home").waitForExistence(timeout: 10), "Home")
+        app.offlineToHome()
         pastPressGuard()
         app.buttons["dice_only_seed"].tap()
         XCTAssertTrue(app.element("length").waitForExistence(timeout: 10), "Length")
