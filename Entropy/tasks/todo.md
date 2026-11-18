@@ -16232,6 +16232,37 @@ animation (the curtain's task to the app's). The check is not relaxed, the envir
 now prints, for each lit frame, its three most frequent colours in the window with their counts, how many distinct
 colours it holds, and how many pixels outside the window (the system bars) are lit (lit_source; its selftest 53): a
 fill and drawn content then read differently. The next repeat is diagnosed from those lines.
+Repeat and cause found (2026-11-18). The Android run 44148124713 (at fed382ff on m6-iphone, no Android change since
+M5's merge d5c1a3a6), API 34's capture job, step 6's shipping cold launch: "lit frame 6 of the stream: 219812
+pixel(s) in the app's window, columns 1-358, rows 25-638, brightest #d4dbe0", "its most frequent colours in the app's
+window #d4dbe0 (219812), of 1 distinct; 10588 of the 10588 pixels outside it lit", 1 of 17 frames. lit_source reads a
+fill: one colour over the whole window, every pixel of the system bars lit. It is the system shell's backdrop behind
+an animated switch from one task to another, never the app's. Shown:
+- The colour. Both repeats are a light neutral at L* 87: #d4dbe0 (API 34) has L* 87.0, #d8d9e4 (API 36) L* 86.9.
+  The API 34 image's framework-res (pulled from kc34, read with aapt2) defines color/overview_background as
+  system_neutral2_500 with android:lStar 87; its system_neutral2_500 is #70777c, which at L* 87 (CIELAB, a* and b*
+  kept) is #d3dbe1, one step from #d4dbe0. AOSP's WM shell (DefaultTransitionHandler) paints overview_background on
+  the display area behind an opaque task that opens or closes when the switch is animated and no wallpaper shows.
+- kc34, the leg's own scenario looped by a scratch script (the curtain, am force-stop, android-frames.py record
+  --expect black, am start -W of the shipping MainActivity, 3 s; capture-control and the shipping APK of the
+  2026-11-17 kc34 set): at animation scale 1, 3 of 3 cold launches lit, #d4dbe0 in the band between the curtain's task
+  sliding out and the app's sliding in (1224 to 11016 pixels a frame, the rest black). At scale 0, the leg's setting,
+  1 of 40: run 34, "lit frame 3 of the stream: 217872 pixel(s) ... brightest #d4dbe0", "#d4dbe0 (217872), of 1
+  distinct; 12528 of the 12528 pixels outside it lit", 1 of 13 frames: CI's line, on the Mac.
+- The shell's own log (protolog WM_SHELL_TRANSITIONS on kc34, scale 0): the leg's launch is an OPEN transition that
+  DefaultTransitionHandler animates ("loadAnimation: anim=...AnimationSet... type=OPEN isEntrance=false", then
+  "isEntrance=true", finished 8 ms later), so scale 0 shortens the switch but still plays it, and for a frame the
+  backdrop shows with neither task drawn. With am start --activity-no-animation (FLAG_ACTIVITY_NO_ANIMATION) the
+  app's change carries "f=NO_ANIMATION" and no animation is loaded, so no backdrop is painted: at scale 1, 5 of 5
+  launches black; at scale 0, 40 of 40; each one COLD.
+Fix (the leg script alone; android-frames.py, the window's region and what counts as lit are unchanged):
+first_frame's cold launch is am start -W --activity-no-animation, for both APKs. The app's starting window and first
+screen are drawn as in any launch and judged as before; only the system's switch animation is gone. The leg's selftest
+gains a case: a stand-in system that lights the whole screen behind an animated launch from the curtain (KC_BACKDROP)
+passes with the flag, and with the flag dropped (a mutant) fails, "lit frame 2 of the stream: 202628 pixel(s) ...
+#ffffff (202628), of 1 distinct"; android-emulator --selftest 65 passed (64 before). For the owner: the first-frame
+recordings now launch the app with no transition animation, where a person's launch from the launcher has one; the
+check itself (every frame black over the app's window) is unchanged.
 
 **Open item (2026-11-16): API 34 offline blocks that lose the session.** Two Android runs, both on API 34 alone:
 43771972846 (at ce8c807a) and 43836938055 (at 9bcd8e6c) failed FlowTest's watch-only journey at FlowTest.kt:610 (the
@@ -21018,6 +21049,8 @@ in the test-registry APK (U3n).
 ### M5: items the gate report names (open, diagnosed, never rerun to green)
 1. **The lit raw frame** (open item 2026-10-21): repeated 2026-11-16 on API 36's test-registry cold launch (a whole
    window of light grey, not the app's); cause unknown; android-frames.py now names the frame's colours (6a6619f6).
+   Cause found 2026-11-18 (its open item): the system shell's overview_background backdrop behind the animated
+   switch from the curtain's task to the app's; the first-frame launches now ask for no animation, the check unchanged.
 2. **API 36 recents** (open item 2026-10-21): no repeat since; cause unknown.
 3. **The launcher's ANR dialog** (open item 2026-10-31): cause known (the emulator's launcher); U1a8's close never
    exercised on a device.
