@@ -74,6 +74,7 @@ final class TestHooks: ObservableObject {
     func noteTouches(_ count: Int, refused: Bool, uptime: Int64) {
         touchesSeen += count
         if refused { touchesRefused += count }
+        if count > 0 { lastDownRefused = refused }
         lastTouch = "at \(uptime) ms"
     }
 
@@ -81,9 +82,16 @@ final class TestHooks: ObservableObject {
     /// admitted press that did nothing was lost), by uptimes and KitButton ids alone (navigation names; the pads'
     /// keys are no KitButtons), nothing that could stand for secret input.
     @Published private(set) var lastTouch = "none"
+    @Published private(set) var lastDownRefused = false
+    @Published private(set) var pressesDropped = 0
     @Published private(set) var lastAction = "none"
     @Published private(set) var layoutChanges = 0
     @Published private(set) var lastLayout = "none"
+
+    /// The press gate dropped a press's action, its touch refused (M6-23).
+    func notePressDropped() {
+        pressesDropped += 1
+    }
 
     /// A KitButton ran its action.
     func noteAction(_ id: String) {
@@ -98,7 +106,7 @@ final class TestHooks: ObservableObject {
 
     /// The probe's part of the facts line.
     var probeFacts: String {
-        "last touch down \(lastTouch); last action \(lastAction); layout changes \(layoutChanges), last \(lastLayout); now \(uptimeMillis()) ms"
+        "last touch down \(lastTouch), refused \(lastDownRefused ? "yes" : "no"); presses dropped \(pressesDropped); last action \(lastAction); layout changes \(layoutChanges), last \(lastLayout); now \(uptimeMillis()) ms"
     }
     /// The app's offline check, whose state the path hooks force.
     var offlineCheck: OfflineCheck?

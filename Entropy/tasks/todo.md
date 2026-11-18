@@ -18443,6 +18443,14 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   document picker is the app's own sheet and the scene stays active, so no resume followed its answer, and after
   any file was picked the next real leaving counted as none: a Protected screen was not discarded. Android's
   picker is an activity of its own, whose stop and start end the exemption there.
+- M6-23 (2026-11-18, the lead's, from U2h's run 44326338905; a U4 defect U2 found): on iOS 26 a touch the press
+  guard refuses still runs the SwiftUI Button's action (the touch guard's recognizer recognizes and cancels the
+  touch in the views, and the Button runs anyway), so the guard decides again when the action comes: every press
+  on the screens (KitButton, the pads' keys, the overlay's tap and its VoiceOver action) runs through one press
+  gate, which drops the action, silently, unless the latest touch down in the screens' area was admitted and the
+  view shown admits a touch then. A refusal holds until the next down or until another view is shown. The
+  recognizer's cancel stays as the first line. Android's PressGuard.kt decides at the down alone (its pointer
+  handler consumes the refused pointer's every event); Android is unchanged.
 - Open item (2026-11-18), the dead Confirm: run 44185394720 at 8112f0d5, WordsUITests on macos-26, every Confirm
   from roll 32 to 50 "reached the app and was admitted, and did nothing" (touches seen, none refused) while the
   face keys went on working; run 44173357483 lost one roll of 50 in SnapshotJourneyUITests (macos-26), maybe the
@@ -20046,6 +20054,39 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   device build, no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` exit 0, "36
   passed, 0 failed"; the gate exit 0 and `--workflows ../.github/workflows` exit 0; `cargo fmt --all --check`
   exit 0.
+  As built (M6 commit U2i, from run 44326338905 at 29368ce7, the lead's reading of its logs; iOS 18.6's leg all
+  green, the narrow iPhone included):
+  - LifecycleUITests' double tap on the gate's pass (macos-26): touches (3, 0) to (5, 1), the last down at
+    1303474 ms, the last action Back at 1303722 ms, the app on Home. The first touch passed the gate; the second
+    went down on the passphrase's entry and was refused, and the entry's Back ran 248 ms later: a U4 defect, lead
+    decision M6-23 (a press must not skip a screen, a privacy gate included: docs/pi-firmware.md, "Buttons"). The
+    press guard now also decides at the action: the touch guard records each down's verdict (PressGuard's
+    noteDown: refused when any of its touches was), and the press gate (Kit.swift's PressGate, an environment value
+    Screens sets; unset it runs nothing) runs an action only if PressGuard's permits holds. Routed through it:
+    KitButton (every screen's buttons, the privacy gate's pass, Back, Close app and Open Settings among them), the
+    pads' keys (PadViews.swift's KeyGrid: dice, letters, the go-ahead code's symbols, ASCII), and the overlay's
+    tap and its VoiceOver action (Screens.swift's OverlayScreen). The screens have no other Button or tap
+    gesture (the TestHooks panel's buttons are the panel's, outside the screens' area). PressGuardTests' new
+    tests failed first (four of five) against the old behaviour (every action runs: "the second touch ... refused", "its
+    action, 248 ms on, does nothing", "an action after an admitted down and a refused one", "the touch went down
+    before the words were shown", "an action within 300 ms of a new view, no touch: refused too") and pass now,
+    with the admitted case. The facts line adds "refused yes/no" to the last touch down and "presses dropped" (a
+    count). Not covered: a second finger that goes down while the first is still down after the recognizer failed
+    on the first (a failed recognizer sees no new touch until every finger lifts), whose action meets the 300 ms
+    rule alone; and an action no touch made (VoiceOver's) after a refused touch on the same view is dropped until
+    the next touch or another view.
+  - journeys-6 PROVISIONAL at 45 minutes (the lead's word; macos-26's narrow iPhone waited 922 s and then 14
+    minutes in test-without-building before "Running tests" on a freshly made simulator, runs 44306763928 and
+    44326338905); M5-30 re-measures from two green runs. The narrow iPhone is not booted early: its wait came after
+    its boot had finished (bootstatus returned), inside xcodebuild, so an earlier boot would not overlap it, and a
+    second booting simulator during the TestHooks step would load the runner the journeys run on.
+  Proof (M6 commit U2i, local; the UI tests run on CI): PressGuardTests on the Mac (a macOS XCTest bundle over
+  Screen.swift, PressGuard.swift and a UiState stub): with the old behaviour stubbed in (every action runs), "Executed
+  13 tests, with 6 failures" (four of the five new tests: 6 assertions; the admitted case passes), and with the
+  fix "Executed 13 tests, with 0 failures"; the three schemes built for testing (the unit and UI test targets with
+  them) and the Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps, the probe's
+  new strings in the TestHooks binary alone; `--selftest-ios-app` exit 0, "36 passed, 0 failed"; the gate exit 0
+  (519 files) and `--workflows ../.github/workflows` exit 0; `cargo fmt --all --check` exit 0.
 - [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
   do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
   docs is fixed with a test; a change the docs do not allow becomes a question for the owner.

@@ -3,7 +3,7 @@
 // key's press goes to the model's padKey, which types it into a PadEntry. A Public pad's key (the dice and
 // the go-ahead code) carries its label as its VoiceOver label and the identifier key_ and its label; a
 // Protected pad's key (the letters and the BIP39 passphrase's ASCII) carries its label and no identifier,
-// as Android's sensitive keys carry no tag.
+// as Android's sensitive keys carry no tag. Each key's press runs through the press gate (Kit.swift, M6-23).
 
 import SwiftUI
 
@@ -54,6 +54,7 @@ private struct KeyGrid: View {
     let enabled: Bool
     let sensitive: Bool
     let press: (Character) -> Void
+    @Environment(\.pressGate) private var pressGate
 
     var body: some View {
         VStack(spacing: 0) {
@@ -76,7 +77,7 @@ private struct KeyGrid: View {
         let label = keyLabel(key)
         let colour = enabled ? Color.white : Color.gray
         let button = Button {
-            press(key)
+            pressGate { press(key) }
         } label: {
             Text(label)
                 .font(.system(size: 18))

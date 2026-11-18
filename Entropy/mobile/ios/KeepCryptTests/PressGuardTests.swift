@@ -77,6 +77,57 @@ final class PressGuardTests: XCTestCase {
         XCTAssertTrue(guarded.admits(words, 400), "a redraw of the same view (a page, a roll, a key) reopened the guard")
     }
 
+    /// M6-23: a press's action runs only if the touch that made it was admitted. iOS 26 runs a SwiftUI Button's
+    /// action for a touch the touch guard refused (run 44326338905: a double tap's second touch, refused on the
+    /// passphrase's entry, ran its Back 248 ms later), so the guard decides again when the action comes.
+    func testAnActionAfterARefusedDownDoesNothing() {
+        let guarded = PressGuard()
+        guarded.composed(prompt, 0)
+        guarded.composed(confirm, 5_016)
+        guarded.noteDown(confirm, admitted: guarded.admits(confirm, 5_060))
+        XCTAssertTrue(guarded.lastDownRefused, "the second touch, 44 ms after the confirm was shown, refused")
+        XCTAssertFalse(guarded.permits(confirm, 5_308), "its action, 248 ms on, does nothing")
+        XCTAssertFalse(guarded.permits(confirm, 60_000), "nor any action before the next touch")
+    }
+
+    func testAnActionAfterAnAdmittedDownRuns() {
+        let guarded = PressGuard()
+        guarded.composed(prompt, 0)
+        guarded.noteDown(prompt, admitted: guarded.admits(prompt, 5_000))
+        XCTAssertFalse(guarded.lastDownRefused)
+        XCTAssertTrue(guarded.permits(prompt, 5_080), "a deliberate press's action")
+    }
+
+    func testAnAdmittedDownThenARefusedOneDropsTheActionThatComesAfterBoth() {
+        let guarded = PressGuard()
+        guarded.composed(gated, 0)
+        guarded.noteDown(gated, admitted: guarded.admits(gated, 5_000))
+        guarded.composed(words, 5_050)
+        guarded.noteDown(words, admitted: guarded.admits(words, 5_120))
+        XCTAssertFalse(guarded.permits(words, 5_370), "an action after an admitted down and a refused one")
+    }
+
+    func testARefusedDownOnAViewNotYetShownStillDropsTheActionOnceItIsShown() {
+        let guarded = PressGuard()
+        guarded.composed(gated, 0)
+        guarded.noteDown(words, admitted: guarded.admits(words, 5_000))
+        guarded.composed(words, 5_010)
+        XCTAssertFalse(guarded.permits(words, 5_400), "the touch went down before the words were shown")
+    }
+
+    func testTheNextAdmittedDownOrAnotherViewEndsARefusal() {
+        let guarded = PressGuard()
+        guarded.composed(words, 0)
+        guarded.noteDown(words, admitted: guarded.admits(words, 100))
+        guarded.noteDown(words, admitted: guarded.admits(words, 2_000))
+        XCTAssertTrue(guarded.permits(words, 2_080), "a later, admitted touch's action")
+        guarded.noteDown(words, admitted: false)
+        guarded.composed(covered, 31_000)
+        XCTAssertFalse(guarded.lastDownRefused, "the refused touch's buttons are gone with its view")
+        XCTAssertTrue(guarded.permits(covered, 31_400), "the cover's tap, once it was seen (an accessibility action, no touch)")
+        XCTAssertFalse(guarded.permits(covered, 31_100), "an action within 300 ms of a new view, no touch: refused too")
+    }
+
     /// The probe line names fixed names and times alone (PressGuard.kt's facts).
     func testTheFactsNameTheViewsAndTheirAge() {
         let guarded = PressGuard()

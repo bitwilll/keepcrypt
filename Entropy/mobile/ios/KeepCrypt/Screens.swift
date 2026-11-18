@@ -38,6 +38,18 @@ struct Screens: View {
                 OverlayScreen(overlay: overlay, testRegistry: registry) { model.dismissOverlay() }
             }
         }
+        .environment(\.pressGate, PressGate { action in
+            // M6-23: the action runs only if the touch that made it was admitted (PressGuard.swift's permits).
+            MainActor.assumeIsolated {
+                if pressGuard.permits(shownView(model.state), uptimeMillis()) {
+                    action()
+                } else {
+                    #if KC_TEST_HOOKS
+                    TestHooks.shared.notePressDropped()
+                    #endif
+                }
+            }
+        })
         .background(KitColors.background.ignoresSafeArea())
         .background(TouchGuard(model: model, pressGuard: pressGuard))
         .fileImporter(
@@ -336,6 +348,8 @@ struct OverlayScreen: View {
     let overlay: Overlay
     let testRegistry: Bool
     let dismiss: () -> Void
+    /// The tap and VoiceOver's action run through the press gate (Kit.swift, M6-23).
+    @Environment(\.pressGate) private var pressGate
 
     var body: some View {
         VStack(spacing: 0) {
@@ -362,10 +376,10 @@ struct OverlayScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(KitColors.background.ignoresSafeArea())
         .contentShape(Rectangle())
-        .onTapGesture(perform: dismiss)
+        .onTapGesture { pressGate(dismiss) }
         .accessibilityElement(children: .combine)
         .spoken(.overlay)
-        .accessibilityAction { dismiss() }
+        .accessibilityAction { pressGate(dismiss) }
         .accessibilityIdentifier(overlay == .cover ? "cover" : "idle_warning")
     }
 }
@@ -431,11 +445,18 @@ final class TouchGuardRecognizer: UIGestureRecognizer {
             return
         }
         var refused = false
+        var downs = 0
         for touch in touches where area.bounds.contains(touch.location(in: area)) {
             let millis = Int64(touch.timestamp * 1_000)
             model.input()
             model.touched(uptimeMillis: millis)
             if !pressGuard.admits(shownView(model.state), millis) { refused = true }
+            downs += 1
+        }
+        // The verdict the press gate asks again when a press's action comes (M6-23): iOS 26 runs a Button's
+        // action for a touch this recognizer cancelled.
+        if downs > 0 {
+            pressGuard.noteDown(shownView(model.state), admitted: !refused)
         }
         #if KC_TEST_HOOKS
         let inArea = touches.filter { area.bounds.contains($0.location(in: area)) }

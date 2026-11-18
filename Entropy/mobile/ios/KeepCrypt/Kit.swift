@@ -267,8 +267,35 @@ struct Gap: View {
     }
 }
 
+/// The press gate (lead decision M6-23; PressGuard.swift): the one way a press on the screens runs its
+/// action. KitButton, the pads' keys (PadViews.swift) and the overlay's tap (Screens.swift) each hand their
+/// action to it; Screens sets it to ask the press guard whether the touch that made the press was admitted,
+/// and drops the action silently when it was not. Unset, it runs nothing (fail closed): a press drawn outside
+/// the screens does nothing.
+struct PressGate {
+    let run: (() -> Void) -> Void
+
+    /// action, run if the press guard permits it.
+    func callAsFunction(_ action: () -> Void) {
+        run(action)
+    }
+}
+
+private struct PressGateKey: EnvironmentKey {
+    static let defaultValue = PressGate { _ in }
+}
+
+extension EnvironmentValues {
+    /// The screens' press gate.
+    var pressGate: PressGate {
+        get { self[PressGateKey.self] }
+        set { self[PressGateKey.self] = newValue }
+    }
+}
+
 /// A button (Android's KitButton): framed, full width (two sharing a row share it), its text the
-/// VoiceOver label, with the button trait. A disabled one is grey, takes no tap, and VoiceOver says so.
+/// VoiceOver label, with the button trait. A disabled one is grey, takes no tap, and VoiceOver says so. Its
+/// action runs through the press gate.
 struct KitButton: View {
     let text: String
     let id: String
@@ -282,13 +309,17 @@ struct KitButton: View {
         self.action = action
     }
 
+    @Environment(\.pressGate) private var pressGate
+
     var body: some View {
         let colour = enabled ? KitColors.text : KitColors.muted
         Button(action: {
-            #if KC_TEST_HOOKS
-            MainActor.assumeIsolated { TestHooks.shared.noteAction(id) }
-            #endif
-            action()
+            pressGate {
+                #if KC_TEST_HOOKS
+                MainActor.assumeIsolated { TestHooks.shared.noteAction(id) }
+                #endif
+                action()
+            }
         }) {
             Text(text)
                 .font(KitType.button)
