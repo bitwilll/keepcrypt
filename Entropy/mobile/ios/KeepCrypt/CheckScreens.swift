@@ -49,7 +49,8 @@ struct SealCardScreen: View {
 
 /// The seal card's check QR (T and this check's nonce) above the checker's answers, two to a row: "Scan
 /// go-ahead QR", "Type go-ahead code", "Match found" and "Cannot check". Back returns to the seal card,
-/// with the same check and nonce.
+/// with the same check and nonce: its own button here (U3b: Android's is the system Back, which an iPhone
+/// has not, and this screen's note says "compare ... with the seal card (Back)").
 struct CheckQrScreen: View {
     let state: UiState
     let testRegistry: Bool
@@ -57,6 +58,7 @@ struct CheckQrScreen: View {
     let onTypeCode: () -> Void
     let onMatchFound: () -> Void
     let onCannotCheck: () -> Void
+    let onBack: () -> Void
 
     var body: some View {
         KitScreen(Screen.checkQr.id, testRegistry: testRegistry) {
@@ -78,6 +80,7 @@ struct CheckQrScreen: View {
                 KitButton(CheckTexts.matchFound, id: "match_found", action: onMatchFound)
                 KitButton(CheckTexts.cannotCheck, id: "cannot_check", action: onCannotCheck)
             }
+            KitButton(CheckTexts.back, id: "back", action: onBack)
         }
     }
 }

@@ -20134,6 +20134,80 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   added: place() itself refuses, so no caller can place a key.
   Proof (M6 commit U3a, local): the three schemes built for testing and the Shipping device build, no Swift
   warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  Audit (M6 commit U3b, 2026-11-19): every screen of Screen.swift against docs/mobile-apps.md (MA), the parts of
+  pi-firmware.md (PF) and seal-watchonly-braille.md it cites, and the Android screens (AS = mobile/android/screens/src/
+  commonMain/kotlin/com/keepcrypt/entropy/screens). Wording is already pinned (ScreenTextsTests: every iPhone text is
+  an Android literal; ScreenTableTests; VoiceOverTests), so the audit covered what is shown when and in what order,
+  every button's and Back's effect and enabled rule, VoiceOver, and the layout at the largest text size on a 375 pt
+  iPhone (from the code and U2's DynamicType and narrow-iPhone runs; no simulator here). Read on both sides and found
+  the same: every screen's texts, their order and conditions; every button's model call, destination and enabled
+  rule (backTo, previousPage/nextPage, padKey/padDelete, the backup and export steps, the gate rule, the live
+  lines); the overlays, the gate and the notice bar. Findings (class: (a) an iPhone defect within the docs, fixed
+  with a test that fails first; (b) the iPhone differs from Android, the docs allow both; (c) a question for the
+  owner; "answered" an owner decision already covers it):
+
+  | Screen | What differs | Source | Class |
+  | --- | --- | --- | --- |
+  | check_qr | No Back on the iPhone: its note says "compare the seal it draws with the seal card (Back)", the model's backTo goes to the seal card with the same check, Android's system Back reaches it (MainActivity.kt:89-93), the iPhone has no system Back and drew none. Fixed in U3b (Back below the four answers), CannotCheckJourneyUITests' new step | Texts.swift:171-172; PF:113 (QR pages: previous page); MA:178 "the same prompt and seal card as the Pi" | (a) |
+  | go_offline, home, length | No Back on the iPhone: Android's system Back goes Go offline to First launch, Home to Go offline, Length to Home (backTo, the same on both); the iPhone's backTo has the routes, nothing calls them. On Length a wrong mode can only go forward | Ceremony.swift:1948-1952; AS Screens.kt:43, MainActivity.kt:89-93; PF:109 "Menus, offers: KEY1 back, only where nothing is lost" | (b), Android's behaviour intended: Back buttons proposed, for the lead's word |
+  | every screen with a Back or Previous | No VoiceOver escape (the two-finger scrub) for Back; TalkBack's back gesture reaches model.back on Android | no accessibilityPerformEscape in KeepCrypt/*.swift; AS MainActivity.kt:89-93 | (b), proposed with the row above |
+  | notice bar, TEST REGISTRY strip, cover and idle-warning lines, pad keys, braille face letters and dot numbers | Fixed point sizes (16, 18, 20, 18, 24, 14 and 12) that do not follow the text size; Android's are sp and follow it (Q78: the full range on every screen) | Kit.swift:350, :366; Screens.swift:371, :377; PadViews.swift:88; Drawing.swift:109, :130, :144; AS Kit.kt:233, :247, Screens.kt:438, Pads.kt:266, Drawing.kt:229, :238 | (b), Android intended (Q78): scaling proposed, for the lead's word |
+  | code_entry, readback_entry, backup_confirm, backup_check_entry, seal_card, collision | The typed code and letters (48) and the Seal ID (36) are fixed; Android's KitType.large and 36.sp follow the text size. At 2x the 9-character code would wrap on both apps' widths | CheckScreens.swift:150; WordsScreens.swift:179; BackupScreens.swift:144; Drawing.swift:57; AS CheckScreens.kt:323, BackupScreens.kt:292, Drawing.kt:144 | (b), with Q97's question |
+  | Protected screens while recorded | The placeholder sits top-left in body text on the iPhone, centred at button size on Android | Screens.swift:267-270; AS Screens.kt:389-401 | (b) |
+  | go_offline | No "Open airplane-mode settings" button, and the network-path line is live (announced on change); the iPhone's own offline check (NWPathMonitor) | StartScreens.swift:50, :61; VoiceOver.swift:44; AS StartScreens.kt:87, :94-95; MA:125 | (b), known |
+  | dice | The picked face carries its identifier in the TestHooks build alone (a secret node); Android tags it in every build. The dice line is announced as the screen opens on the iPhone | StartScreens.swift:216; Kit.swift:425; AS StartScreens.kt:223, Kit.kt:180 | (b) |
+  | pads | Keys at least 44 pt high (Apple's minimum) against 48 dp | Pads.swift:152; AS Pads.kt:210 | (b) |
+  | backup_passphrase, readback_mismatch, words | Small spacing differences: passphrase lines 10 pt apart (Android's 36 sp line height grows), verdict lines padded 6 pt (4 dp), a braille face 2 pt wider (under 1 pt over a fifth of a 375 pt row, unseen in U2's runs) | BackupScreens.swift:64; WordsScreens.swift:217; Drawing.swift:111; AS BackupScreens.kt:222, WordsScreens.kt:411 | (b) |
+  | scan, every press | Open Settings after a camera refusal (M6-9), the screenshot notice, the press gate (M6-23) | M6-9, M6-23 | (b), known |
+  | home, device_entropy | Neither app offers "Verify another device's ceremony", Snake or Tetris, or the camera extra | MA:173, :175, :131; AS StartScreens.kt:104 | answered: Q61 (M5b; the camera extra M8) |
+  | Protected screens while recorded | Both apps say "Hidden while the screen is recorded. Stop the recording to go on."; MA's iPhone sample says "Hidden while the screen is shared or recorded" | Texts.swift:83; AS Screens.kt:396; MA:98 | (c) Q93 |
+  | every Protected screen | VoiceOver reads the secrets (by design, MA:31); Android also marks them accessibility-data sensitive, the iPhone has no such mark; MA:17's iPhone residuals do not name it | VoiceOver.swift:9-11; AS Kit.kt:194, Pads.kt:257; MA:17, :31 | (c) Q94 |
+  | backup_save | Both apps show the cloud-folder line always, before any place is picked; MA says the line comes "if the user picks a cloud folder" (neither app can tell) | BackupScreens.swift:180; AS BackupScreens.kt:332; MA:158 | (c) Q95 |
+  | backup_save after a failure | Both apps ask the user to delete a partial file; the Pi deletes it | Texts.swift saveAgainNote; AS BackupScreens.kt:60; PF:160 | (c) Q96 |
+  | words, words_overview, code_entry, reveal_d, two-up buttons (both apps) | At the largest text size words break mid-word: an insert's word at 96 pt (a long word on 327 pt), the code, two-up button labels; overview lines and C/D's hex rows wrap out of their columns. Nothing is cut | WordsScreens.swift:19-21, :109; Kit.swift:42; AS WordsScreens.kt:225-228; Q78 | (c) Q97 |
+  | backup_check_result | "Backup OK" is Public and the words open on the words screens through the gate; MA says the words come "on the same protected screen" | BackupScreens.swift:241-262; AS BackupScreens.kt:402-419; MA:162 | (c) Q98 |
+  | first_launch | Both apps show the Pi pointer before what no phone app can stop; MA:170 lists them the other way round | StartScreens.swift:23-26; AS FirstLaunch.kt:33-42; MA:170 | (c) Q99 |
+
+  Counts: (a) 1, fixed (U3b); (b) 10, of which three rows are proposals for the lead (Back on Go offline, Home and
+  Length; VoiceOver's escape; scaling the fixed small sizes) and two are the iPhone's known own (its offline check;
+  Open Settings, the screenshot notice and the press gate); (c) 7, Q93-Q99 below; answered 1 (Q61).
+  Questions for the owner (drafted 2026-11-19, from U3's audit; not asked until the lead's word):
+  93. **The recording placeholder's text** (MA:98; Texts.swift:83; Screens.kt:396)
+      Recommended: keep both apps' "Hidden while the screen is recorded. Stop the recording to go on." and make MA:98's
+      sample say it (a doc edit), since the sample is illustrative and the line tells the user what to do.
+      Otherwise: both apps say MA:98's "Hidden while the screen is shared or recorded".
+  94. **VoiceOver and the secrets on an iPhone** (MA:17, :31; VoiceOver.swift:9-11; Kit.kt:194)
+      Recommended: name it in MA:17's iPhone residuals: VoiceOver reads the words, passphrases and D aloud or to a
+      braille display, as TalkBack does, and iOS has no accessibility-data-sensitive mark to keep other assistive
+      services from them; the owner's I5 check covers it on hardware.
+      Otherwise: leave MA as it is (the residual lives in the code's comment alone).
+  95. **When the cloud-folder line shows** (MA:158; BackupScreens.swift:180; BackupScreens.kt:332)
+      Recommended: keep it always shown before the save (neither platform says where the user saved) and reword MA:158
+      to "the save screen says, in one line, that a cloud folder is allowed and what that means".
+      Otherwise: drop the line, or show it after every save.
+  96. **A partial backup file after a failed save** (PF:160; Texts.swift's saveAgainNote; BackupScreens.kt:60)
+      Recommended: keep the phones' line asking the user to delete it (an app given a document by the system picker
+      cannot always delete it) and say so in MA's "Encrypted backup only".
+      Otherwise: each app tries to delete the file it wrote, and says when it could not.
+  97. **The largest text size and words broken mid-word** (Q78; WordsScreens.swift:19-21; WordsScreens.kt:225-228)
+      Recommended: no line breaks inside a seed word, the code or a hex group: the insert's word, the typed code and
+      letters, the Seal ID and C/D's groups shrink to fit their line (a minimum scale) instead of wrapping, and two-up
+      buttons stack one per row when a label does not fit; on both apps, tested at 2.0 on a 360 dp and a 375 pt
+      screen.
+      Otherwise: leave the reflow as it is (nothing is cut; a word can wrap).
+  98. **Where Check a backup's words show** (MA:162; BackupScreens.swift:241-262; BackupScreens.kt:402-419)
+      Recommended: keep "Backup OK" Public with Show words opening the words screens through the gate (one Protected
+      flow for words everywhere), and reword MA:162.
+      Otherwise: show the words on the result screen itself, which then becomes Protected.
+  99. **First launch's order** (MA:170; FirstLaunch.kt:33-42; StartScreens.swift:23-26)
+      Recommended: keep both apps' order (what the app does, the Pi for life savings, what no app can stop); MA:170's
+      list names the contents, not an order.
+      Otherwise: put "what no phone app can protect against" before the Pi pointer on both.
+  Proof (M6 commit U3b, local; the UI test runs on CI): the check QR's Back is drawn and calls model.back (backTo:
+  the seal card, the same check); CannotCheckJourneyUITests presses it through pressTo and checks the same Seal ID,
+  then Show check QR again: before U3b that step fails ("no button back"), on CI. The three schemes built for testing
+  and the Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app`
+  exit 0, "36 passed, 0 failed".
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 

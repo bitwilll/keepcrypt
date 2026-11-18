@@ -116,7 +116,7 @@ struct Screens: View {
         case .checkQr:
             CheckQrScreen(
                 state: state, testRegistry: registry, onScan: model.scanQr, onTypeCode: model.typeCode,
-                onMatchFound: model.matchFound, onCannotCheck: model.cannotCheck)
+                onMatchFound: model.matchFound, onCannotCheck: model.cannotCheck, onBack: model.back)
         case .scan:
             ScanScreen(
                 state: state, scanner: scanner, testRegistry: registry, onText: model.onGoAheadText,

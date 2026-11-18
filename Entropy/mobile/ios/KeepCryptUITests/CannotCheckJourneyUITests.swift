@@ -32,8 +32,14 @@ final class CannotCheckJourneyUITests: XCTestCase {
         app.roll(first.rolls)
         app.press("check_now")
         app.on("seal_card", "the seal card")
+        let sealId = app.element("seal_id").label
         app.press("show_check_qr")
         app.on("check_qr", "the check QR")
+        // U3b: the check QR's Back, the seal card again with the same check (Android's system Back; the note
+        // says "compare ... with the seal card (Back)"). Before U3b the iPhone drew no Back here.
+        app.pressTo("back", "seal_card")
+        XCTAssertEqual(app.element("seal_id").label, sealId, "the same seal")
+        app.pressTo("show_check_qr", "check_qr")
         app.press("cannot_check")
         app.on("cannot_check_confirm", "Cannot check's confirm")
         app.press("back")
