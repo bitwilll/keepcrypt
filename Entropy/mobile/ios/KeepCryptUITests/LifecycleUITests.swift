@@ -112,6 +112,20 @@ final class LifecycleUITests: XCTestCase {
         pass("kill: at Home with a snapshot, on the dice with rolls and on a Protected gate, each back at First launch with nothing kept")
     }
 
+    /// Lead decision M6-24: Back on Go offline, Home and Length, Android's system Back's routes (backTo): Length
+    /// to Home, Home to Go offline, Go offline to First launch. Before U3d the iPhone drew none of the three.
+    func testBackOnGoOfflineHomeAndLength() {
+        let app = XCUIApplication()
+        app.toHome()
+        app.pressTo("dice_only_seed", "length")
+        app.pressTo("back", "home")
+        app.pressTo("back", "go_offline")
+        app.pressTo("back", "first_launch")
+        app.pressTo("first_launch_continue", "go_offline", passing: ["self_test"])
+        app.offlineToHome()
+        pass("back: Length to Home, Home to Go offline, Go offline to First launch, and on to Home again")
+    }
+
     func testGoingOnlineOnTheDiceWipesTheSession() {
         let app = XCUIApplication()
         app.toHome()

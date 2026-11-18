@@ -86,15 +86,15 @@ struct Screens: View {
         case .selfTest:
             SelfTestScreen(testRegistry: registry)
         case .goOffline:
-            GoOfflineScreen(state: state, testRegistry: registry, onStart: model.startOffline)
+            GoOfflineScreen(state: state, testRegistry: registry, onStart: model.startOffline, onBack: model.back)
         case .home:
             HomeScreen(
                 state: state, testRegistry: registry,
                 onNewSeed: { model.chooseMode(.mixed) }, onDiceOnly: { model.chooseMode(.diceOnly) },
                 onCheckBackup: { model.checkBackup(documents) }, onLoadSnapshot: { model.loadSnapshot(documents) },
-                onAbout: model.about)
+                onAbout: model.about, onBack: model.back)
         case .length:
-            LengthScreen(testRegistry: registry, onWords: model.chooseLength)
+            LengthScreen(testRegistry: registry, onWords: model.chooseLength, onBack: model.back)
         case .deviceEntropy:
             DeviceEntropyScreen(testRegistry: registry, onContinue: model.deviceEntropyDone)
         case .commitment:

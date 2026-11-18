@@ -47,11 +47,13 @@ struct SelfTestScreen: View {
 }
 
 /// Go offline (docs/mobile-apps.md, step 3; Q57): the offline check's reading (no usable path, C5) and
-/// Start, disabled while a path is usable. The iPhone opens no airplane-mode settings (D3's plan, (1)).
+/// Start, disabled while a path is usable. The iPhone opens no airplane-mode settings (D3's plan, (1)). Back
+/// returns to First launch (lead decision M6-24: Android's is the system Back, which an iPhone has not).
 struct GoOfflineScreen: View {
     let state: UiState
     let testRegistry: Bool
     let onStart: () -> Void
+    let onBack: () -> Void
 
     var body: some View {
         KitScreen(Screen.goOffline.id, testRegistry: testRegistry) {
@@ -64,6 +66,7 @@ struct GoOfflineScreen: View {
             }
         } actions: {
             KitButton(StartTexts.start, id: "start", enabled: state.offline, action: onStart)
+            KitButton(CheckTexts.back, id: "back", action: onBack)
         }
     }
 }
@@ -79,6 +82,8 @@ struct HomeScreen: View {
     let onCheckBackup: () -> Void
     let onLoadSnapshot: () -> Void
     let onAbout: () -> Void
+    /// Back to Go offline (M6-24: Android's system Back).
+    let onBack: () -> Void
 
     var body: some View {
         KitScreen(Screen.home.id, testRegistry: testRegistry) {
@@ -95,6 +100,7 @@ struct HomeScreen: View {
             KitButton(StartTexts.checkBackup, id: "check_backup", action: onCheckBackup)
             KitButton(StartTexts.loadSnapshot, id: "load_snapshot", action: onLoadSnapshot)
             KitButton(StartTexts.about, id: "show_about", action: onAbout)
+            KitButton(CheckTexts.back, id: "back", action: onBack)
         }
     }
 }
@@ -124,10 +130,11 @@ struct AboutScreen: View {
     }
 }
 
-/// Length (docs/mobile-apps.md, step 5): 12 words, the default, or 24.
+/// Length (docs/mobile-apps.md, step 5): 12 words, the default, or 24. Back returns Home (M6-24).
 struct LengthScreen: View {
     let testRegistry: Bool
     let onWords: (Words) -> Void
+    let onBack: () -> Void
 
     var body: some View {
         KitScreen(Screen.length.id, testRegistry: testRegistry) {
@@ -136,6 +143,7 @@ struct LengthScreen: View {
         } actions: {
             KitButton(StartTexts.twelveWords, id: "words_12") { onWords(.twelve) }
             KitButton(StartTexts.twentyFourWords, id: "words_24") { onWords(.twentyFour) }
+            KitButton(CheckTexts.back, id: "back", action: onBack)
         }
     }
 }

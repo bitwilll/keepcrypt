@@ -20257,6 +20257,12 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   it in round 2 after the 15 s pause and exited 0; the same stub answering 403 failed at once, exit 2. The other two
   recent Android failures (runs 44212919436 and 44225340054, "adb: device offline" mid-CaptureTest on the API 34
   emulator) are the runners' infrastructure; nothing in our scripts was found to cause them.
+  As built (M6 commit U3d, lead decision M6-24): Back, a KitButton (so through the press gate) calling the model's
+  back, last among the actions of Go offline (to First launch), Home (to Go offline) and Length (to Home), the
+  routes backTo already held, Android's system Back's. LifecycleUITests' new testBackOnGoOfflineHomeAndLength walks
+  Length, Home, Go offline back to First launch through pressTo and on to Home again; before U3d its first Back
+  fails ("no button back"), on CI. Proof (local): the three schemes built for testing and the Shipping device build,
+  no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` exit 0, "36 passed, 0 failed".
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 
