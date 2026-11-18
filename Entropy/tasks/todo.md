@@ -19917,6 +19917,9 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Proof (M6 commit U2b, local; DynamicTypeUITests runs on CI): the three schemes built for testing and the device
   build, no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` 36 passed; the gate
   clean (519 files).
+  Proof (M6 commit U2c, on the final tree, a worktree at U2b): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1250 s in all, on a loaded Mac).
 - [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
   do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
   docs is fixed with a test; a change the docs do not allow becomes a question for the owner.
