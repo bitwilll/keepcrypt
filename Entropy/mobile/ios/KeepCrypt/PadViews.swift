@@ -55,8 +55,12 @@ private struct KeyGrid: View {
     let sensitive: Bool
     let press: (Character) -> Void
     @Environment(\.pressGate) private var pressGate
+    /// Read so a change of the user's text size draws the keys again; their labels' 18 follows it, as Android's
+    /// sp, and a key stays at least keyPoints high (lead decision M6-26).
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
+        let _ = typeSize
         VStack(spacing: 0) {
             ForEach(Array(stride(from: 0, to: keys.count, by: columns)), id: \.self) { start in
                 HStack(spacing: 0) {
@@ -85,7 +89,7 @@ private struct KeyGrid: View {
             pressGate { press(key) }
         } label: {
             Text(label)
-                .font(.system(size: 18))
+                .font(.system(size: KitType.scaled(18)))
                 .foregroundColor(colour)
                 .frame(maxWidth: .infinity, minHeight: CGFloat(keyPoints))
                 .overlay(Rectangle().stroke(colour, lineWidth: 1).padding(3))

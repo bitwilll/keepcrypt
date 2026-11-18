@@ -102,11 +102,17 @@ struct BrailleFaceView: View {
     /// The lighter colour of face 5 (the Pi's lighter dots).
     private static let lighter = Color(red: 0x9E / 255, green: 0x9E / 255, blue: 0x9E / 255)
 
+    /// Read so a change of the user's text size draws the face again: its letter's 24 and its label's 14 follow it,
+    /// as Android's sp (lead decision M6-26); the dot numbers do not, sized from the cell as the dots are, as
+    /// Android's DotNumbers (Drawing.kt: at 1.15 numbers that grew clipped dots 4-6).
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
+        let _ = typeSize
         let colour = face.isLighter ? BrailleFaceView.lighter : Color.white
         VStack(spacing: 2) {
             Text(face.isBlank ? " " : String(UnicodeScalar(face.letter)))
-                .font(.system(size: 24, weight: .bold))
+                .font(.system(size: KitType.scaled(24), weight: .bold))
                 .foregroundColor(colour)
             HStack(spacing: 2) {
                 numbers(1, colour)
@@ -127,7 +133,7 @@ struct BrailleFaceView: View {
                 numbers(4, colour)
             }
             Text(faceLabel(blank: face.isBlank, mirror: face.mirrorPartner != 0))
-                .font(.system(size: 14))
+                .font(.system(size: KitType.scaled(14)))
                 .foregroundColor(colour)
                 .multilineTextAlignment(.center)
         }

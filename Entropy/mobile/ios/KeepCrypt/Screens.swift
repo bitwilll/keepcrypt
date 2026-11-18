@@ -371,6 +371,8 @@ struct OverlayScreen: View {
     let dismiss: () -> Void
     /// The tap and VoiceOver's action run through the press gate (Kit.swift, M6-23).
     @Environment(\.pressGate) private var pressGate
+    /// Read so a change of the user's text size draws it again; the lines' 20 follows it (M6-26).
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     /// The tap or VoiceOver's action: the overlay dismissed if the press gate permits it.
     private func tapped() {
@@ -381,6 +383,7 @@ struct OverlayScreen: View {
     }
 
     var body: some View {
+        let _ = typeSize
         VStack(spacing: 0) {
             if testRegistry {
                 TestRegistryStrip()
@@ -389,13 +392,13 @@ struct OverlayScreen: View {
             switch overlay {
             case .cover:
                 Text(ShellTexts.coverLine)
-                    .font(.system(size: 20))
+                    .font(.system(size: KitType.scaled(20)))
                     .foregroundColor(KitColors.text)
                     .multilineTextAlignment(.center)
                     .padding(24)
             case .warning:
                 Text(ShellTexts.warningLine)
-                    .font(.system(size: 20))
+                    .font(.system(size: KitType.scaled(20)))
                     .foregroundColor(KitColors.warning)
                     .multilineTextAlignment(.center)
                     .padding(24)

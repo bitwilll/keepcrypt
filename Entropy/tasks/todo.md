@@ -20276,6 +20276,19 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   behind the press gate; the owner's I5 VoiceOver check on hardware covers it. No fail-first run: hasBack is new.
   Proof (local): the three schemes built for testing (the unit test compiles) and the Shipping device build, no
   Swift warning; `--ios-app` clean; `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  As built (M6 commit U3f, lead decision M6-26): the kit's fixed sizes Android draws in sp follow the user's text
+  size by KitType.scaled (UIFontMetrics, capped at 2x, as U2b's KitType): the notice bar (16), the TEST REGISTRY
+  strip (18 bold), the cover and idle-warning lines (20), the pads' key labels (18; a key stays at least 44 pt
+  high, keyPoints, the label's frame growing past it only when the type does) and a braille face's letter (24)
+  and label (14). Each view reads the dynamicTypeSize environment, as KitScreen does, so a change of the size draws
+  it again. Not scaled, as on Android: the faces' dot numbers (12), sized from the 40 x 60 cell as the dots are
+  (Drawing.kt's DotNumbers: numbers that grew with the font clipped dots 4-6 at 1.15), against the brief's list,
+  which named them; and the large display texts (the typed code and letters 48, the Seal ID 36), which Q97's
+  shrink-to-fit takes (U3g). DynamicTypeUITests measures the notice bar too: a screenshot (the hook) on First launch
+  at the default size and at AccessibilityXXXL, its height to grow over 1.5 times; before U3f the bar's 16 was
+  fixed and that assertion fails (on CI, the leg's device and the narrow iPhone). Proof (local): the three schemes
+  built for testing and the Shipping device build, no Swift warning; `--ios-app` clean; `--selftest-ios-app` exit
+  0, "36 passed, 0 failed".
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 

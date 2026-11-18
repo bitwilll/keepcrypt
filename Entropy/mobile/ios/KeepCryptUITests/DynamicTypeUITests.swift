@@ -16,14 +16,20 @@ final class DynamicTypeUITests: XCTestCase {
         continueAfterFailure = false
     }
 
-    /// The First launch title's height, launched with arguments.
-    private func titleHeight(_ app: XCUIApplication) -> CGFloat {
+    /// The First launch title's height, launched with arguments, and the notice bar's once a screenshot (the
+    /// hook) has put it up there (lead decision M6-26: the bar's 16 was a fixed size before U3f, so it did not
+    /// grow and the second assertion below failed).
+    private func heights(_ app: XCUIApplication) -> (title: CGFloat, notice: CGFloat) {
         app.launch()
         XCTAssertTrue(app.element("first_launch").waitForExistence(timeout: 30), "First launch")
         // First launch's own title (the privacy cover, should the scene not be active, says KeepCrypt too).
         let title = app.element("first_launch").staticTexts["KeepCrypt"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 10), "the app's name")
-        return title.frame.height
+        let titleHeight = title.frame.height
+        app.buttons["hook_screenshot"].tap()
+        let notice = app.element("notice")
+        XCTAssertTrue(notice.waitForExistence(timeout: 10), "the screenshot's notice")
+        return (titleHeight, notice.frame.height)
     }
 
     /// The control id scrolled into view as a person scrolls it, whole: the screen's column swiped up (at most
@@ -49,12 +55,14 @@ final class DynamicTypeUITests: XCTestCase {
 
     func testTheLargestTextSizeGrowsTheTextAndEveryControlStaysReachable() {
         let plain = XCUIApplication()
-        let small = titleHeight(plain)
+        let (small, smallNotice) = heights(plain)
         plain.terminate()
         let app = XCUIApplication()
         app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
-        let large = titleHeight(app)
+        let (large, largeNotice) = heights(app)
         XCTAssertGreaterThan(large, small * 1.5, "the text did not grow with the text size (\(small) to \(large) points)")
+        XCTAssertGreaterThan(
+            largeNotice, smallNotice * 1.5, "the notice bar did not grow with the text size (\(smallNotice) to \(largeNotice) points)")
         pastPressGuard()
         reach(app, "first_launch_continue")
         app.pressTo("first_launch_continue", "go_offline", passing: ["self_test"])

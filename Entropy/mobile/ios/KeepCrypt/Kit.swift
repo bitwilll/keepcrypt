@@ -341,13 +341,17 @@ struct KitButton: View {
     }
 }
 
-/// The notice line above a screen: why the last session was wiped, black on the warning yellow.
+/// The notice line above a screen: why the last session was wiped, black on the warning yellow. Its type
+/// follows the user's text size, as Android's 16 sp (lead decision M6-26).
 struct NoticeBar: View {
     let text: String
+    /// Read so a change of the user's text size draws it again (KitType).
+    @Environment(\.dynamicTypeSize) private var typeSize
 
     var body: some View {
+        let _ = typeSize
         Text(text)
-            .font(.system(size: 16))
+            .font(.system(size: KitType.scaled(16)))
             .foregroundColor(.black)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -361,9 +365,13 @@ struct NoticeBar: View {
 
 /// The strip on every screen and overlay of the test-registry build (Q60, lead decision M5-51).
 struct TestRegistryStrip: View {
+    /// Read so a change of the user's text size draws it again; its 18 follows it, as Android's sp (M6-26).
+    @Environment(\.dynamicTypeSize) private var typeSize
+
     var body: some View {
+        let _ = typeSize
         Text(ShellTexts.testRegistry)
-            .font(.system(size: 18, weight: .bold))
+            .font(.system(size: KitType.scaled(18), weight: .bold))
             .foregroundColor(.black)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 24)
