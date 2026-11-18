@@ -20245,6 +20245,18 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   then Show check QR again: before U3b that step fails ("no button back"), on CI. The three schemes built for testing
   and the Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app`
   exit 0, "36 passed, 0 failed".
+  As built (M6 commit U3-ci, the lead's brief; CI, not the app): Entropy Android's required build failed twice in
+  scripts/android-deps-review.sh on Maven Central's rate limit, "HTTP 429 for .../juniversalchardet-1.0.3.jar.asc"
+  after curl's three retries (runs 44370503703 at 2e454c87 and 44237883585 at 63bb375c). A transfer answered 429,
+  500, 502, 503 or 504 is now deferred: its .part removed, no .404 mark, so the next round lists it again; a round
+  with any prints "round N: K file(s) deferred (HTTP codes), the next round in P s" and sleeps P = 15 s times the
+  round, at most 120 s. Everything else still fails closed (a curl failure, any other code, files left after 12
+  rounds). At most 8 transfers at once (16 before). The script has no selftest or canary of its own (canaries.sh
+  checks only the workflow's step lines), so none was added; proven by reading and once by hand, not committed: a
+  copy of the script beside a stub review script, with a stub curl on PATH answering 429 once for one file, fetched
+  it in round 2 after the 15 s pause and exited 0; the same stub answering 403 failed at once, exit 2. The other two
+  recent Android failures (runs 44212919436 and 44225340054, "adb: device offline" mid-CaptureTest on the API 34
+  emulator) are the runners' infrastructure; nothing in our scripts was found to cause them.
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 
