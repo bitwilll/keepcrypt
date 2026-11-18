@@ -16320,6 +16320,37 @@ budgeted from the two runs with it (43904980358 at e60e5444, 43917696008 at 012a
 both), the slower whole job plus 25%, rounded up: API 34 capture then 16 KB 22 (1050 s), journeys 9 (420 s), ui 8
 (370 s), registry 12 (564 s); API 36 capture 22 (1036 s), journeys 9 (432 s), ui 10 (442 s), registry 25 (1200 s).
 API 34's four leave the 90-minute ceiling U3n gave them; API 36's were 40, 26, 27 and 40.
+Repeat and cause found (2026-11-18): LifecycleTest's backup scrypt case, not the network. The Android run 44148124713
+(at fed382ff on m6-iphone, no Android change since M5's merge d5c1a3a6), API 34's registry job, failed
+leavingDuringABackupsScryptDiscardsTheSession at LifecycleTest.kt:527, "the dice's Done did not start the seed", as
+43836938055 had, now with the probe lines: "the app: RESUMED, screen CheckPrompt, page 0, gate false, overlay null,
+notice null, airplane mode true, Wi-Fi off true"; airplane_mode_on=1, wifi_on=0, wifi_apm_state=0. The press had taken
+and the seed was made: only finish's reply leads from the dice to the check prompt. The test read Working in the same
+main-thread step as diceDone, on the belief that a long call's reply reaches the main thread only by a later dispatch
+(the model's scope is Dispatchers.Main.immediate, and runOnMainSync holds the main thread). That belief is wrong:
+withContext(worker) returns without suspending when its block has finished before the calling coroutine reaches its
+suspension (kotlinx's DispatchedCoroutine: the block's completion finds the decision UNDECIDED, marks it RESUMED and
+dispatches nothing; getResult then returns the value on the calling thread). On a busy runner the main thread can be
+descheduled between handing finish to the worker and that point, and a dice-only finish is quick: work's whole
+continuation, done's show(CheckPrompt) included, then runs inside diceDone, inside the test's runOnMainSync, and
+Working is never on show. Shown on the Mac with the real model and core (a throwaway :screens host test, run alone in
+its own JVM and not committed: commonTest compiles for iOS too and the test uses java.lang.Thread): a Main.immediate
+stand-in (no dispatch on the test's thread, a queue otherwise), dice-50-words12's rolls, then diceDone. A worker whose
+call ends before its dispatch returns: "right after diceDone the screen is CheckPrompt, main queue 0". A worker whose
+call ends 200 ms later: "the screen is Working; after the worker, 1 queued for main; drained: CheckPrompt". The app is
+right either way (the reply runs on the main thread, and only the busy screen's frame is skipped), so it is unchanged.
+43836938055's failure fits the same cause; it had no probe lines, so that is not shown.
+Fix (the test alone): toTheLastAnswer accepts Working or the check prompt after the dice's Done and prints a probe
+line when the reply was taken in the same step; any other screen still fails, now naming it. The start-up self-test
+case (LifecycleTest.kt:135) rested on the same belief for First launch's Continue: it accepts Self-test, or Go offline
+(a new model's Go offline comes only from the self-test's reply) with its probe line. No other in-process read of a
+busy screen is made in the androidTests (the scrypt case already handles a reply that came first).
+Also in that failure's probe, and not its cause: dumpsys wifi's records show Wi-Fi switched on by an airplane-mode
+toggle at 18:48:10.984 (DisabledState to EnabledState) and off again at 11.606 (android_apm), after the shell's
+disable at 10.188, all with airplane mode on. Capture.whileOffline's ready check reads the two settings back, and they
+can read offline before the system has handled a late airplane-mode broadcast (the earlier block's restore is the
+likely one), so Wi-Fi can come on briefly inside a block. Here the app ended offline with no notice. No failure has
+been traced to it; a follow-up for the lead, not changed here.
 
 **Open item (2026-11-16): two failures of android-local.sh's whole run alone.** On one boot the ui part runs before the
 registry part, and two tests leave state that a later one trips on (found by the Stage U-6 workflow, seen again on kc37
@@ -21056,7 +21087,9 @@ in the test-registry APK (U3n).
    exercised on a device.
 4. **The age -d hand-off's logcat count** (open item 2026-10-31): no repeat since; U4r names each match's position.
 5. **The API 34 offline blocks** (open item 2026-11-16): closed as the stale-bounds tap (e60e5444, green since);
-   the Wi-Fi memory reset kept as hygiene.
+   the Wi-Fi memory reset kept as hygiene. LifecycleTest's scrypt case repeated 2026-11-17 (run 44148124713, API 34)
+   and its own cause was found 2026-11-18 (its open item): the dice's Done's reply taken in the same main-thread step,
+   which the test did not allow for; the test fixed, the app unchanged.
 6. **The back swipe**: U2k's tick covers the Back key alone; no CI image attaches a gestural bar, so the swipe branch
    ran nowhere.
 
