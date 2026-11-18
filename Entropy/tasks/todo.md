@@ -20305,6 +20305,29 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   shared the row and "Confirm" broke inside the word, two lines high (fails on CI's devices and the narrow
   iPhone). Proof (local): the three schemes built for testing and the Shipping device build, no Swift warning;
   `--ios-app` clean; `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  As built (M6 commit U3h, Q97 on Android, with the overview on both): Kit.kt's WholeLines (BasicText with maxLines
+  and Compose foundation's step-based TextAutoSize, from the style's size down to WHOLE_SCALE, one half, in sp, so
+  at font scale 2.0 the smallest is the 1.0 size; no new dependency) on the insert's word, the typed code and
+  letters (three pads), the backup confirm's choices, the Seal ID, C (KitText's whole = 4) and D (four lines); and
+  KitPair, a Layout putting two buttons side by side when both max intrinsic widths fit half the row less a 12 dp
+  gap, else one per row, on the same twelve pairs as the iPhone's. The words' overview lines are whole on both
+  apps too (the iPhone's KitText whole: 1): at 2.0 they wrapped out of their columns, and each holds a seed word.
+  The test, CaptureTest's layout walk (every screen at its window, and at font scale 2.0 on API 36, CI's 360 dp
+  leg's): Layout.Node now carries Q97's facts, each a yes or no computed in-process from the node's text layout,
+  its text never kept: brokenWord (a line ending between two letters or digits), wrapped (more lines than its own),
+  monospace and large (36 sp or more); assertLaidOut fails a button or a large secret text (the insert's word) with
+  a broken word, and the code, C or a monospaced secret text (the letters, D, the overview, the choices) that
+  wraps. Before U3h, at 2.0, "Confirm" in the Undo/Confirm row broke inside the word, the insert's word broke, and
+  the code and C wrapped, so the walk fails there (on CI's emulator; not run locally: the walk is the API 36
+  emulator's). Proof (local, the owner's Mac): scripts/android-rust.sh shipping and withTestRegistry exit 0;
+  scripts/android-gradle.sh --dependency-verification strict with CI's build step's tasks (the five APKs, the
+  androidTest APKs, so CaptureTest and Layout.kt compile, :core-ffi and :screens' host tests, and test) "BUILD
+  SUCCESSFUL", exit 0; the JVM test results 210 tests in :screens' host tests (DocsTextsTest's new
+  theRecordingPlaceholderIsTheDocs among them, U3c), 34 in :core-ffi's, 11 and 11 in :app's two flavours, 5 in
+  :secure-ui's, none failed; the gate clean (519 files). Android CI has no lint step, and lint was not run here
+  (its tools are not in the verified dependencies); the APK check (--apk, signed APKs) was left to CI. iOS: the
+  three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean;
+  `--selftest-ios-app` exit 0, "36 passed, 0 failed".
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 

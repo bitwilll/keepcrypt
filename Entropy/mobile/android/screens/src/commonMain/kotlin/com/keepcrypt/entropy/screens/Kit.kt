@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -30,9 +32,11 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.isSensitiveData
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -175,10 +179,75 @@ fun Title(text: String) {
  * reads it when it changes (U3g); only for fixed or public text, never a secret's node.
  */
 @Composable
-fun KitText(text: String, style: TextStyle = KitType.body, tag: String? = null, live: Boolean = false) {
+fun KitText(text: String, style: TextStyle = KitType.body, tag: String? = null, live: Boolean = false, whole: Int? = null) {
     val padded = Modifier.padding(vertical = 6.dp)
     val spoken = if (live) padded.semantics { liveRegion = LiveRegionMode.Polite } else padded
-    BasicText(text, if (tag == null) spoken else spoken.testTag(tag), style = style)
+    val modifier = if (tag == null) spoken else spoken.testTag(tag)
+    if (whole == null) {
+        BasicText(text, modifier, style = style)
+    } else {
+        WholeLines(text, modifier, style, whole)
+    }
+}
+
+/**
+ * Q97: a text kept to its own lines (lines, its hard lines), shrunk down to half its size (WHOLE_SCALE) instead
+ * of breaking a line: no line break inside a seed word, the go-ahead code, the typed letters, the Seal ID or a
+ * row of C's and D's hex groups. Compose's step-based auto size, from the style's size down; in sp, so at font
+ * scale 2.0 the smallest is the default scale's size.
+ */
+@Composable
+fun WholeLines(text: String, modifier: Modifier, style: TextStyle, lines: Int = 1) {
+    BasicText(text, modifier, style = style, maxLines = lines, autoSize = wholeSize(style))
+}
+
+/** WholeLines for an annotated text (the insert's word, its letters past the fourth lighter). */
+@Composable
+fun WholeLines(text: AnnotatedString, modifier: Modifier, style: TextStyle, lines: Int = 1) {
+    BasicText(text, modifier, style = style, maxLines = lines, autoSize = wholeSize(style))
+}
+
+/** The auto size of a whole-line text in style: from its size down to WHOLE_SCALE of it. */
+private fun wholeSize(style: TextStyle): TextAutoSize =
+    TextAutoSize.StepBased(minFontSize = style.fontSize * WHOLE_SCALE, maxFontSize = style.fontSize, stepSize = 1.sp)
+
+/**
+ * The smallest share of its size a whole-line text shrinks to (Q97): one half, so at font scale 2.0 such a text is
+ * never drawn smaller than at 1.0, and at 1.0 the longest seed word, the code and C's rows fit a 360 dp screen
+ * whole. The iPhone's KitType.fitScale.
+ */
+const val WHOLE_SCALE = 0.5f
+
+/** The space between two buttons side by side (KitPair; the 6 dp each side of the rows before Q97). */
+private val PAIR_GAP = 12.dp
+
+/**
+ * Two buttons sharing a row (Q97): side by side, each half the row, when both labels fit their half on one line
+ * (each one's widest, its max intrinsic width); otherwise one per row, each the row's width, so no label breaks
+ * inside a word. The iPhone's KitPair (Kit.swift).
+ */
+@Composable
+fun KitPair(content: @Composable () -> Unit) {
+    Layout(content, Modifier.fillMaxWidth()) { measurables, constraints ->
+        val width = constraints.maxWidth
+        val gap = PAIR_GAP.roundToPx()
+        val half = (width - gap) / 2
+        if (measurables.all { it.maxIntrinsicWidth(Constraints.Infinity) <= half }) {
+            val placeables = measurables.map { it.measure(Constraints.fixedWidth(half)) }
+            layout(width, placeables.maxOf { it.height }) {
+                placeables.forEachIndexed { index, placeable -> placeable.placeRelative(index * (half + gap), 0) }
+            }
+        } else {
+            val placeables = measurables.map { it.measure(Constraints.fixedWidth(width)) }
+            layout(width, placeables.sumOf { it.height }) {
+                var y = 0
+                for (placeable in placeables) {
+                    placeable.placeRelative(0, y)
+                    y += placeable.height
+                }
+            }
+        }
+    }
 }
 
 /** The test tag (UI Automator's resource id) of every node that shows a secret: the capture harness reads each one's mark. */

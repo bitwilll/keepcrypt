@@ -107,7 +107,7 @@ struct WordsOverviewScreen: View {
                     SecureLayer {
                         VStack(alignment: .leading, spacing: 0) {
                             ForEach(0..<inserts.count, id: \.self) { index in
-                                KitText(overviewLine(inserts[index]), style: .hex).secretIdentifier(.overviewLine)
+                                KitText(overviewLine(inserts[index]), style: .hex, whole: 1).secretIdentifier(.overviewLine)
                             }
                         }
                         .frame(maxWidth: .infinity, alignment: .leading)
