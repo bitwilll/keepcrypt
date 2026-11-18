@@ -19859,7 +19859,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   of 50) and 44185394720 (every Confirm from roll 32 admitted with no effect; and a simulator whose boot failed
   while its step passed, now failing closed): the dead Confirm is the open item below, with the facts line to name
   its cause on a repeat.
-- [ ] U2. Edge cases where the phone matters (the JVM-ported unit tests of D2 hold the model's): Back and a double tap
+- [x] U2. Edge cases where the phone matters (the JVM-ported unit tests of D2 hold the model's): Back and a double tap
   on every screen; leaving the app at every stage (Public: 59 s kept, 61 s wiped; Protected and Working: at once) by
   XCUIDevice's home and a re-activation; the app killed at every stage, back at First launch with an empty slot; going
   online at every stage (the offline hook); the idle warning and wipe once in the UI; the camera refused and absent
@@ -20112,6 +20112,16 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   build, no Swift warning; `--ios-app` clean on the three shipped apps, the hooks marker in the TestHooks binary
   alone; `--selftest-ios-app` exit 0, "36 passed, 0 failed"; the gate exit 0 and `--workflows ../.github/workflows`
   exit 0; `cargo fmt --all --check` exit 0.
+  U2 proof on CI (2026-11-19, at 2e454c87): Entropy iOS run 44370503835, all 14 jobs success on both legs (macos-26
+  Xcode 26.6 iPhone 17 iOS 26.5; macos-15 Xcode 16.4 iPhone 16 iOS 18.6, the narrow iPhone in journeys-6 on each);
+  the log's test cases 596 passed, 0 failed; no press needed a second try (the probe lines are 10 "not wholly shown
+  above the hooks panel; dragged into view" and the facts snapshots alone). Entropy CI run 44370503978, all 14 jobs
+  success. M6-23 proven on iOS 26 by U2i's run 44348225943 ("the privacy gate's pass reaches nothing behind it"),
+  again here. The roll-14 face press (U2j's probe) did not recur; if it does, its line names which of the three it
+  was. The budgets stay provisional (M5-30): one green run of this head; the next green run sets them, measured plus
+  25% from the slower. Left for the next commit: DynamicTypeUITests' reach() places the dice pad's keys in its probe
+  line (key ids and frames, from the test's own public source, no session's secret), against U2h's rule that a pad
+  key is never placed.
 - [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
   do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
   docs is fixed with a test; a change the docs do not allow becomes a question for the owner.
