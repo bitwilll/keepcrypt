@@ -33,16 +33,18 @@ final class DynamicTypeUITests: XCTestCase {
     /// 44306763928: Dice-only seed at 23,579 329x82 inside a scroll view at 0,57 375x609, the panel over it, and
     /// three presses that never reached the app); the probe line names each drag.
     private func reach(_ app: XCUIApplication, _ id: String) {
+        // A pad's key is named "a pad key" and never placed (U3a).
+        let name = app.lineName(id)
         let control = app.buttons[id]
-        XCTAssertTrue(control.waitForExistence(timeout: 30), id)
+        XCTAssertTrue(control.waitForExistence(timeout: 30), name)
         var swipes = 0
         while !control.isHittable, swipes < 6 {
             app.swipeUp()
             swipes += 1
         }
-        XCTAssertTrue(control.isHittable, id + " cut: not reachable at the largest text size")
-        app.bringIntoView(control, id, placed: true)
-        XCTAssertTrue(app.wholeInView(control), id + " not wholly shown above the hooks panel: " + app.place(control))
+        XCTAssertTrue(control.isHittable, name + " cut: not reachable at the largest text size")
+        app.bringIntoView(control, name, placed: !app.isPadKey(id))
+        XCTAssertTrue(app.wholeInView(control), name + " not wholly shown above the hooks panel: " + app.place(control))
     }
 
     func testTheLargestTextSizeGrowsTheTextAndEveryControlStaysReachable() {

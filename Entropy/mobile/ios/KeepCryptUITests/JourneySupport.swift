@@ -164,14 +164,28 @@ extension XCUIApplication {
         return scroll.exists ? scroll : nil
     }
 
+    /// Whether id names a pad's key (U3a), the one check every line that could place or name a control asks: a
+    /// Public pad's key_ ids (the dice's faces, the go-ahead code's symbols), and the Protected pads' keys, which
+    /// carry no identifier (the letters, ASCII) and are found by their one-character label.
+    func isPadKey(_ id: String) -> Bool {
+        id.isEmpty || id.hasPrefix("key_") || id.count == 1
+    }
+
+    /// How a line may name the control id: its id, or "a pad key" for a pad's key (U3a).
+    func lineName(_ id: String) -> String {
+        isPadKey(id) ? "a pad key" : id
+    }
+
     /// Where control lies, the scroll view that clips it and the TestHooks panel (U2g, U2h): frames in points,
-    /// of a public control alone (never a pad's key: its place names the key). "gone" for a control, or a
-    /// panel, no longer there, without asking a missing element its frame (which fails the test there).
+    /// of a public control alone. A pad's key is never placed, whatever the caller asks (U3a: its place names
+    /// the key): "a pad key, not placed". "gone" for a control, or a panel, no longer there, without asking a
+    /// missing element its frame (which fails the test there).
     func place(_ control: XCUIElement) -> String {
         func text(_ frame: CGRect) -> String {
             "\(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))"
         }
         guard control.exists else { return "gone" }
+        if isPadKey(control.identifier) { return "a pad key, not placed" }
         var line = "at " + text(control.frame)
         if let scroll = scrollViewHolding(control.identifier) {
             line += ", its scroll view at " + text(scroll.frame)

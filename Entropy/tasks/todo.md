@@ -20125,6 +20125,15 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
 - [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
   do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
   docs is fixed with a test; a change the docs do not allow becomes a question for the owner.
+  As built (M6 commit U3a, U2's left-over): no line places or names a pad's key, whatever its caller asks.
+  JourneySupport's isPadKey is the one check (a key_ id, the dice's faces and the go-ahead code's symbols, or a
+  key found by its one-character label, the letters and ASCII, which carry no identifier); place() answers "a pad
+  key, not placed" for one, and DynamicTypeUITests' reach() names one "a pad key" (lineName) and drags it with
+  placed false. Run 44370503835 logged "probe: key_4: not wholly shown above the hooks panel (at 24,704 ...)"; the
+  next run logs "probe: a pad key: not wholly shown above the hooks panel; dragged into view". No source check
+  added: place() itself refuses, so no caller can place a key.
+  Proof (M6 commit U3a, local): the three schemes built for testing and the Shipping device build, no Swift
+  warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` exit 0, "36 passed, 0 failed".
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 
