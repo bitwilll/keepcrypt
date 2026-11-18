@@ -129,7 +129,9 @@ jobs:
     # the first green run of this layout re-measures it: run 44167434703 at 427e0dc1 took 1139 s on
     # macos-26 and 1279 s on macos-15, so 1279 s x 1.25 is 1599 s, 27 minutes. U1's run 44173357483 at
     # 4c2d9859 took 1538 s on macos-26 and 1181 s on macos-15, so 1538 s x 1.25 is 1923 s, 33 minutes.
-    timeout-minutes: 33
+    # U1's first all-green run 44197752716 at c52342ef took 1639 s on macos-26 and 797 s on macos-15; the
+    # slower of the two runs' slower legs, 1639 s x 1.25, is 2049 s, 35 minutes.
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
@@ -338,7 +340,12 @@ jobs:
     # MatchFound and Words, 570 s + 561 s is 1131 s, x 1.25 is 1414 s, 24 minutes; journeys-3 Mixed and
     # CheckBackup, 570 s + 562 s is 1132 s, x 1.25 is 1415 s, 24 minutes; journeys-4 TwentyFourWord and Snapshot
     # (the five long classes in four rows put two together), 570 s + 703 s is 1273 s, x 1.25 is 1592 s, 27
-    # minutes. Re-measured from the first green run; U2's journeys come as rows, at most four a leg.
+    # minutes. Re-measured (M5-30, the slower of two runs' slower legs; the macOS runners vary by up to a
+    # third between runs) from runs 44185394720 at 8112f0d5 and 44197752716 at c52342ef, all green at
+    # c52342ef (macos-26 / macos-15, seconds): journeys-1 1455 / 973 and 1158 / 1185, so 1455 s x 1.25 is
+    # 1819 s, 31 minutes; journeys-2 1392 / 1012 and 1309 / 1043, 1392 s x 1.25 is 1740 s, 29 minutes;
+    # journeys-3 1402 / 947 and 1278 / 1071, 1402 s x 1.25 is 1753 s, 30 minutes; journeys-4 1471 / 1381
+    # and 1393 / 1401, 1471 s x 1.25 is 1839 s, 31 minutes. U2's journeys come as rows, at most four a leg.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -350,56 +357,56 @@ jobs:
             device: iPhone 17
             group: journeys-1
             classes: CannotCheckJourneyUITests ScanUITests
-            timeout: 25
+            timeout: 31
           - os: macos-26
             xcode: '26.6'
             ios: '26.5'
             device: iPhone 17
             group: journeys-2
             classes: MatchFoundJourneyUITests WordsUITests
-            timeout: 24
+            timeout: 29
           - os: macos-26
             xcode: '26.6'
             ios: '26.5'
             device: iPhone 17
             group: journeys-3
             classes: MixedJourneyUITests CheckBackupUITests
-            timeout: 24
+            timeout: 30
           - os: macos-26
             xcode: '26.6'
             ios: '26.5'
             device: iPhone 17
             group: journeys-4
             classes: TwentyFourWordJourneyUITests SnapshotJourneyUITests
-            timeout: 27
+            timeout: 31
           - os: macos-15
             xcode: '16.4'
             ios: '18.6'
             device: iPhone 16
             group: journeys-1
             classes: CannotCheckJourneyUITests ScanUITests
-            timeout: 25
+            timeout: 31
           - os: macos-15
             xcode: '16.4'
             ios: '18.6'
             device: iPhone 16
             group: journeys-2
             classes: MatchFoundJourneyUITests WordsUITests
-            timeout: 24
+            timeout: 29
           - os: macos-15
             xcode: '16.4'
             ios: '18.6'
             device: iPhone 16
             group: journeys-3
             classes: MixedJourneyUITests CheckBackupUITests
-            timeout: 24
+            timeout: 30
           - os: macos-15
             xcode: '16.4'
             ios: '18.6'
             device: iPhone 16
             group: journeys-4
             classes: TwentyFourWordJourneyUITests SnapshotJourneyUITests
-            timeout: 27
+            timeout: 31
     env:
       KC_XCODE: ${{ matrix.xcode }}
       KC_IOS: ${{ matrix.ios }}

@@ -18431,6 +18431,21 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   letters typed back, the BIP39 passphrase, the dice pick in dice-only mode) is compiled in under KC_TEST_HOOKS
   alone, never in Shipping or WithTestRegistry. iOS has no third-party accessibility services, so the exposure is
   smaller than Android's, but the shipping app names no secret node, as the owner chose for Android.
+- M6-21 (2026-11-18, from U1d's report): each pad press in the UI tests waits for its effect on screen; a press
+  with none is classified by the TestHooks app's touch counts. Refused by the press guard (the app as designed) or
+  never seen by the app's window (the simulator's): pressed again, at most three times, each with a probe line
+  naming the roll or position and the app's facts. Seen and admitted with no effect: a failure, never re-pressed,
+  since that would be an app defect. The TestHooks panel's facts line (what the model holds and what the last pad
+  key or Confirm did; nothing secret) is printed with every probe.
+- Open item (2026-11-18), the dead Confirm: run 44185394720 at 8112f0d5, WordsUITests on macos-26, every Confirm
+  from roll 32 to 50 "reached the app and was admitted, and did nothing" (touches seen, none refused) while the
+  face keys went on working; run 44173357483 lost one roll of 50 in SnapshotJourneyUITests (macos-26), maybe the
+  same. U1f's reading of the model found no path that holds Confirm dead while the faces work (the same pressOn
+  gate, the pick label drawn only while a face is picked, core's refusal or halt ending on the stop screen, the
+  guard closing only on a new screen, gate or overlay, the timers acting only after 60 s away or 10 minutes idle).
+  Run 44197752716 at c52342ef did not repeat it. A repeat is diagnosed from the facts line and the button's
+  enabled, hittable and frame in the probe, never rerun to green; the gate report names this item until its cause
+  is shown.
 
 ### Stage B: the bridge (M6 commits 2-4)
 - [x] B1. `ffi/capi` (`keepcrypt-capi`): `[lib] name = "keepcrypt_capi"`, `crate-type = ["staticlib", "rlib"]`,
@@ -19650,7 +19665,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   report): each job builds its own Rust library from the pinned toolchain (about 86 s), nothing built is cached or
   passed between jobs, the crate registry cache alone (sources, checked against Cargo.lock); one KC_JOURNEYS list and
   the groups check over the matrix. Entropy CI 44167435061 and Entropy Pi image 44167434907 green.
-- [ ] U1. User journeys through the UI alone, one XCUITest per journey from First launch to Finish on both simulators,
+- [x] U1. User journeys through the UI alone, one XCUITest per journey from First launch to Finish on both simulators,
   as M5's U1: mixed and dice-only, 12 and 24 words (24 with the device swap); the check by a typed code, a scanned
   proof (the Scan hook, M6-7, the camera's own path), a loaded snapshot and Skip; Match found and a scanned collision
   to Add fresh entropy at 99; Cannot check to Start again; the words, the read-back and the summary; the backup saved
@@ -19817,6 +19832,19 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Proof (M6 commit U1g, on the final tree, a worktree at U1f): `--selftest` 4 x "486 passed, 0 failed", `sh
   scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
   checks ran" (1037 s in all).
+  CI proof (2026-11-18): Entropy iPhone run 44197752716 at c52342ef, all ten jobs green: both unit jobs (128 tests
+  per scheme, the capture, offline and start-up UI tests) and the four journeys rows on each leg, every journey
+  passing on macos-26 (Xcode 26.6, iPhone 17 iOS 26.5) and macos-15 (Xcode 16.4, iPhone 16 iOS 18.6), seconds
+  macos-26 / macos-15: MatchFoundJourneyUITests 503 / 479, TwentyFourWordJourneyUITests 475 / 440,
+  MixedJourneyUITests 507 / 432, CannotCheckJourneyUITests 554 / 529, SnapshotJourneyUITests 320 / 291 (to the stop
+  screen and Close app), ScanUITests, WordsUITests and CheckBackupUITests; no press needed a second press (no
+  probe line). The secret identifiers (M6-20) are in the TestHooks binary alone and --ios-app's IosSecretId is clean
+  on the shipped apps; the Simulator step reads the device as Booted. Budgets re-measured from this run and
+  44185394720 (M5-30, the slower of two runs): unit 35, journeys 31, 29, 30 and 31 minutes. Entropy CI green at
+  each push. Two runs before it failed and were diagnosed, not rerun to green: 44173357483 (one dice roll lost, 49
+  of 50) and 44185394720 (every Confirm from roll 32 admitted with no effect; and a simulator whose boot failed
+  while its step passed, now failing closed): the dead Confirm is the open item below, with the facts line to name
+  its cause on a repeat.
 - [ ] U2. Edge cases where the phone matters (the JVM-ported unit tests of D2 hold the model's): Back and a double tap
   on every screen; leaving the app at every stage (Public: 59 s kept, 61 s wiped; Protected and Working: at once) by
   XCUIDevice's home and a re-activation; the app killed at every stage, back at First launch with an empty slot; going
