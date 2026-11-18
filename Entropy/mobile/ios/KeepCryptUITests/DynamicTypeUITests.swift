@@ -14,7 +14,8 @@ final class DynamicTypeUITests: XCTestCase {
     private func titleHeight(_ app: XCUIApplication) -> CGFloat {
         app.launch()
         XCTAssertTrue(app.element("first_launch").waitForExistence(timeout: 30), "First launch")
-        let title = app.staticTexts["KeepCrypt"].firstMatch
+        // First launch's own title (the privacy cover, should the scene not be active, says KeepCrypt too).
+        let title = app.element("first_launch").staticTexts["KeepCrypt"].firstMatch
         XCTAssertTrue(title.waitForExistence(timeout: 10), "the app's name")
         return title.frame.height
     }

@@ -352,7 +352,16 @@ jobs:
     # with its effect awaited on macos-26, 1 s a screen): LifecycleUITests 325 s (six launches and their few
     # presses), CheckEdgesUITests 230 s (WordsUITests' 50 rolls and read-back with two misreads, a save),
     # DynamicTypeUITests 60 s; 570 s + 615 s is 1185 s, x 1.25 is 1481 s, 25 minutes, re-measured from its
-    # first green run. Five rows a leg; more come only with the lead's word.
+    # first green run. Five rows a leg; more come only with the lead's word. Run 44212919474 at f5a1e15a
+    # measured the passing classes (macos-26 / macos-15, seconds): LifecycleUITests' five green tests 70 / 68,
+    # 44 / 46, 23 / 25, the kill 95 on macos-15 and the idle 28 on macos-15; its trip home and CheckEdgesUITests
+    # and DynamicTypeUITests failed (iOS's camera prompt left unanswered, U2d), and the row ran past its 25
+    # minutes. U2d splits it, with the lead's word, from macos-26's figures and the fixes' estimates:
+    # journeys-5 LifecycleUITests 350 s (its six tests) and CheckEdgesUITests 230 s, 570 s + 580 s is 1150 s,
+    # x 1.25 is 1438 s, 24 minutes; journeys-6 DynamicTypeUITests 70 s on the leg's device and again on the
+    # narrowest iPhone the image has for the leg's runtime (a second simulator, its boot about 200 s and the
+    # test about 70 s), 570 s + 340 s is 910 s, x 1.25 is 1138 s, 19 minutes, 21 for the second boot's spread.
+    # Re-measured from the first green run.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -391,8 +400,15 @@ jobs:
             ios: '26.5'
             device: iPhone 17
             group: journeys-5
-            classes: LifecycleUITests CheckEdgesUITests DynamicTypeUITests
-            timeout: 25
+            classes: LifecycleUITests CheckEdgesUITests
+            timeout: 24
+          - os: macos-26
+            xcode: '26.6'
+            ios: '26.5'
+            device: iPhone 17
+            group: journeys-6
+            classes: DynamicTypeUITests
+            timeout: 21
           - os: macos-15
             xcode: '16.4'
             ios: '18.6'
@@ -426,8 +442,15 @@ jobs:
             ios: '18.6'
             device: iPhone 16
             group: journeys-5
-            classes: LifecycleUITests CheckEdgesUITests DynamicTypeUITests
-            timeout: 25
+            classes: LifecycleUITests CheckEdgesUITests
+            timeout: 24
+          - os: macos-15
+            xcode: '16.4'
+            ios: '18.6'
+            device: iPhone 16
+            group: journeys-6
+            classes: DynamicTypeUITests
+            timeout: 21
     env:
       KC_XCODE: ${{ matrix.xcode }}
       KC_IOS: ${{ matrix.ios }}
@@ -542,3 +565,46 @@ jobs:
             grep -q -a -e "$sid" "$exe" || { echo "FAIL: no secret node identifier $sid in $exe" >&2; exit 1; }
           done < mobile/ios/expected/secret-identifiers.txt
           echo "$exe: every identifier of mobile/ios/expected/secret-identifiers.txt"
+      # The narrowest iPhone the image has for the leg's runtime (U2: Dynamic Type at the largest size on a
+      # narrow phone): iPhone SE (3rd generation), 375 points, else iPhone SE (2nd generation), else iPhone 16e
+      # (390), each narrower than the leg's own device; a second simulator made from that device type (none is
+      # installed or downloaded), booted and checked as the first is. None for the runtime is logged and said,
+      # and the narrow run is then skipped by name.
+      - name: Narrow iPhone (journeys-6, a device type of the image's)
+        if: matrix.group == 'journeys-6'
+        run: |
+          fail() { echo "FAIL: narrow iPhone: $1" >&2; exit 1; }
+          echo "== the image's device types"
+          xcrun simctl list devicetypes
+          runtime=com.apple.CoreSimulator.SimRuntime.iOS-${KC_IOS//./-}
+          narrow=
+          for name in "iPhone SE (3rd generation)" "iPhone SE (2nd generation)" "iPhone 16e"; do
+            type=$(xcrun simctl list devicetypes -j | python3 -I -c 'import json, sys; t = [d["identifier"] for d in json.load(sys.stdin)["devicetypes"] if d["name"] == sys.argv[1]]; print(t[0] if t else "")' "$name") || fail "simctl list devicetypes failed"
+            [ -n "$type" ] || { echo "no $name device type on this image"; continue; }
+            if udid=$(xcrun simctl create "KC narrow" "$type" "$runtime" 2>"$RUNNER_TEMP/create.err"); then
+              narrow=$udid
+              echo "narrow: $name ($type) on $runtime: $udid"
+              break
+            fi
+            echo "no $name on $runtime: $(cat "$RUNNER_TEMP/create.err")"
+          done
+          if [ -z "$narrow" ]; then
+            echo "narrow iPhone: none of the image's device types narrower than $KC_DEVICE runs $runtime; DynamicTypeUITests runs on $KC_DEVICE alone"
+            exit 0
+          fi
+          xcrun simctl boot "$narrow" || fail "simctl boot failed"
+          xcrun simctl bootstatus "$narrow" -b || fail "simctl bootstatus failed (exit $?)"
+          xcrun simctl list devices -j > "$RUNNER_TEMP/narrow.json" || fail "simctl list failed"
+          state=$(python3 -I -c 'import json, sys; f = [d.get("state", "") for r in json.load(open(sys.argv[1]))["devices"].values() for d in r if d.get("udid") == sys.argv[2]]; print(f[0] if len(f) == 1 else "missing")' "$RUNNER_TEMP/narrow.json" "$narrow") || fail "its state could not be read"
+          [ "$state" = Booted ] || fail "its state is $state, not Booted"
+          echo "KC_NARROW=$narrow" >> "$GITHUB_ENV"
+      - name: DynamicTypeUITests on the narrow iPhone
+        if: matrix.group == 'journeys-6'
+        run: |
+          if [ -z "${KC_NARROW:-}" ]; then
+            echo "narrow iPhone: none for this runtime (the step before says why); not run"
+            exit 0
+          fi
+          xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
+            -destination "id=$KC_NARROW" -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO \
+            -only-testing:KeepCryptUITests/DynamicTypeUITests test-without-building

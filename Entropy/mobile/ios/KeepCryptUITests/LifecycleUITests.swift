@@ -45,6 +45,10 @@ final class LifecycleUITests: XCTestCase {
         XCUIDevice.shared.press(.home)
         app.activate()
         app.waitNotice(away)
+        // The wipe is found as the app comes back, still behind the privacy cover the trip home put up (the
+        // model's show: covered until a tap, as Android's), so Home shows after the cover's tap.
+        app.on("cover", "the privacy cover over Home after the wipe")
+        app.element("cover").tap()
         pass("away: the Public dice kept at 50 s away (behind the cover), wiped at 61 s")
         app.on("home", "Home")
         app.press("check_backup")

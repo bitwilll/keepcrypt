@@ -19920,6 +19920,34 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Proof (M6 commit U2c, on the final tree, a worktree at U2b): `--selftest` 4 x "486 passed, 0 failed", `sh
   scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
   checks ran" (1250 s in all, on a loaded Mac).
+  As built (M6 commit U2d, from run 44212919474 at f5a1e15a: journeys-1 to 4 and the unit jobs green; journeys-5
+  failed on macos-15 and ran past its 25 minutes on macos-26). The causes, from the logs, and the fixes:
+  - CheckEdgesUITests ("the scan screen" never shown): with no Scan hook text the app's own scanner asks iOS for the
+    camera before it looks for one (as Android's asks before it chooses one), and the simulator, which has no
+    camera, shows iOS's camera prompt from SpringBoard. The prompt made the scene inactive, so the privacy cover
+    replaced the screens, and it stayed up for the tests after it. The test assumed a screen the simulator never
+    shows: a test defect, not the app's (every iPhone has a camera, and the order is Android's). The test now
+    answers the prompt Don't Allow, as a person may, and checks the refused line, Open Settings (M6-9) and the code
+    offered; the absent and failed cameras stay CeremonyScanStopTests' and I2's.
+  - DynamicTypeUITests ("First launch" not found, the text 852 to 852 points): the prompt left by CheckEdgesUITests
+    covered the app, and the 852-point "KeepCrypt" it measured was the privacy cover's line, not First launch's
+    title. Whether U2b's scaling works is still unproven: CI's next run says. The test now measures First launch's
+    own title (scoped to the first_launch screen), and KitType reads the app's content size category explicitly
+    (UIFontMetrics with the traits of UIApplication's preferredContentSizeCategory, which the launch argument sets).
+  - LifecycleUITests' trip home ("no button check_backup"): after the 61 s wipe the app came back to Home behind the
+    privacy cover the trip home put up (the model's show keeps the cover until a tap while the app is not yet in
+    the foreground, as Android's does); the test now taps the cover, as a person does, before Home's buttons.
+  - The rows: journeys-5 (LifecycleUITests and CheckEdgesUITests, 24 minutes) and journeys-6 (DynamicTypeUITests, 21
+    minutes), one row more than U2's allowance, with the lead's word; each figure in the workflow's comment.
+  - The narrow iPhone: journeys-6 logs the image's device types and makes a second simulator from the narrowest it
+    has that runs the leg's runtime (iPhone SE (3rd generation), else (2nd generation), else iPhone 16e), booted and
+    checked as the first, and runs DynamicTypeUITests on it too; none for the runtime is logged and the narrow run
+    skipped by name. Nothing is installed or downloaded.
+  Proof (M6 commit U2d, local; the UI tests run on CI): the three schemes built for testing and the device build,
+  no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` 36 passed; the stand-in
+  "Executed 128 tests, with 0 failures" both ways; the groups check passes on six rows a leg; the narrow step's
+  device-type reader and runtime name run locally on a sample; `--workflows` and the gate clean (519 files),
+  `cargo fmt --all --check` clean.
 - [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
   do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
   docs is fixed with a test; a change the docs do not allow becomes a question for the owner.

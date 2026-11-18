@@ -44,9 +44,11 @@ enum KitType {
     /// The largest scale the kit's text takes: Android's 2.0 (Q78).
     static let maxScale: CGFloat = 2
 
-    /// points at the user's text size (UIFontMetrics' body scaling), at most maxScale times.
+    /// points at the user's text size (UIFontMetrics' body scaling for the app's content size category, the
+    /// one Settings or a launch's -UIPreferredContentSizeCategoryName sets), at most maxScale times.
     static func scaled(_ points: CGFloat) -> CGFloat {
-        min(UIFontMetrics.default.scaledValue(for: points), points * maxScale)
+        let traits = UITraitCollection(preferredContentSizeCategory: UIApplication.shared.preferredContentSizeCategory)
+        return min(UIFontMetrics.default.scaledValue(for: points, compatibleWith: traits), points * maxScale)
     }
 }
 

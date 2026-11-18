@@ -1,18 +1,22 @@
 // The check's, the read-back's and the save's edges on the phone (tasks/todo.md, M6 item U2), the model's tests
 // holding every vector (every go-ahead text, every mirror pair, every damaged backup and snapshot): a dice-only
-// seed of kcr.json's dice-50-words12; on the scan screen the simulator's missing camera (no Scan hook text, so the
-// app's own scanner runs: this phone has no camera, and the code is offered); the code typed from the drawn check
+// seed of kcr.json's dice-50-words12; the scan with no Scan hook text, so the app's own scanner runs: it asks for
+// the camera first, as Android's asks before it looks for one, and the simulator shows iOS's camera prompt, which
+// this test refuses (Don't Allow): the scan screen says the camera was not allowed, offers Open Settings (M6-9)
+// and the code (run 44212919474 left the prompt unanswered, which covered the app for the tests after it); the
+// code typed from the drawn check
 // QR; the read-back of insert 1 misread on a mirror pair (e for i: "mirror misread" on face 4) and read again,
 // insert 2 read as insert 3's word (a wrong insert) and read again, the rest matched; and the backup saved
 // through the Save hook in its corrupt mode (a byte of the read-back changed): the save names the verify's
-// refusal, and Skip goes on. The camera refused (M6-9's Open Settings) needs a camera, which the simulator has
-// not: the model's tests and I2 hold it. Through the UI alone but the hooks.
+// refusal, and Skip goes on. The simulator has no camera, so a camera allowed but absent (scanMissing) and one
+// that fails are the model's tests' (CeremonyScanStopTests) and I2's. Through the UI alone but the hooks and iOS's
+// prompt.
 
 #if KC_TEST_HOOKS
 import XCTest
 
 final class CheckEdgesUITests: XCTestCase {
-    func testNoCameraOffersTheCodeAMirrorMisreadAndAWrongInsertAreReadAgainAndACorruptSaveIsRefused() throws {
+    func testARefusedCameraOffersSettingsAndTheCodeAMirrorMisreadAndAWrongInsertAreReadAgainAndACorruptSaveIsRefused() throws {
         let seed = try JourneyVectors.seed("dice-50-words12")
         let app = XCUIApplication()
         app.launchEnvironment["KC_HOOK_SAVE"] = "corrupt"
@@ -25,13 +29,20 @@ final class CheckEdgesUITests: XCTestCase {
         app.press("show_check_qr")
         app.on("check_qr", "the check QR")
         app.press("scan_qr")
+        // iOS's camera prompt, from SpringBoard: refused, as a person may.
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let refuse = springboard.alerts.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Don")).firstMatch
+        XCTAssertTrue(refuse.waitForExistence(timeout: 30), "iOS's camera prompt as the scan starts")
+        refuse.tap()
         app.on("scan", "the scan screen")
-        app.waitLabel("scan_line", "This phone has no camera the app can use. Type the go-ahead code instead: the check stays open.")
+        app.waitLabel(
+            "scan_line", "The camera was not allowed, so the go-ahead QR cannot be scanned. Type the go-ahead code instead: the check stays open.")
+        XCTAssertTrue(app.buttons["open_settings"].exists, "Open Settings after a refusal (M6-9)")
         XCTAssertTrue(app.buttons["type_code"].exists, "the code is offered")
         app.press("back")
         app.on("check_qr", "the check QR, the check kept")
         try app.typeGoAhead()
-        pass("check edges: no camera on the simulator, the code offered and typed (\(Int(Date().timeIntervalSince(started))) s)")
+        pass("check edges: the camera refused at iOS's prompt, Open Settings and the code offered, the code typed (\(Int(Date().timeIntervalSince(started))) s)")
         app.press("show_words")
         app.passGate("the words")
         app.on("words", "insert 1")
