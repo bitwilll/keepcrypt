@@ -9,6 +9,12 @@
 import XCTest
 
 final class TwentyFourWordJourneyUITests: XCTestCase {
+    /// One cause, one failure (U2f): a journey stops at its first failure, so a lost press is not followed by
+    /// every later step failing for it.
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
     func testADiceOnlyTwentyFourWordSeedSkipsItsCheckAndReachesFinishOnTwoDevices() throws {
         let seed = try JourneyVectors.seed("dice-99-words24")
         let app = XCUIApplication()

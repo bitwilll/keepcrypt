@@ -11,6 +11,12 @@
 import XCTest
 
 final class CheckBackupUITests: XCTestCase {
+    /// One cause, one failure (U2f): a journey stops at its first failure, so a lost press is not followed by
+    /// every later step failing for it.
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
     private final class Anchor {}
 
     private func json(_ name: String) throws -> [String: Any] {

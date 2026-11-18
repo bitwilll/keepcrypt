@@ -438,9 +438,10 @@ final class TouchGuardRecognizer: UIGestureRecognizer {
             if !pressGuard.admits(shownView(model.state), millis) { refused = true }
         }
         #if KC_TEST_HOOKS
-        let seen = touches.filter { area.bounds.contains($0.location(in: area)) }.count
+        let inArea = touches.filter { area.bounds.contains($0.location(in: area)) }
         let held = refused
-        MainActor.assumeIsolated { TestHooks.shared.noteTouches(seen, refused: held) }
+        let uptime = inArea.first.map { Int64($0.timestamp * 1_000) } ?? 0
+        MainActor.assumeIsolated { TestHooks.shared.noteTouches(inArea.count, refused: held, uptime: uptime) }
         #endif
         state = refused ? .recognized : .failed
     }

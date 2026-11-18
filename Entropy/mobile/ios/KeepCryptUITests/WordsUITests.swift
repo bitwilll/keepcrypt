@@ -12,6 +12,12 @@
 import XCTest
 
 final class WordsUITests: XCTestCase {
+    /// One cause, one failure (U2f): a journey stops at its first failure, so a lost press is not followed by
+    /// every later step failing for it.
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
     private final class Anchor {}
 
     /// kcr.json's gate seed dice-50-words12: its rolls and its words.

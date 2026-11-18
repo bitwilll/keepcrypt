@@ -10,6 +10,12 @@
 import XCTest
 
 final class DynamicTypeUITests: XCTestCase {
+    /// One cause, one failure (U2f): a journey stops at its first failure, so a lost press is not followed by
+    /// every later step failing for it.
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
     /// The First launch title's height, launched with arguments.
     private func titleHeight(_ app: XCUIApplication) -> CGFloat {
         app.launch()
@@ -45,6 +51,7 @@ final class DynamicTypeUITests: XCTestCase {
         app.buttons["first_launch_continue"].tap()
         app.on("go_offline", "Go offline", timeout: 60)
         app.buttons["hook_path_none"].tap()
+        pastPressGuard()
         reach(app, "start")
         app.buttons["start"].tap()
         app.on("home", "Home")

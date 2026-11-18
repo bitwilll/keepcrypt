@@ -19,6 +19,12 @@
 import XCTest
 
 final class MixedJourneyUITests: XCTestCase {
+    /// One cause, one failure (U2f): a journey stops at its first failure, so a lost press is not followed by
+    /// every later step failing for it.
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
     func testAMixedSeedIsCheckedByItsCodeThroughEveryExportAndItsBackupIsChecked() throws {
         // The code's own check first: CLAUDE.md's go-ahead vector.
         let vectorTag = hexBytes("2b8103c8dd64611df5c8c28b8fbf864a1005372f5da06a5777f92708ce79cb5c")

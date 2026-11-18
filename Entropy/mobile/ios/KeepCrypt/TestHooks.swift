@@ -69,10 +69,36 @@ final class TestHooks: ObservableObject {
     @Published private(set) var touchesSeen = 0
     @Published private(set) var touchesRefused = 0
 
-    /// Touches that went down, refused or admitted by the press guard (Screens.swift's TouchGuardRecognizer).
-    func noteTouches(_ count: Int, refused: Bool) {
+    /// Touches that went down, refused or admitted by the press guard (Screens.swift's TouchGuardRecognizer),
+    /// and the first one's uptime. Never its place: on a pad a place names the key pressed, a roll or a letter.
+    func noteTouches(_ count: Int, refused: Bool, uptime: Int64) {
         touchesSeen += count
         if refused { touchesRefused += count }
+        lastTouch = "at \(uptime) ms"
+    }
+
+    /// The last touch down, the last KitButton action run and KitScreen's layout changes (U2f: where an
+    /// admitted press that did nothing was lost), by uptimes and KitButton ids alone (navigation names; the pads'
+    /// keys are no KitButtons), nothing that could stand for secret input.
+    @Published private(set) var lastTouch = "none"
+    @Published private(set) var lastAction = "none"
+    @Published private(set) var layoutChanges = 0
+    @Published private(set) var lastLayout = "none"
+
+    /// A KitButton ran its action.
+    func noteAction(_ id: String) {
+        lastAction = id + " at \(uptimeMillis()) ms"
+    }
+
+    /// A KitScreen moved its actions into or out of the scrolling column, or its "More below" came or went.
+    func noteLayout(_ what: String) {
+        layoutChanges += 1
+        lastLayout = what + " at \(uptimeMillis()) ms"
+    }
+
+    /// The probe's part of the facts line.
+    var probeFacts: String {
+        "last touch down \(lastTouch); last action \(lastAction); layout changes \(layoutChanges), last \(lastLayout); now \(uptimeMillis()) ms"
     }
     /// The app's offline check, whose state the path hooks force.
     var offlineCheck: OfflineCheck?
@@ -399,7 +425,7 @@ struct TestHookPanel: View {
                     .accessibilityIdentifier("hook_touches_refused")
             }
             // What the model holds, by fixed names and counts alone (U1f), for a UI test's probe.
-            Text(model.hookFacts(sceneActive: sceneActive))
+            Text(model.hookFacts(sceneActive: sceneActive) + "; " + hooks.probeFacts)
                 .font(.system(size: 6))
                 .lineLimit(1)
                 .accessibilityIdentifier("hook_facts")
@@ -446,6 +472,9 @@ struct TestHookPanel: View {
         .frame(maxWidth: .infinity)
         .padding(4)
         .background(Color.yellow)
+        // The panel's own text never follows the user's text size (U2f: at the largest size its rows grew over
+        // most of the scene in DynamicTypeUITests, so swipes landed on it and nothing scrolled).
+        .dynamicTypeSize(.large)
     }
 }
 #endif

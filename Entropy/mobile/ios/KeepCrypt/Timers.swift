@@ -68,6 +68,13 @@ final class Timers {
         return true
     }
 
+    /// The picker the app opened answered (any answer, none or a cancel included): it is closed, so the next
+    /// leaving is leaving again. On an iPhone the picker is the app's own sheet and no resume follows it (lead
+    /// decision M6-22; U2's find: the exemption outlived the picker until the next trip away).
+    func pickerAnswered() {
+        picker = false
+    }
+
     /// The app is back: the background time ends, and so does a picker.
     func returned() {
         leftAt = nil

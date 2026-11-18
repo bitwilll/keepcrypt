@@ -16,6 +16,12 @@
 import XCTest
 
 final class CheckEdgesUITests: XCTestCase {
+    /// One cause, one failure (U2f): a journey stops at its first failure, so a lost press is not followed by
+    /// every later step failing for it.
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
     func testARefusedCameraOffersSettingsAndTheCodeAMirrorMisreadAndAWrongInsertAreReadAgainAndACorruptSaveIsRefused() throws {
         let seed = try JourneyVectors.seed("dice-50-words12")
         let app = XCUIApplication()

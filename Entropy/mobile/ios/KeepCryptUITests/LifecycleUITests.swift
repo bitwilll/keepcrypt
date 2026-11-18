@@ -12,6 +12,12 @@
 import XCTest
 
 final class LifecycleUITests: XCTestCase {
+    /// One cause, one failure (U2f): a journey stops at its first failure, so a lost press is not followed by
+    /// every later step failing for it.
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
     private let away = "The session was wiped after 60 seconds away from the app."
     private let left = "The session was wiped: the app was left during it."
     private let idle = "The session was wiped after 10 minutes without input."

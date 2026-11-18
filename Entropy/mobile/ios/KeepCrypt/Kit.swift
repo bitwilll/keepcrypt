@@ -147,6 +147,11 @@ struct KitScreen<Content: View, Actions: View>: View {
                     .onChange(of: geometry.size.height) { _, height in viewportHeight = height }
             })
             .onPreferenceChange(ContentBottom.self) { contentBottom = $0 }
+            #if KC_TEST_HOOKS
+            Color.clear.frame(height: 0)
+                .onChange(of: scrolling) { _, now in TestHooks.shared.noteLayout(now ? "actions scroll" : "actions fixed") }
+                .onChange(of: contentBottom > viewportHeight + 1) { _, now in TestHooks.shared.noteLayout(now ? "more below shown" : "more below gone") }
+            #endif
             if contentBottom > viewportHeight + 1 {
                 KitText(ShellTexts.moreBelow, style: KitStyle(font: KitType.small, color: KitColors.text), id: "more_below")
                     .padding(.horizontal, 24)
@@ -279,7 +284,12 @@ struct KitButton: View {
 
     var body: some View {
         let colour = enabled ? KitColors.text : KitColors.muted
-        Button(action: action) {
+        Button(action: {
+            #if KC_TEST_HOOKS
+            MainActor.assumeIsolated { TestHooks.shared.noteAction(id) }
+            #endif
+            action()
+        }) {
             Text(text)
                 .font(KitType.button)
                 .foregroundColor(colour)

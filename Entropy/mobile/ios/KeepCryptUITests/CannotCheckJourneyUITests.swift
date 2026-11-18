@@ -12,6 +12,12 @@
 import XCTest
 
 final class CannotCheckJourneyUITests: XCTestCase {
+    /// One cause, one failure (U2f): a journey stops at its first failure, so a lost press is not followed by
+    /// every later step failing for it.
+    override func setUp() {
+        continueAfterFailure = false
+    }
+
     func testCannotCheckStartsAgainAScannedCollisionRestartsAt99AndATypedCodeChecksToFinish() throws {
         let first = try JourneyVectors.seed("dice-50-words12")
         let second = try JourneyVectors.seed("dice-99-words12")

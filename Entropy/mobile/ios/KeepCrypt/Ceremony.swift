@@ -1104,6 +1104,7 @@ final class CeremonyModel: ObservableObject {
     /// back are wiped once core has them. Any answer frees the picker's buttons.
     func backupPlaced(_ place: DocumentPlace?) {
         pickerUp = false
+        timers.pickerAnswered()
         guard let file = backupFile, !busy(), state.screen == .backupSave else { return }
         timers.input()
         guard let place else { return }
@@ -1718,6 +1719,7 @@ final class CeremonyModel: ObservableObject {
         passed: @escaping (Secret) -> Void
     ) {
         pickerUp = false
+        timers.pickerAnswered()
         if busy() || state.screen != .home { return }
         timers.input()
         guard let file else { return }

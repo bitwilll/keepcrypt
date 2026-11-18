@@ -18437,6 +18437,12 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   naming the roll or position and the app's facts. Seen and admitted with no effect: a failure, never re-pressed,
   since that would be an app defect. The TestHooks panel's facts line (what the model holds and what the last pad
   key or Confirm did; nothing secret) is printed with every probe.
+- M6-22 (2026-11-18, the lead's, from U2d's run 44225340107; a U4 defect U2 found): the picker rule's exemption
+  ends at the picker's answer, any answer, none or a cancel included (Timers.pickerAnswered, where the model frees
+  the picker's buttons: backupPlaced and the open picker's answer), as well as at a resume. On an iPhone the
+  document picker is the app's own sheet and the scene stays active, so no resume followed its answer, and after
+  any file was picked the next real leaving counted as none: a Protected screen was not discarded. Android's
+  picker is an activity of its own, whose stop and start end the exemption there.
 - Open item (2026-11-18), the dead Confirm: run 44185394720 at 8112f0d5, WordsUITests on macos-26, every Confirm
   from roll 32 to 50 "reached the app and was admitted, and did nothing" (touches seen, none refused) while the
   face keys went on working; run 44173357483 lost one roll of 50 in SnapshotJourneyUITests (macos-26), maybe the
@@ -19951,6 +19957,35 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Proof (M6 commit U2e, on the final tree, a worktree at U2d): `--selftest` 4 x "486 passed, 0 failed", `sh
   scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
   checks ran" (1519 s in all, on a loaded Mac).
+  As built (M6 commit U2f, from run 44225340107 at 9aec942b, the lead's reading of its logs):
+  - DynamicTypeUITests: the text grew (U2b's scaling proven), but every control read as cut: the TestHooks panel's
+    own text followed the text size, and at the largest its rows covered most of the scene, so the swipes landed
+    on the panel. The panel's type is pinned (.dynamicTypeSize(.large), TestHooks only; nothing shipped changes),
+    and the test waits past the press guard after the offline hook, as toHome does.
+  - LifecycleUITests' Protected discard: a U4 defect, lead decision M6-22 (the picker rule outliving the picker on
+    iOS). CeremonyModelTests' testAPickersAnswerEndsItsExemptionSoAProtectedScreenIsDiscardedOnLeaving failed
+    before the fix ("backupCheckEntry" is not "home", no left notice, still held) and passes after it, with its
+    converse, testALeavingWhileThePickerIsUpDiscardsNothing. For the gate report's U4 list: "after a file was
+    picked, leaving a Protected screen did not discard it" (found by LifecycleUITests at U2d, fixed at U2f).
+  - The dead Confirm repeated (CannotCheckJourneyUITests, macos-26, roll 31): the touch reached the window and was
+    admitted (touches 65 to 66, none refused), the button enabled and hittable, the model's last press a face
+    key's, so Confirm's action never ran; roll 32's Confirm worked. No cause is proven in the code: one candidate is
+    KitScreen moving its actions between the column and the fixed place (a view identity change under the touch),
+    unproven. The TestHooks panel's facts now carry a probe, nothing secret and no behaviour change: the last
+    touch down's window place and uptime, the last KitButton action run by id and uptime, and KitScreen's layout
+    changes (actions into or out of the column, "More below" shown or gone) with the last one's uptime. Never a
+    touch's place: on a pad a place names the key, a roll or a letter (the lead's review); KitButton ids are
+    navigation names, and the pads' keys are plain Buttons in PadViews.swift, no KitButtons. Every
+    journey and edge class stops at its first failure (continueAfterFailure false), so one lost press gives one
+    failure, not one a roll after it. No re-press for an admitted press (M6-21 stands).
+  Proof (M6 commit U2f, local; the UI tests run on CI): the new model test failed before the fix (3 assertions:
+  the entry stayed, no left notice, still held) and both pass after it; the stand-in "Executed 130 tests, with 0
+  failures" both ways; the three schemes built for testing and the device build, no Swift warning; `--ios-app`
+  clean on the three shipped apps, the probe's strings in the TestHooks binary alone; `--selftest-ios-app` 36
+  passed; `--workflows` and the gate clean (519 files), `cargo fmt --all --check` clean. On the final tree (a
+  worktree at U2f, the touch's place dropped): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1029 s in all).
 - [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
   do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
   docs is fixed with a test; a change the docs do not allow becomes a question for the owner.

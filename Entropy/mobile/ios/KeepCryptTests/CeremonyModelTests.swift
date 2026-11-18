@@ -192,4 +192,41 @@ final class CeremonyModelTests: XCTestCase {
         XCTAssertEqual(noticeLine(.idle), "The session was wiped after 10 minutes without input.")
         XCTAssertEqual(noticeLine(.background), "The session was wiped after 60 seconds away from the app.")
     }
+
+    /// Check a backup's entry (Protected) reached through the open picker's answer, with the app in the
+    /// foreground all along: on iOS the picker is the app's own sheet, so no resume follows its answer.
+    private func entryThroughThePicker() -> Rig {
+        let bytes = SavedBackup.shared.file
+        let rig = Rig().toHome()
+        rig.model.checkBackup(FakePickers())
+        rig.model.backupPicked(FakeFile(name: SavedBackup.name, size: Int64(bytes.count), bytes: bytes))
+        rig.worker.run()
+        XCTAssertEqual(rig.screen, .backupCheckEntry)
+        return rig
+    }
+
+    /// M6 commit U2f, a U4 defect U2 found (lead decision M6-22): the picker rule outlived the picker. Its
+    /// exemption ended only at a resume, which an iPhone's in-app picker never brings, so after any answer the
+    /// next real leaving counted as none and a Protected screen stayed. The answer ends it.
+    func testAPickersAnswerEndsItsExemptionSoAProtectedScreenIsDiscardedOnLeaving() {
+        let rig = entryThroughThePicker()
+        rig.model.appLeft()
+        XCTAssertEqual(rig.screen, .home, "leaving the Protected entry after the picker answered discards it")
+        XCTAssertEqual(rig.model.state.notice, .left)
+        XCTAssertFalse(rig.model.held)
+    }
+
+    /// The converse: a leaving while the picker is up (before its answer) is no leaving.
+    func testALeavingWhileThePickerIsUpDiscardsNothing() {
+        let rig = Rig().toHome()
+        rig.model.checkBackup(FakePickers())
+        rig.model.appLeft()
+        XCTAssertEqual(rig.screen, .home)
+        XCTAssertNil(rig.model.state.notice, "the picker's own leaving is no leaving")
+        XCTAssertNil(rig.model.state.overlay, "nor a cover")
+        rig.model.backupPicked(nil)
+        rig.model.appReturned()
+        rig.model.appResumed()
+        XCTAssertEqual(rig.screen, .home)
+    }
 }
