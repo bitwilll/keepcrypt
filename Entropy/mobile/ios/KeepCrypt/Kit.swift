@@ -22,22 +22,32 @@ enum KitColors {
     static let stop = Color(red: 0xB0 / 255, green: 0x00 / 255, blue: 0x20 / 255)
 }
 
-/// The kit's type scale, largest first (Android's KitType, its sp sizes as points).
+/// The kit's type scale, largest first (Android's KitType, its sp sizes as points), each scaled by the user's
+/// text size (Dynamic Type) as Android's sp follow the system font scale, at most twice (Q78's full range on
+/// Android reaches 2.0; U2: the sizes were fixed points before, so iOS's text size changed nothing).
 enum KitType {
     /// The app's name on its first screens.
-    static let title = Font.system(size: 32, weight: .bold)
+    static var title: Font { Font.system(size: scaled(32), weight: .bold) }
     /// A screen's heading.
-    static let heading = Font.system(size: 26, weight: .bold)
+    static var heading: Font { Font.system(size: scaled(26), weight: .bold) }
     /// Running text.
-    static let body = Font.system(size: 18)
+    static var body: Font { Font.system(size: scaled(18)) }
     /// Notes under the running text.
-    static let small = Font.system(size: 16)
+    static var small: Font { Font.system(size: scaled(16)) }
     /// A button's label.
-    static let button = Font.system(size: 20, weight: .bold)
+    static var button: Font { Font.system(size: scaled(20), weight: .bold) }
     /// Hex groups (C), in a monospace face so the columns line up.
-    static let hex = Font.system(size: 22, design: .monospaced)
+    static var hex: Font { Font.system(size: scaled(22), design: .monospaced) }
     /// A value read at a glance (the dice pick).
-    static let large = Font.system(size: 48, weight: .bold)
+    static var large: Font { Font.system(size: scaled(48), weight: .bold) }
+
+    /// The largest scale the kit's text takes: Android's 2.0 (Q78).
+    static let maxScale: CGFloat = 2
+
+    /// points at the user's text size (UIFontMetrics' body scaling), at most maxScale times.
+    static func scaled(_ points: CGFloat) -> CGFloat {
+        min(UIFontMetrics.default.scaledValue(for: points), points * maxScale)
+    }
 }
 
 /// A text's look: its face and colour (Android's TextStyle).
@@ -45,11 +55,11 @@ struct KitStyle {
     let font: Font
     let color: Color
 
-    static let body = KitStyle(font: KitType.body, color: KitColors.text)
-    static let small = KitStyle(font: KitType.small, color: KitColors.muted)
-    static let warning = KitStyle(font: KitType.body, color: KitColors.warning)
-    static let hex = KitStyle(font: KitType.hex, color: KitColors.text)
-    static let large = KitStyle(font: KitType.large, color: KitColors.text)
+    static var body: KitStyle { KitStyle(font: KitType.body, color: KitColors.text) }
+    static var small: KitStyle { KitStyle(font: KitType.small, color: KitColors.muted) }
+    static var warning: KitStyle { KitStyle(font: KitType.body, color: KitColors.warning) }
+    static var hex: KitStyle { KitStyle(font: KitType.hex, color: KitColors.text) }
+    static var large: KitStyle { KitStyle(font: KitType.large, color: KitColors.text) }
 }
 
 /// The content's frame in its scroll view's space, and the scroll view's height: whether it can scroll
@@ -84,6 +94,8 @@ struct KitScreen<Content: View, Actions: View>: View {
     let content: Content
     let actions: Actions
 
+    /// Read so a change of the user's text size draws the screen again at its new sizes (KitType).
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var screenHeight: CGFloat = 0
     @State private var actionsHeight: CGFloat = 0
     @State private var viewportHeight: CGFloat = 0
@@ -111,6 +123,7 @@ struct KitScreen<Content: View, Actions: View>: View {
     }
 
     var body: some View {
+        let _ = typeSize
         VStack(alignment: .leading, spacing: 0) {
             if testRegistry {
                 TestRegistryStrip()

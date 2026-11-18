@@ -19907,6 +19907,16 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   `--selftest-ios-app` 36 passed; the stand-in "Executed 128 tests, with 0 failures" both ways (the two new
   unit tests among them); the groups check passes on five rows a leg; `--workflows` and the gate clean (519
   files), `cargo fmt --all --check` clean.
+  As built (M6 commit U2b, U4's fix for the defect U2a's DynamicTypeUITests finds): KitType's sizes scale with
+  the user's text size (UIFontMetrics' body scaling) at most twice, Android's 2.0 (Q78), computed at each draw,
+  KitStyle's styles with them, and KitScreen reads the dynamic type size so a change of it draws the screen
+  again. At the default size every size is as before (scale 1), so the other UI tests are unchanged; the pads'
+  keys, the braille faces and the QR codes keep their fixed sizes, as Android's dp-sized ones do. For the gate
+  report's U4 list: "iOS's text size changed nothing: the kit's sizes were fixed points" (found by
+  DynamicTypeUITests at U2a, fixed at U2b).
+  Proof (M6 commit U2b, local; DynamicTypeUITests runs on CI): the three schemes built for testing and the device
+  build, no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` 36 passed; the gate
+  clean (519 files).
 - [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
   do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
   docs is fixed with a test; a change the docs do not allow becomes a question for the owner.
