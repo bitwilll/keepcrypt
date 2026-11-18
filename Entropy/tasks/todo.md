@@ -19986,6 +19986,37 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   worktree at U2f, the touch's place dropped): `--selftest` 4 x "486 passed, 0 failed", `sh
   scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
   checks ran" (1029 s in all).
+  As built (M6 commit U2g, from run 44237883463 at 63bb375c, the lead's reading of its logs):
+  - Every journey press whose effect is a new screen now reports the facts line when the screen never comes: on()
+    fails with "never came", the touch counts and facts() (U2f's probe). DynamicTypeUITests presses each screen's
+    button through pressTo (pressUntil's classification: refused by the press guard or never reached the app,
+    pressed again with a probe line; reached and admitted with no effect, failed there, no re-press, M6-21), and
+    LifecycleUITests' double tap on the gate's pass, when no entry comes, fails naming which: neither touch reached
+    the app, the guard refused every touch, or touches admitted that did nothing, with the touch counts, the
+    button's place and the facts line. pressUntil's line also names the scroll view that holds the button.
+  - The deterministic lost press (DynamicTypeUITests at its Length step on iPhone 16 and the narrow SE, Home again
+    after About; it passes on iPhone 17). The oscillation the lead asked about is not possible in KitScreen's code:
+    `scrolling` is actionsHeight > screenHeight / 2 alone; screenHeight is the whole screen's height whatever the
+    actions' place; actionsHeight is the same in either place (the actions get the same width, 24 pt margins
+    either way, and every KitButton's text is fixedSize vertically, so a short fixed place cannot shrink them);
+    so a reappearing Home makes one change, 0 to measured, in its first frames, inside the press guard's 300 ms,
+    and none after. "More below" cannot flip back and forth either: shown, it shortens the column, which keeps its
+    content below; gone (scrolled to the end), the column grows and its content still ends inside it. And the run
+    shows the app idle: XCTest's wait for the app to idle took under 0.05 s before the tap's event, which a layout loop
+    would hold. No layout defect is proven, so no layout change and no lead decision. The leading account is the
+    test's: reach() took "hittable" as "reached". At the largest size on a 375 to 393 pt wide phone Home's
+    actions scroll with the column, and Dice-only seed, the second of five, lies at its bottom edge on Home's first
+    view (no swipe found it unhittable either time; its press was never tried on the first Home); a tap at a cut
+    control's hit point can land past the scroll view's edge, on "More below" under it, which has nothing to press.
+    reach() now also drags the control (slowly, from the column's empty left margin, no glide) until the scroll
+    view holding it shows all of it, logging "probe: <id> hittable but cut by its scroll view (place)" each
+    time, as a person scrolls a half-shown button into view; and the probe after Home shows again logs the facts
+    (layout changes and the last one's uptime) at once and 2 s on, with Dice-only seed's place against its scroll
+    view. The next run proves or refutes it: a cut logged there and the press passing after the drag confirms it;
+    no cut and a failed press gives pressUntil's classification with the layout count, for a root cause in the app.
+  - Budgets: journeys-5 34 minutes and journeys-6 30, PROVISIONAL (the lead's figures, a full run's estimate plus
+    25%; run 44237883463 cancelled macos-15's journeys-5 at 24 with LifecycleUITests unfinished, macos-26's
+    journeys-6 at 21), until two green runs give M5-30's measurements; the workflow's comment says so.
 - [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
   do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
   docs is fixed with a test; a change the docs do not allow becomes a question for the owner.

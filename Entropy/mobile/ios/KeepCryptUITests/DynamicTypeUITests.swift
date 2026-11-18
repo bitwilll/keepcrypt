@@ -26,7 +26,11 @@ final class DynamicTypeUITests: XCTestCase {
         return title.frame.height
     }
 
-    /// The control id scrolled into view (the screen's column swiped up, at most six times) and hittable.
+    /// The control id scrolled into view as a person scrolls it, whole: the screen's column swiped up (at most
+    /// six times) until the control is hittable, then, where it scrolls with the column, dragged slowly until
+    /// the column's scroll view shows all of it. U2g: hittable alone can let a tap meant for a control the
+    /// column cuts land past the scroll view's edge, where nothing is pressed (the leading account of U2f's lost
+    /// press on Home again at the largest size on 375 to 393 pt wide phones); the probe line names each cut.
     private func reach(_ app: XCUIApplication, _ id: String) {
         let control = app.buttons[id]
         XCTAssertTrue(control.waitForExistence(timeout: 30), id)
@@ -36,6 +40,24 @@ final class DynamicTypeUITests: XCTestCase {
             swipes += 1
         }
         XCTAssertTrue(control.isHittable, id + " cut: not reachable at the largest text size")
+        guard let scroll = app.scrollViewHolding(id) else { return }
+        var drags = 0
+        while !scroll.frame.insetBy(dx: -1, dy: -1).contains(control.frame), drags < 6 {
+            pass("probe: \(id) hittable but cut by its scroll view (\(app.place(control))); dragged into view")
+            let shown = scroll.frame
+            let frame = control.frame
+            // Up by what is cut below (or down by what is cut above), a margin more, at most half the column.
+            let lift = frame.maxY > shown.maxY
+                ? min(frame.maxY - shown.maxY + 16, shown.height / 2)
+                : -min(shown.minY - frame.minY + 16, shown.height / 2)
+            // From the column's left margin (24 pt, no control there), slowly and held, so it does not glide on.
+            let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)).withOffset(CGVector(dx: 8, dy: 0))
+            start.press(
+                forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -lift)), withVelocity: .slow,
+                thenHoldForDuration: 0.3)
+            drags += 1
+        }
+        XCTAssertTrue(scroll.frame.insetBy(dx: -1, dy: -1).contains(control.frame), id + " cut by its scroll view: " + app.place(control))
     }
 
     func testTheLargestTextSizeGrowsTheTextAndEveryControlStaysReachable() {
@@ -48,28 +70,29 @@ final class DynamicTypeUITests: XCTestCase {
         XCTAssertGreaterThan(large, small * 1.5, "the text did not grow with the text size (\(small) to \(large) points)")
         pastPressGuard()
         reach(app, "first_launch_continue")
-        app.buttons["first_launch_continue"].tap()
-        app.on("go_offline", "Go offline", timeout: 60)
+        app.pressTo("first_launch_continue", "go_offline", passing: ["self_test"])
         app.buttons["hook_path_none"].tap()
         pastPressGuard()
         reach(app, "start")
-        app.buttons["start"].tap()
-        app.on("home", "Home")
+        app.pressTo("start", "home")
         for id in ["new_seed", "dice_only_seed", "check_backup", "load_snapshot", "show_about"] {
             reach(app, id)
         }
-        app.buttons["show_about"].tap()
-        app.on("about", "About")
+        app.pressTo("show_about", "about")
         reach(app, "back")
-        app.buttons["back"].tap()
-        app.on("home", "Home")
+        app.pressTo("back", "home")
+        // U2g's probe: KitScreen's layout changes as Home shows again (its actions moved into or out of the
+        // column, "More below" shown or gone, U2f's count and the last one's uptime), now and 2 s on, so a
+        // layout that keeps changing under the next press shows in the log; and where Dice-only seed lies
+        // against the scroll view that holds it, the press U2f's run lost here.
+        pass("probe: Home again: " + app.facts())
+        _ = app.within(2) { false }
+        pass("probe: Home again, 2 s on: " + app.facts() + "; dice_only_seed " + app.place(app.buttons["dice_only_seed"]))
         reach(app, "dice_only_seed")
-        app.buttons["dice_only_seed"].tap()
-        app.on("length", "Length")
+        app.pressTo("dice_only_seed", "length")
         reach(app, "words_24")
         reach(app, "words_12")
-        app.buttons["words_12"].tap()
-        app.on("dice", "the dice")
+        app.pressTo("words_12", "dice")
         for id in ["key_1", "key_2", "key_3", "key_4", "key_5", "key_6", "undo", "confirm", "dice_done"] {
             reach(app, id)
         }

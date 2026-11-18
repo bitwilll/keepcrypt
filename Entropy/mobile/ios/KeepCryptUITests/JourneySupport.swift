@@ -80,8 +80,23 @@ func goAheadCode(_ tag: [UInt8], _ nonce: [UInt8]) -> String {
 extension XCUIApplication {
     /// Waits for the element id (a screen's root, or any), then past the press guard.
     func on(_ id: String, _ what: String, timeout: TimeInterval = 60, file: StaticString = #filePath, line: UInt = #line) {
-        XCTAssertTrue(element(id).waitForExistence(timeout: timeout), what, file: file, line: line)
+        if !element(id).waitForExistence(timeout: timeout) {
+            XCTFail(what + " never came; touches \(touchCounts()); " + facts(), file: file, line: line)
+        }
         pastPressGuard()
+    }
+
+    /// The button id pressed as a person presses it, its effect a new screen (screen's root showing, or one it
+    /// passes on the way, Working by default): classified as pressUntil classifies a press that did nothing (U2g).
+    func pressTo(
+        _ id: String, _ screen: String, passing: [String] = ["working"], file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let button = buttons[id]
+        XCTAssertTrue(button.waitForExistence(timeout: 30), "no button " + id + "; " + facts(), file: file, line: line)
+        pressUntil(button, id + " to " + screen, file: file, line: line) {
+            ([screen] + passing).contains { self.element($0).exists }
+        }
+        on(screen, screen + " after " + id, file: file, line: line)
     }
 
     /// The button id pressed, once it is there.
@@ -128,6 +143,25 @@ extension XCUIApplication {
         return false
     }
 
+    /// The scroll view whose column holds the control id, if the control scrolls with one (a KitScreen's
+    /// actions do once they are taller than half the screen).
+    func scrollViewHolding(_ id: String) -> XCUIElement? {
+        let scroll = scrollViews.containing(.button, identifier: id).firstMatch
+        return scroll.exists ? scroll : nil
+    }
+
+    /// Where control lies, and the scroll view that clips it (U2g): frames in points, of a public control.
+    func place(_ control: XCUIElement) -> String {
+        func text(_ frame: CGRect) -> String {
+            "\(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))"
+        }
+        var line = "at " + text(control.frame)
+        if let scroll = scrollViewHolding(control.identifier) {
+            line += ", its scroll view at " + text(scroll.frame)
+        }
+        return line
+    }
+
     /// The TestHooks panel's touch counts: the touches the screens' touch guard saw, and those its press guard
     /// refused (TestHooks.swift).
     func touchCounts() -> (seen: Int, refused: Int) {
@@ -153,9 +187,8 @@ extension XCUIApplication {
             button.tap()
             if effect() || within(5, effect) { return }
             let after = touchCounts()
-            let frame = button.frame
-            let held = facts() + "; the button enabled \(button.isEnabled ? "yes" : "no"), hittable \(button.isHittable ? "yes" : "no"), at "
-                + "\(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))"
+            let held = facts() + "; the button enabled \(button.isEnabled ? "yes" : "no"), hittable \(button.isHittable ? "yes" : "no"), "
+                + place(button)
             if after.refused > before.refused {
                 pass("probe: \(what): press \(attempt) refused by the press guard (touches \(before) to \(after)); \(held); pressed again")
             } else if after.seen == before.seen {

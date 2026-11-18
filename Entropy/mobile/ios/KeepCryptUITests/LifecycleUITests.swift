@@ -147,7 +147,20 @@ final class LifecycleUITests: XCTestCase {
         app.press("check_backup")
         app.press("hook_backup_file")
         app.on("privacy_gate", "the gate before the passphrase's entry")
+        let gateBefore = app.touchCounts()
         app.buttons["pass_gate"].doubleTap()
+        if !app.within(10, { app.element("backup_check_entry").exists }) {
+            // Classified as pressUntil classifies (U2g): touches that never reached the app, touches the press
+            // guard refused, or touches it admitted that did nothing (the app's defect).
+            let gateAfter = app.touchCounts()
+            let seen = gateAfter.seen - gateBefore.seen
+            let refused = gateAfter.refused - gateBefore.refused
+            let verdict = seen == 0
+                ? "neither touch reached the app"
+                : refused == seen ? "the press guard refused every touch it saw" : "\(seen - refused) admitted and did nothing"
+            XCTFail("the gate's double tap reached no entry: \(verdict) (touches \(gateBefore) to \(gateAfter)); the button "
+                + app.place(app.buttons["pass_gate"]) + "; " + app.facts())
+        }
         app.on("backup_check_entry", "the entry")
         app.waitLabel("kc_secret_typed_letters", "----")
         pass("double tap: the privacy gate's pass reaches nothing behind it")
