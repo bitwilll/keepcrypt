@@ -19854,6 +19854,59 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   text too long, of another type, in mixed case or from another check; the 99-roll minimum through every restart path;
   Dynamic Type at its largest accessibility size and the narrowest iPhone the simulators offer (actions scroll, nothing
   cut, as MA's 360 dp rule).
+  As built (plan, 2026-11-18): the model's own edges stay with D2's ported tests (every screen, every vector);
+  the phone adds what only the phone shows, in journeys-5 (LifecycleUITests, CheckEdgesUITests, DynamicTypeUITests)
+  and two more unit tests. Each edge case and its tests:
+  - Back and a double tap: CeremonyBackTests (Back's table on every screen), PressGuardTests (the guard's rule);
+    LifecycleUITests' double taps (a screen-changing button: Length, never the dice; a dice face and Confirm: one
+    face and one roll; the privacy gate's pass: nothing typed behind it). iOS has no back gesture here: the app has
+    no navigation stack, and the edge swipe moves nothing (LifecycleUITests).
+  - Leaving: CeremonyLeavingTests (every screen; Public covered, Protected and Working discarded; 59.999 s kept, 60
+    s wiped); LifecycleUITests: a trip home (XCUIDevice's home and re-activation) from the Public dice kept at 50 s
+    and wiped at 61 s, by the Away hooks, which move the model's clock (a TestHooks HookedClock) as the app comes
+    back, never a real wait; a Protected gate discarded at once. 50 s, not 59, because the trip itself takes some
+    real seconds; the exact boundary is the unit test's.
+  - Killed: CeremonyModelTests (a fresh model starts at First launch with no call); LifecycleUITests: killed
+    at Home with a snapshot loaded, on the dice with rolls and on a Protected gate (XCUIApplication terminate and
+    launch), each back at First launch with nothing kept (no snapshot, the dice at 0, no notice).
+  - Online: CeremonyConfigurationAndOnlineTests (every screen); LifecycleUITests on the dice (the offline hook).
+  - Idle: CeremonyIdleTests (every screen); LifecycleUITests: the warning at 9 minutes, its tap, the wipe at 10,
+    by the Idle hooks (the clock moved on).
+  - The camera: CeremonyScanStopTests (new: refused, absent and failed each say why, keep the check and offer the
+    code; Open Settings after a refusal alone); CheckEdgesUITests: the simulator's absent camera on the phone. A
+    refused or failed camera needs a device (I2).
+  - Read-back misreads: CeremonyRefusalTablesTests (every mirror pair, a wrong insert); CheckEdgesUITests: a mirror
+    misread and a wrong insert on the letter pad, each read again.
+  - Backups: CeremonyRefusalTablesTests and CeremonyCheckBackupTests (every damaged and wrongly opened file),
+    CeremonySaveFailureTests (new: a failed write, a failed read-back, a changed byte, then Save again);
+    CheckEdgesUITests (the Save hook's corrupt mode on the phone), LifecycleUITests (a wrong passphrase through the
+    Backup file hook). A file that is not one: the unit tests' name and size refusals (D7).
+  - Snapshots: CeremonyRefusalTablesTests (every kcr.json snapshot: stale, future, wrong key, damaged);
+    LifecycleUITests (bad-magic through the Snapshot file hook), SnapshotJourneyUITests (a stale one loaded).
+  - Go-ahead texts: CeremonyRefusalTablesTests (every kcr.json text: too long, other type, mixed case, another
+    check); MixedJourneyUITests (another seal's proof refused through the Scan hook). Every refusal reads the same
+    line on the phone (scanLine), so no more UI runs.
+  - 99 rolls: CeremonyIdleTests' testThe99RollMinimumAfterACollisionOutlivesEveryRestartPath; the journeys'
+    Match found and scanned collision (MatchFound, CannotCheck).
+  - Text size and width: DynamicTypeUITests at UICTContentSizeCategoryAccessibilityXXXL. The kit's sizes were fixed
+    points, so iOS's text size changed nothing (a defect against Q78's full range, which Android follows to 2.0):
+    U2b scales KitType with Dynamic Type at most twice; the test fails before it (the text does not grow) and checks
+    every control of six screens reachable after. The narrowest iPhone CI runs is iPhone 16 / 17 (393 and 402
+    points); a narrower one (iPhone SE, 375 points) needs a simulator device the runners may not have created: a
+    proposal for the lead, not added.
+  As built (M6 commit U2a): TestHooks' HookedClock (the model's clock in the TestHooks build, moved on by the Away
+  hooks as the app comes back, CaptureShield calling returning() before the model's return, and by the Idle
+  hooks at once), the panel's Away 50 s, Away 61 s, Idle 9 min and Idle 1 min; JourneySupport's toDice,
+  waitNotice and backupMadeAndSaved(verified:); LifecycleUITests (6 tests), CheckEdgesUITests (1),
+  DynamicTypeUITests (1, failing here by design: the fix is U2b); CeremonyScanStopTests and
+  CeremonySaveFailureTests; journeys-5 on each leg in entropy-ios.yml with KC_JOURNEYS grown, 25 minutes from the
+  estimate in its comment (LifecycleUITests 325 s, CheckEdgesUITests 230 s, DynamicTypeUITests 60 s, the fixed
+  part 570 s: 1185 s x 1.25 is 1481 s).
+  Proof (M6 commit U2a, local; the UI tests run on CI): the three schemes built for testing and the device build,
+  no Swift warning; `--ios-app` clean on the three shipped apps; the hooks marker in TestHooks alone;
+  `--selftest-ios-app` 36 passed; the stand-in "Executed 128 tests, with 0 failures" both ways (the two new
+  unit tests among them); the groups check passes on five rows a leg; `--workflows` and the gate clean (519
+  files), `cargo fmt --all --check` clean.
 - [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
   do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
   docs is fixed with a test; a change the docs do not allow becomes a question for the owner.

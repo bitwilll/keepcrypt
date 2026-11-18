@@ -68,6 +68,9 @@ struct CaptureShield<Content: View>: View {
         .onChange(of: scenePhase, initial: true) { _, phase in
             switch phase {
             case .active:
+                #if KC_TEST_HOOKS
+                hooks.returning()
+                #endif
                 model.appReturned()
                 model.appResumed()
             case .background:

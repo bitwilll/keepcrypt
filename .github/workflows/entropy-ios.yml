@@ -97,7 +97,8 @@ env:
   # unit job leaves out. The unit job checks this list against the journeys matrix below.
   KC_JOURNEYS: >-
     ScanUITests WordsUITests CheckBackupUITests MatchFoundJourneyUITests TwentyFourWordJourneyUITests
-    MixedJourneyUITests CannotCheckJourneyUITests SnapshotJourneyUITests
+    MixedJourneyUITests CannotCheckJourneyUITests SnapshotJourneyUITests LifecycleUITests CheckEdgesUITests
+    DynamicTypeUITests
 
 defaults:
   run:
@@ -345,7 +346,12 @@ jobs:
     # c52342ef (macos-26 / macos-15, seconds): journeys-1 1455 / 973 and 1158 / 1185, so 1455 s x 1.25 is
     # 1819 s, 31 minutes; journeys-2 1392 / 1012 and 1309 / 1043, 1392 s x 1.25 is 1740 s, 29 minutes;
     # journeys-3 1402 / 947 and 1278 / 1071, 1402 s x 1.25 is 1753 s, 30 minutes; journeys-4 1471 / 1381
-    # and 1393 / 1401, 1471 s x 1.25 is 1839 s, 31 minutes. U2's journeys come as rows, at most four a leg.
+    # and 1393 / 1401, 1471 s x 1.25 is 1839 s, 31 minutes. M6 item U2 adds journeys-5, its edge cases,
+    # estimated from those classes' measured presses (the TestHooks launch to Home about 17 s, 0.7 s a press
+    # with its effect awaited on macos-26, 1 s a screen): LifecycleUITests 325 s (six launches and their few
+    # presses), CheckEdgesUITests 230 s (WordsUITests' 50 rolls and read-back with two misreads, a save),
+    # DynamicTypeUITests 60 s; 570 s + 615 s is 1185 s, x 1.25 is 1481 s, 25 minutes, re-measured from its
+    # first green run. Five rows a leg; more come only with the lead's word.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -379,6 +385,13 @@ jobs:
             group: journeys-4
             classes: TwentyFourWordJourneyUITests SnapshotJourneyUITests
             timeout: 31
+          - os: macos-26
+            xcode: '26.6'
+            ios: '26.5'
+            device: iPhone 17
+            group: journeys-5
+            classes: LifecycleUITests CheckEdgesUITests DynamicTypeUITests
+            timeout: 25
           - os: macos-15
             xcode: '16.4'
             ios: '18.6'
@@ -407,6 +420,13 @@ jobs:
             group: journeys-4
             classes: TwentyFourWordJourneyUITests SnapshotJourneyUITests
             timeout: 31
+          - os: macos-15
+            xcode: '16.4'
+            ios: '18.6'
+            device: iPhone 16
+            group: journeys-5
+            classes: LifecycleUITests CheckEdgesUITests DynamicTypeUITests
+            timeout: 25
     env:
       KC_XCODE: ${{ matrix.xcode }}
       KC_IOS: ${{ matrix.ios }}

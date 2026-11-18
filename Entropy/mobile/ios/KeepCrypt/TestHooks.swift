@@ -41,6 +41,29 @@ final class TestHooks: ObservableObject {
     @Published var captured = false
     /// The scene forced inactive, as the app switcher leaves it.
     @Published var inactive = false
+    /// The model's clock, which the clock hooks move on (U2: the timers' minutes, and time away, without waiting).
+    var clock: HookedClock?
+    /// Seconds the clock moves on when the app next comes back from the background (the Away hooks), so a UI
+    /// test's trip home counts as that long away; 0 for none.
+    @Published private(set) var awayJump: Int64 = 0
+
+    /// The Away hooks: the next trip home counts seconds more.
+    func awayFor(_ seconds: Int64) {
+        awayJump = seconds
+    }
+
+    /// The Idle hooks: the clock moves on seconds now, as that long without input (the timers' next tick acts).
+    func idleFor(_ seconds: Int64) {
+        clock?.advance(seconds * 1_000)
+    }
+
+    /// The app comes back from the background: the Away hook's seconds pass first, after the leaving was timed.
+    func returning() {
+        guard awayJump > 0 else { return }
+        clock?.advance(awayJump * 1_000)
+        awayJump = 0
+    }
+
     /// The touches the screens' touch guard saw go down in the screens' area, and those its press guard
     /// refused (U1d: the UI tests' probe of a press that did nothing).
     @Published private(set) var touchesSeen = 0
@@ -172,6 +195,29 @@ final class TestHooks: ObservableObject {
     /// model's next call shows the stop screen, as any halt does.
     func haltSlot() {
         _ = Core.shared.shellHalt()
+    }
+}
+
+/// The model's clock in the TestHooks build: the system's, moved on by the clock hooks (U2), so the timers' 60 s
+/// away, 9 and 10 minutes idle are reached without waiting them. Monotonic still: it only moves forward.
+final class HookedClock: MonotonicClock {
+    private let system: MonotonicClock
+    private var ahead: Int64 = 0
+
+    init(_ system: MonotonicClock) {
+        self.system = system
+    }
+
+    func advance(_ millis: Int64) {
+        ahead += max(0, millis)
+    }
+
+    func nowMillis() -> Int64 {
+        system.nowMillis() + ahead
+    }
+
+    func nowNanos() -> Int64 {
+        system.nowNanos() + ahead * 1_000_000
     }
 }
 
@@ -374,6 +420,16 @@ struct TestHookPanel: View {
                     .accessibilityIdentifier("hook_path_none")
                 Button("Scan") { hooks.scanner?.scan() }
                     .accessibilityIdentifier("hook_scan")
+            }
+            HStack {
+                Button("Away 50 s") { hooks.awayFor(50) }
+                    .accessibilityIdentifier("hook_away_50")
+                Button("Away 61 s") { hooks.awayFor(61) }
+                    .accessibilityIdentifier("hook_away_61")
+                Button("Idle 9 min") { hooks.idleFor(540) }
+                    .accessibilityIdentifier("hook_idle_9")
+                Button("Idle 1 min") { hooks.idleFor(60) }
+                    .accessibilityIdentifier("hook_idle_1")
             }
             HStack {
                 Button("Backup file") { hooks.pickBackup() }

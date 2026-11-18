@@ -302,7 +302,7 @@ extension XCUIApplication {
     /// From the wallet summary: the backup made through its gate, the passphrase's two pages read from the
     /// screen, both questions answered on the letter pad, and Save answered by the Save hook (in memory, no
     /// file): "Backup verified", then the watch-only offer. The passphrase's eight words.
-    func backupMadeAndSaved(file: StaticString = #filePath, line: UInt = #line) throws -> [String] {
+    func backupMadeAndSaved(verified: Bool = true, file: StaticString = #filePath, line: UInt = #line) throws -> [String] {
         press("summary_next")
         on("backup_offer", "the backup's offer", file: file, line: line)
         press("make_backup")
@@ -336,8 +336,16 @@ extension XCUIApplication {
         XCTAssertNotNil(element("backup_name").label.range(of: "^keepcrypt-backup-[0-9a-f]{8}\\.age$", options: .regularExpression))
         press("save_backup")
         press("hook_save")
-        on("backup_verified", "Backup verified", timeout: 120, file: file, line: line)
-        press("backup_next")
+        if verified {
+            on("backup_verified", "Backup verified", timeout: 120, file: file, line: line)
+            press("backup_next")
+        } else {
+            on("save_failure", "the save's failure", timeout: 120, file: file, line: line)
+            XCTAssertTrue(
+                element("save_failure").label.hasPrefix("Backup not saved: the file read back does not verify ("),
+                "the verify's refusal named", file: file, line: line)
+            press("skip_backup")
+        }
         on("watch_offer", "the watch-only offer", file: file, line: line)
         return words
     }
@@ -370,6 +378,20 @@ extension XCUIApplication {
         on("backup_check_result", "back to the result", file: file, line: line)
         press("backup_done")
         on("home", "Home", file: file, line: line)
+    }
+
+    /// The notice line above the start screens: why the session was wiped (Ceremony.swift's noticeLine).
+    func waitNotice(_ text: String, file: StaticString = #filePath, line: UInt = #line) {
+        waitLabel("notice", text, timeout: 60, file: file, line: line)
+    }
+
+    /// From Home: a dice-only 12-word seed's dice, with rolls pressed (a session held from the start).
+    func toDice(rolls: String = "", file: StaticString = #filePath, line: UInt = #line) {
+        press("dice_only_seed")
+        on("length", "Length", file: file, line: line)
+        press("words_12")
+        on("dice", "the dice", file: file, line: line)
+        if !rolls.isEmpty { rollFaces(rolls, file: file, line: line) }
     }
 
     /// From the checklist: its two-devices line when the seed has two, and Finish: Home.

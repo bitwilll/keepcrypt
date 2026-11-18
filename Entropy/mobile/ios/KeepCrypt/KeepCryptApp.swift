@@ -20,8 +20,14 @@ struct KeepCryptApp: App {
         #else
         let registry = false
         #endif
+        #if KC_TEST_HOOKS
+        let clock = HookedClock(SystemClock())
+        TestHooks.shared.clock = clock
+        #else
+        let clock = SystemClock()
+        #endif
         let model = CeremonyModel(
-            core: Core.shared, worker: QueueWorker(), clock: SystemClock(), date: SystemDate(),
+            core: Core.shared, worker: QueueWorker(), clock: clock, date: SystemDate(),
             motion: CoreMotionSource(), testRegistry: registry)
         _model = StateObject(wrappedValue: model)
         let pickers = ScreenPickers()
