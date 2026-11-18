@@ -596,7 +596,7 @@ final class CeremonyModel: ObservableObject {
         default:
             break
         }
-        guard let previous = backTo(current.screen) else { return }
+        guard let previous = Self.backTo(current.screen) else { return }
         if pressOn(current.screen) {
             show(previous) {
                 $0.seal = current.seal
@@ -1944,8 +1944,19 @@ final class CeremonyModel: ObservableObject {
         return true
     }
 
+    /// Whether screen has a Back or a Previous that back() reaches (lead decision M6-25, VoiceOver's escape):
+    /// a route of backTo's, or the paged screens' previous page (on their first page that does nothing).
+    static func hasBack(_ screen: Screen) -> Bool {
+        switch screen {
+        case .words, .wordsOverview, .backupPassphrase, .watchDescriptorQr:
+            return true
+        default:
+            return backTo(screen) != nil
+        }
+    }
+
     /// Where Back goes from screen: only where nothing is lost; nil elsewhere.
-    private func backTo(_ screen: Screen) -> Screen? {
+    private static func backTo(_ screen: Screen) -> Screen? {
         switch screen {
         case .goOffline: return .firstLaunch
         case .home: return .goOffline

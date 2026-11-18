@@ -31,25 +31,14 @@ struct Screens: View {
                 if let notice = state.notice, !state.screen.isWorking, state.screen != .stop {
                     NoticeBar(text: noticeLine(notice))
                 }
-                screen(state, registry)
+                escaping(screen(state, registry), state.screen)
             }
             .accessibilityHidden(state.overlay != nil)
             if let overlay = state.overlay {
                 OverlayScreen(overlay: overlay, testRegistry: registry) { model.dismissOverlay() }
             }
         }
-        .environment(\.pressGate, PressGate { action in
-            // M6-23: the action runs only if the touch that made it was admitted (PressGuard.swift's permits).
-            MainActor.assumeIsolated {
-                if pressGuard.permits(shownView(model.state), uptimeMillis()) {
-                    action()
-                } else {
-                    #if KC_TEST_HOOKS
-                    TestHooks.shared.notePressDropped()
-                    #endif
-                }
-            }
-        })
+        .environment(\.pressGate, PressGate { gated($0) })
         .background(KitColors.background.ignoresSafeArea())
         .background(TouchGuard(model: model, pressGuard: pressGuard))
         .fileImporter(
@@ -67,6 +56,38 @@ struct Screens: View {
         .onChange(of: shownView(state), initial: true) { _, view in
             pressGuard.composed(view, uptimeMillis())
             UIAccessibility.post(notification: .screenChanged, argument: paneTitle(of: model.state))
+        }
+    }
+
+    /// action run if the press guard permits it (M6-23: the touch that made the press was admitted; PressGuard.swift's
+    /// permits): the screens' press gate, and VoiceOver's escape.
+    private func gated(_ action: () -> Void) {
+        MainActor.assumeIsolated {
+            if pressGuard.permits(shownView(model.state), uptimeMillis()) {
+                action()
+            } else {
+                #if KC_TEST_HOOKS
+                TestHooks.shared.notePressDropped()
+                #endif
+            }
+        }
+    }
+
+    /// view with VoiceOver's escape (the two-finger scrub), the iPhone's system Back (lead decision M6-25): on a
+    /// screen with a Back or a Previous (CeremonyModel.hasBack) it calls the model's back through the press gate,
+    /// as TalkBack's back gesture does on Android; elsewhere the screen has no escape action, so VoiceOver's
+    /// escape goes unanswered (false). The branch follows the screen alone, whose change replaces the view anyway.
+    @ViewBuilder
+    private func escaping(_ view: some View, _ screen: Screen) -> some View {
+        if CeremonyModel.hasBack(screen) {
+            view.accessibilityAction(.escape) {
+                #if KC_TEST_HOOKS
+                MainActor.assumeIsolated { TestHooks.shared.noteFired("escape") }
+                #endif
+                gated { model.back() }
+            }
+        } else {
+            view
         }
     }
 

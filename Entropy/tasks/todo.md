@@ -20263,6 +20263,19 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Length, Home, Go offline back to First launch through pressTo and on to Home again; before U3d its first Back
   fails ("no button back"), on CI. Proof (local): the three schemes built for testing and the Shipping device build,
   no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  As built (M6 commit U3e, lead decision M6-25): VoiceOver's escape (the two-finger scrub) is the iPhone's system
+  Back. CeremonyModel.hasBack(screen) says whether back() goes anywhere from a screen (a backTo route, now static,
+  or the paged screens' previous page); Screens wraps the screen in accessibilityAction(.escape) there alone,
+  calling the model's back through the same press gate as every press (Screens.gated), so a screen with no route
+  has no escape action and VoiceOver's escape goes unanswered (UIKit's false). The branch follows the screen only,
+  whose change replaces the view anyway, so no screen's state is reset by it. On a paged screen's first page the
+  escape is answered and does nothing, as Back there. The facts' last fired names "escape". CeremonyBackTests'
+  testVoiceOversEscapeIsOfferedExactlyWhereBackGoesSomewhere holds hasBack to the class's landing table and the
+  paged screens, screen by screen (CI's unit job; no host run here). XCUITest has no way to perform VoiceOver's
+  escape, so the gesture's wiring is proven by reading: the action on the screen's root view, the model's back
+  behind the press gate; the owner's I5 VoiceOver check on hardware covers it. No fail-first run: hasBack is new.
+  Proof (local): the three schemes built for testing (the unit test compiles) and the Shipping device build, no
+  Swift warning; `--ios-app` clean; `--selftest-ios-app` exit 0, "36 passed, 0 failed".
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 

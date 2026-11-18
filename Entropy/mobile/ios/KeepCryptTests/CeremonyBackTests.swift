@@ -80,6 +80,16 @@ final class CeremonyBackTests: XCTestCase {
         }
     }
 
+    /// Lead decision M6-25: VoiceOver's escape is offered on exactly the screens where Back goes somewhere (this
+    /// class's landing table) or is the previous page (the paged screens), and on no other.
+    func testVoiceOversEscapeIsOfferedExactlyWhereBackGoesSomewhere() {
+        let paged: Set<Screen> = [.words, .wordsOverview, .backupPassphrase, .watchDescriptorQr]
+        for screen in Screen.allCases {
+            let expected = paged.contains(screen) || (landing[screen].map { $0 != screen } ?? false)
+            XCTAssertEqual(CeremonyModel.hasBack(screen), expected, screen.id)
+        }
+    }
+
     /// BackTest.kt's onThePagedScreensBackIsThePreviousPage.
     func testOnThePagedScreensBackIsThePreviousPage() {
         for screen in [Screen.words, .wordsOverview, .backupPassphrase] {
