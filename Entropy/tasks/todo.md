@@ -20358,6 +20358,26 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   SUCCESSFUL", exit 0, :screens' host tests 210, :core-ffi's 34, :app's 11 and 11, :secure-ui's 5, none failed;
   iOS, the three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean;
   `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  As built (M6 commit U3j, iPhone run 44398792169 at 78c6e338, journeys-6 on both legs):
+  - macos-15's narrow iPhone, "dice_only_seed cut: not reachable at the largest text size": a test defect, not the
+    app's. reach() swiped the column up until the control was hittable, and an XCUITest swipe glides. U3d's Back
+    lengthened Home's column (six actions, scrolling with the column at the largest size); New seed's drag left
+    Dice-only seed under the TestHooks panel (the scroll view at 0,79 375x588 runs on under the panel at 0,559),
+    and each swipe carried it past the column's top, six times over, so it was never hittable. No action is cut:
+    the scroll view's content scrolls clear of the bottom inset (the panel is a safe-area inset), and New seed was
+    dragged above it; in Shipping there is no panel, and a person scrolls to what they see. reach() now, for a
+    control in a scroll view, drags it slowly up or down by what is cut until it is wholly shown above the panel
+    (bringIntoView, at most ten drags of half the shown region, hittable or not), then asserts it whole and
+    hittable; a fixed action must be hittable as it stands. Each failure gives the facts line and where the control,
+    its scroll view and the panel lie (a pad key unplaced, U3a).
+  - macos-26's iPhone 17, "the screenshot's notice" at the largest size: a slow runner (automation set up from
+    33.9 s to 87.6 s, First launch at 154 s); the notice's wait was 10 s. The waits are now 60 s for First launch and
+    30 s for the title and the notice, each failure with the facts line ("notice ..." says whether the model holds
+    one), and a notice drawn with no height fails as such. U3f's notice bar has nothing that could draw it at zero
+    height: a Text with its vertical size fixed (fixedSize vertical), its font KitType.scaled(16), padded 8 above and
+    below, in the screens' VStack above the screen.
+  Proof (local): the three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app`
+  clean; `--selftest-ios-app` exit 0, "36 passed, 0 failed". The runs themselves are CI's.
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 

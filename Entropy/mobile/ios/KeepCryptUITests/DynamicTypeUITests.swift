@@ -18,39 +18,48 @@ final class DynamicTypeUITests: XCTestCase {
 
     /// The First launch title's height, launched with arguments, and the notice bar's once a screenshot (the
     /// hook) has put it up there (lead decision M6-26: the bar's 16 was a fixed size before U3f, so it did not
-    /// grow and the second assertion below failed).
+    /// grow and the second assertion below failed). U3j: each wait 30 s or more, as the journeys' (run 44398792169's
+    /// macos-26 runner took 54 s to set up automation and 154 s to show First launch, and the notice was not found in
+    /// the 10 s then given); a miss says what the facts line holds ("notice ..." among it), so a slow runner is told
+    /// from a notice that never came, and a notice drawn with no height fails as such.
     private func heights(_ app: XCUIApplication) -> (title: CGFloat, notice: CGFloat) {
         app.launch()
-        XCTAssertTrue(app.element("first_launch").waitForExistence(timeout: 30), "First launch")
+        XCTAssertTrue(app.element("first_launch").waitForExistence(timeout: 60), "First launch")
         // First launch's own title (the privacy cover, should the scene not be active, says KeepCrypt too).
         let title = app.element("first_launch").staticTexts["KeepCrypt"].firstMatch
-        XCTAssertTrue(title.waitForExistence(timeout: 10), "the app's name")
+        XCTAssertTrue(title.waitForExistence(timeout: 30), "the app's name; " + app.facts())
         let titleHeight = title.frame.height
         app.buttons["hook_screenshot"].tap()
         let notice = app.element("notice")
-        XCTAssertTrue(notice.waitForExistence(timeout: 10), "the screenshot's notice")
-        return (titleHeight, notice.frame.height)
+        XCTAssertTrue(notice.waitForExistence(timeout: 30), "the screenshot's notice never came; " + app.facts())
+        let noticeHeight = notice.frame.height
+        XCTAssertGreaterThan(noticeHeight, 0, "the screenshot's notice has no height; " + app.facts())
+        return (titleHeight, noticeHeight)
     }
 
-    /// The control id scrolled into view as a person scrolls it, whole: the screen's column swiped up (at most
-    /// six times) until the control is hittable, then, where it scrolls with the column, dragged slowly until it
-    /// is wholly shown above the TestHooks panel (JourneySupport's bringIntoView). U2h: the column's scroll view
-    /// runs on under the panel, so a control there is hittable to XCUITest while its tap lands on the panel (run
-    /// 44306763928: Dice-only seed at 23,579 329x82 inside a scroll view at 0,57 375x609, the panel over it, and
-    /// three presses that never reached the app); the probe line names each drag.
+    /// The control id brought into view as a person scrolls it, whole and above the TestHooks panel. In a column's
+    /// scroll view it is dragged there slowly, up or down by what is cut (JourneySupport's bringIntoView, at most ten
+    /// drags of half the shown region), whether hittable or not; elsewhere (a fixed action) it must be hittable as it
+    /// stands. U3j: reach() swiped up until the control was hittable, and a swipe glides: at the largest size on the
+    /// narrow iPhone, Home's Back (U3d) lengthened its column and run 44398792169's swipes carried Dice-only seed from
+    /// under the panel past the column's top, six times over, so it was never hittable. Test-only: a person scrolls
+    /// to what they see. U2h: the column's scroll view runs on under the panel, so a control there is hittable to
+    /// XCUITest while its tap lands on the panel; the probe line names each drag. A failure gives the facts and
+    /// where the control, its scroll view and the panel lie.
     private func reach(_ app: XCUIApplication, _ id: String) {
         // A pad's key is named "a pad key" and never placed (U3a).
         let name = app.lineName(id)
+        let placed = !app.isPadKey(id)
         let control = app.buttons[id]
-        XCTAssertTrue(control.waitForExistence(timeout: 30), name)
-        var swipes = 0
-        while !control.isHittable, swipes < 6 {
-            app.swipeUp()
-            swipes += 1
+        XCTAssertTrue(control.waitForExistence(timeout: 30), name + " never came; " + app.facts())
+        func whereItIs() -> String {
+            app.facts() + "; " + name + (placed ? " " + app.place(control) : "")
         }
-        XCTAssertTrue(control.isHittable, name + " cut: not reachable at the largest text size")
-        app.bringIntoView(control, name, placed: !app.isPadKey(id))
-        XCTAssertTrue(app.wholeInView(control), name + " not wholly shown above the hooks panel: " + app.place(control))
+        if app.scrollViewHolding(id) != nil {
+            app.bringIntoView(control, name, placed: placed, limit: 10)
+            XCTAssertTrue(app.wholeInView(control), name + " cut: not wholly shown above the hooks panel at the largest text size; " + whereItIs())
+        }
+        XCTAssertTrue(control.isHittable, name + " cut: not reachable at the largest text size; " + whereItIs())
     }
 
     func testTheLargestTextSizeGrowsTheTextAndEveryControlStaysReachable() {

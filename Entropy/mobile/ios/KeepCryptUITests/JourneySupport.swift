@@ -228,10 +228,10 @@ extension XCUIApplication {
     /// half-shown button: slowly and held (no glide), from the column's left margin (24 pt, no control there)
     /// inside the shown region, by what is cut and a margin, at most half the region a drag, at most six. Each
     /// drag logs a probe line named what, with the control's place only when placed (a public control).
-    func bringIntoView(_ control: XCUIElement, _ what: String, placed: Bool) {
+    func bringIntoView(_ control: XCUIElement, _ what: String, placed: Bool, limit: Int = 6) {
         guard control.exists, let scroll = scrollViewHolding(control.identifier) else { return }
         var drags = 0
-        while control.exists, !wholeInView(control), drags < 6 {
+        while control.exists, !wholeInView(control), drags < limit {
             pass("probe: \(what): not wholly shown above the hooks panel" + (placed ? " (" + place(control) + ")" : "") + "; dragged into view")
             let shown = shownRegion(control)
             let frame = control.frame
