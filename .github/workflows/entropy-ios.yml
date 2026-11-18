@@ -346,7 +346,8 @@ jobs:
     # c52342ef (macos-26 / macos-15, seconds): journeys-1 1455 / 973 and 1158 / 1185, so 1455 s x 1.25 is
     # 1819 s, 31 minutes; journeys-2 1392 / 1012 and 1309 / 1043, 1392 s x 1.25 is 1740 s, 29 minutes;
     # journeys-3 1402 / 947 and 1278 / 1071, 1402 s x 1.25 is 1753 s, 30 minutes; journeys-4 1471 / 1381
-    # and 1393 / 1401, 1471 s x 1.25 is 1839 s, 31 minutes. M6 item U2 adds journeys-5, its edge cases,
+    # and 1393 / 1401, 1471 s x 1.25 is 1839 s, 31 minutes; then run 44206258298 at 928234d7 took 1618 s on
+    # macos-15's journeys-4, so 1618 s x 1.25 is 2023 s, 34 minutes. M6 item U2 adds journeys-5, its edge cases,
     # estimated from those classes' measured presses (the TestHooks launch to Home about 17 s, 0.7 s a press
     # with its effect awaited on macos-26, 1 s a screen): LifecycleUITests 325 s (six launches and their few
     # presses), CheckEdgesUITests 230 s (WordsUITests' 50 rolls and read-back with two misreads, a save),
@@ -384,7 +385,7 @@ jobs:
             device: iPhone 17
             group: journeys-4
             classes: TwentyFourWordJourneyUITests SnapshotJourneyUITests
-            timeout: 31
+            timeout: 34
           - os: macos-26
             xcode: '26.6'
             ios: '26.5'
@@ -419,7 +420,7 @@ jobs:
             device: iPhone 16
             group: journeys-4
             classes: TwentyFourWordJourneyUITests SnapshotJourneyUITests
-            timeout: 31
+            timeout: 34
           - os: macos-15
             xcode: '16.4'
             ios: '18.6'
