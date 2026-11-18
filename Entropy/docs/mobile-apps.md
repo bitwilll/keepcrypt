@@ -14,7 +14,7 @@ The phone apps run the same core and the same ceremony as the Pi, but a phone is
 
 ## Architecture
 
-Both apps are thin shells over `keepcrypt-core`. The screens are written with Compose Multiplatform in shared modules and built for Android in M5; The iPhone's screens are SwiftUI (Q86), written over the same bridge, so the flow is written twice, in Kotlin and in Swift, and one shared table of screens holds both to the same list. The screens reach the core through a small hand-written bridge: `keepcrypt-ffi`, the safe layer that holds every rule and no unsafe code, with one boundary crate per platform under it (`keepcrypt-jni` for Android, over `keepcrypt-guard`, the one panic catch; `keepcrypt-capi` for iPhone, a C ABI over the same guard); no seed logic is written twice, and no seed ever leaves memory unencrypted. On Android three residuals, accepted for the M7 audit, limit that promise: Java's moving garbage collector and text caches can keep copies of the text on screen that nothing can wipe; a native abort (a panic inside a destructor, an allocation failure, a stack overflow) writes a crash dump that can include memory near the crash; and a vendor's swap to flash (for example Samsung's RAM Plus) is outside the app's control. On the iPhone three residuals, also accepted for the M7 audit, limit it: Swift's strings and the text SwiftUI draws cannot be wiped; an unexpected Swift trap ends the app with a system crash report that can name where it stopped; and a screenshot cannot be blocked, only answered by a discard.
+Both apps are thin shells over `keepcrypt-core`. The screens are written with Compose Multiplatform in shared modules and built for Android in M5; The iPhone's screens are SwiftUI (Q86), written over the same bridge, so the flow is written twice, in Kotlin and in Swift, and one shared table of screens holds both to the same list. The screens reach the core through a small hand-written bridge: `keepcrypt-ffi`, the safe layer that holds every rule and no unsafe code, with one boundary crate per platform under it (`keepcrypt-jni` for Android, over `keepcrypt-guard`, the one panic catch; `keepcrypt-capi` for iPhone, a C ABI over the same guard); no seed logic is written twice, and no seed ever leaves memory unencrypted. On Android three residuals, accepted for the M7 audit, limit that promise: Java's moving garbage collector and text caches can keep copies of the text on screen that nothing can wipe; a native abort (a panic inside a destructor, an allocation failure, a stack overflow) writes a crash dump that can include memory near the crash; and a vendor's swap to flash (for example Samsung's RAM Plus) is outside the app's control. On the iPhone four residuals, also accepted for the M7 audit, limit it: Swift's strings and the text SwiftUI draws cannot be wiped; an unexpected Swift trap ends the app with a system crash report that can name where it stopped; a screenshot cannot be blocked, only answered by a discard; and VoiceOver reads the words, passphrases and D aloud or to a braille display, as TalkBack does, while iOS has no accessibility-data-sensitive mark to keep other assistive services from them.
 
 | Concern | Android | iPhone |
 | --- | --- | --- |
@@ -95,7 +95,7 @@ struct SeedWordsView: View {
     var body: some View {
         Group {
             if isSceneCaptured || scenePhase != .active {
-                RedactedCover(text: "Hidden while the screen is shared or recorded")
+                RedactedCover(text: "Hidden while the screen is recorded. Stop the recording to go on.")
             } else {
                 SecureLayer { WordGrid(words: ceremony.visibleWords) }  // secure-entry rendering
             }
@@ -154,12 +154,12 @@ The apps can save exactly one thing: the age-encrypted backup file defined in th
 1. The core generates an 8-word backup passphrase; it is shown on a protected screen, written on paper, and 2 words are confirmed.
 2. The core encrypts in memory; the app never holds plaintext in a file.
 3. Android opens the system "create document" picker (`ActivityResultContracts.CreateDocument`) and writes the bytes to the returned URI. iPhone uses `.fileExporter` with an in-memory document.
-4. The app reads the saved file back, decrypts it in memory and compares the fingerprint before showing "Backup verified."
-5. If the user picks a cloud folder, the app allows it with one line: the passphrase is what protects the file, so keep it on paper, away from the file.
+4. The app reads the saved file back, decrypts it in memory and compares the fingerprint before showing "Backup verified." If the write or the read-back fails, it says so and asks the user to delete the partial file, since an app cannot always delete a document the system picker gave it.
+5. The save screen says, in one line, that a cloud folder is allowed and what that means: the passphrase is what protects the file, so keep it on paper, away from the file.
 
 **Never offered:** share sheet, copy, a QR code of the words (SeedQR), image, Photos, email, plaintext text file, or any export of the words themselves.
 
-**Checking a backup.** Open a `.age` file from the picker, enter the passphrase on the in-app letter pad (the first four letters of each word, as on the Pi), and the app shows the fingerprint and "Backup OK." Words appear only if the user asks, on the same protected screen.
+**Checking a backup.** Open a `.age` file from the picker, enter the passphrase on the in-app letter pad (the first four letters of each word, as on the Pi), and the app shows the fingerprint and "Backup OK." on a Public screen. Words appear only if the user asks: Show words opens the words screens through the privacy gate.
 
 **Reading a snapshot.** The file picker also opens `.kcr` registry snapshots. The app checks the Ed25519 signature against the pinned key and keeps the snapshot in memory only; it is the only file type the app reads besides `.age` backups.
 

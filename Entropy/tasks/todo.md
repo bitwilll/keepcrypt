@@ -18451,6 +18451,17 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   view shown admits a touch then. A refusal holds until the next down or until another view is shown. The
   recognizer's cancel stays as the first line. Android's PressGuard.kt decides at the down alone (its pointer
   handler consumes the refused pointer's every event); Android is unchanged.
+- M6-24 (2026-11-19, the lead's, from U3's audit): Back on Go offline, Home and Length, each a KitButton through
+  the press gate calling the model's back, whose routes (backTo) are Android's: Go offline to First launch, Home to
+  Go offline, Length to Home. Android reaches them by the system Back; an iPhone has none, so a wrong choice on
+  Length could only go forward (PF's "back, only where nothing is lost" on menus).
+- M6-25 (2026-11-19, the lead's, from U3's audit): VoiceOver's escape (the two-finger scrub) is the iPhone's
+  system Back: on every screen it calls the model's back through the press gate, and answers false where back has
+  no route, so VoiceOver users reach every Back and Previous as TalkBack's back gesture does on Android.
+- M6-26 (2026-11-19, the lead's, from U3's audit): the kit's last fixed sizes follow the user's text size, as
+  Android's sp do (Q78): the notice bar, the TEST REGISTRY strip, the cover and idle-warning lines, the pads' key
+  labels and the braille faces' letters and dot numbers, by KitType.scaled (capped at 2x); a key stays at least
+  44 pt high.
 - Open item (2026-11-18), the dead Confirm: run 44185394720 at 8112f0d5, WordsUITests on macos-26, every Confirm
   from roll 32 to 50 "reached the app and was admitted, and did nothing" (touches seen, none refused) while the
   face keys went on working; run 44173357483 lost one roll of 50 in SnapshotJourneyUITests (macos-26), maybe the
@@ -20171,38 +20182,64 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Counts: (a) 1, fixed (U3b); (b) 10, of which three rows are proposals for the lead (Back on Go offline, Home and
   Length; VoiceOver's escape; scaling the fixed small sizes) and two are the iPhone's known own (its offline check;
   Open Settings, the screenshot notice and the press gate); (c) 7, Q93-Q99 below; answered 1 (Q61).
-  Questions for the owner (drafted 2026-11-19, from U3's audit; not asked until the lead's word):
+  Questions for the owner (Q93-Q99, drafted from U3's audit and answered 2026-11-19: "approve Q93-Q99 as
+  recommended"; the doc edits below, U3c):
   93. **The recording placeholder's text** (MA:98; Texts.swift:83; Screens.kt:396)
       Recommended: keep both apps' "Hidden while the screen is recorded. Stop the recording to go on." and make MA:98's
       sample say it (a doc edit), since the sample is illustrative and the line tells the user what to do.
       Otherwise: both apps say MA:98's "Hidden while the screen is shared or recorded".
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended" (a doc edit, MA:98).
   94. **VoiceOver and the secrets on an iPhone** (MA:17, :31; VoiceOver.swift:9-11; Kit.kt:194)
       Recommended: name it in MA:17's iPhone residuals: VoiceOver reads the words, passphrases and D aloud or to a
       braille display, as TalkBack does, and iOS has no accessibility-data-sensitive mark to keep other assistive
       services from them; the owner's I5 check covers it on hardware.
       Otherwise: leave MA as it is (the residual lives in the code's comment alone).
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended" (a doc edit, MA:17).
   95. **When the cloud-folder line shows** (MA:158; BackupScreens.swift:180; BackupScreens.kt:332)
       Recommended: keep it always shown before the save (neither platform says where the user saved) and reword MA:158
       to "the save screen says, in one line, that a cloud folder is allowed and what that means".
       Otherwise: drop the line, or show it after every save.
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended" (a doc edit, MA:158).
   96. **A partial backup file after a failed save** (PF:160; Texts.swift's saveAgainNote; BackupScreens.kt:60)
       Recommended: keep the phones' line asking the user to delete it (an app given a document by the system picker
       cannot always delete it) and say so in MA's "Encrypted backup only".
       Otherwise: each app tries to delete the file it wrote, and says when it could not.
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended" (a doc edit, MA:157).
   97. **The largest text size and words broken mid-word** (Q78; WordsScreens.swift:19-21; WordsScreens.kt:225-228)
       Recommended: no line breaks inside a seed word, the code or a hex group: the insert's word, the typed code and
       letters, the Seal ID and C/D's groups shrink to fit their line (a minimum scale) instead of wrapping, and two-up
       buttons stack one per row when a label does not fit; on both apps, tested at 2.0 on a 360 dp and a 375 pt
       screen.
       Otherwise: leave the reflow as it is (nothing is cut; a word can wrap).
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended": both apps (U3g iPhone, U3h Android).
   98. **Where Check a backup's words show** (MA:162; BackupScreens.swift:241-262; BackupScreens.kt:402-419)
       Recommended: keep "Backup OK" Public with Show words opening the words screens through the gate (one Protected
       flow for words everywhere), and reword MA:162.
       Otherwise: show the words on the result screen itself, which then becomes Protected.
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended" (a doc edit, MA:162).
   99. **First launch's order** (MA:170; FirstLaunch.kt:33-42; StartScreens.swift:23-26)
       Recommended: keep both apps' order (what the app does, the Pi for life savings, what no app can stop); MA:170's
       list names the contents, not an order.
       Otherwise: put "what no phone app can protect against" before the Pi pointer on both.
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended": no change.
+  Q93-Q99's doc edits (U3c, docs/mobile-apps.md, each the exact old text, then the new; nothing else in docs/):
+  - Q94, MA:17: old "On the iPhone three residuals, also accepted for the M7 audit, limit it: ... ; and a screenshot
+    cannot be blocked, only answered by a discard." new "On the iPhone four residuals, also accepted for the M7
+    audit, limit it: ... ; a screenshot cannot be blocked, only answered by a discard; and VoiceOver reads the
+    words, passphrases and D aloud or to a braille display, as TalkBack does, while iOS has no
+    accessibility-data-sensitive mark to keep other assistive services from them." (the elided middle unchanged)
+  - Q93, MA:98: old `RedactedCover(text: "Hidden while the screen is shared or recorded")` new
+    `RedactedCover(text: "Hidden while the screen is recorded. Stop the recording to go on.")`
+  - Q96, MA:157: old "4. The app reads the saved file back, decrypts it in memory and compares the fingerprint
+    before showing "Backup verified."" new the same, then "If the write or the read-back fails, it says so and asks
+    the user to delete the partial file, since an app cannot always delete a document the system picker gave it."
+  - Q95, MA:158: old "5. If the user picks a cloud folder, the app allows it with one line: the passphrase is what
+    protects the file, so keep it on paper, away from the file." new "5. The save screen says, in one line, that a
+    cloud folder is allowed and what that means: the passphrase is what protects the file, so keep it on paper,
+    away from the file."
+  - Q98, MA:162: old "... and the app shows the fingerprint and "Backup OK." Words appear only if the user asks, on
+    the same protected screen." new "... and the app shows the fingerprint and "Backup OK." on a Public screen.
+    Words appear only if the user asks: Show words opens the words screens through the privacy gate."
   Proof (M6 commit U3b, local; the UI test runs on CI): the check QR's Back is drawn and calls model.back (backTo:
   the seal card, the same check); CannotCheckJourneyUITests presses it through pressTo and checks the same Seal ID,
   then Show check QR again: before U3b that step fails ("no button back"), on CI. The three schemes built for testing

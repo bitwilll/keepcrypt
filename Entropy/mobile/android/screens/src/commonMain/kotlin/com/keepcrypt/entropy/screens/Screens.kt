@@ -359,6 +359,9 @@ const val GATE_ACTION = "I'm alone, show words"
 /** The idle warning's pane title (U3g). */
 const val IDLE_WARNING_TITLE = "Idle warning"
 
+/** What a Protected screen shows instead while a recording is reported; docs/mobile-apps.md quotes it (Q93). */
+const val REDACTED_LINE = "Hidden while the screen is recorded. Stop the recording to go on."
+
 /**
  * The pane title of what the state shows (U3g): the privacy gate's while one stands before a Protected
  * screen, else the screen's (screenTitle); fixed text either way, never a value the screen shows.
@@ -393,7 +396,7 @@ private fun Redacted(testRegistry: Boolean) {
         }
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             BasicText(
-                "Hidden while the screen is recorded. Stop the recording to go on.",
+                REDACTED_LINE,
                 Modifier.padding(24.dp),
                 style = KitType.body.copy(fontSize = KitType.button.fontSize),
             )
