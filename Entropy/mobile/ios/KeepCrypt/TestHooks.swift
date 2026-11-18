@@ -475,6 +475,10 @@ struct TestHookPanel: View {
         // The panel's own text never follows the user's text size (U2f: at the largest size its rows grew over
         // most of the scene in DynamicTypeUITests, so swipes landed on it and nothing scrolled).
         .dynamicTypeSize(.large)
+        // The panel as one container a UI test finds (U2h: a screen's scroll view runs on under it, so a control
+        // there is hittable to XCUITest while a tap lands on the panel); each hook keeps its own id.
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("hook_panel")
     }
 }
 #endif

@@ -20017,6 +20017,35 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   - Budgets: journeys-5 34 minutes and journeys-6 30, PROVISIONAL (the lead's figures, a full run's estimate plus
     25%; run 44237883463 cancelled macos-15's journeys-5 at 24 with LifecycleUITests unfinished, macos-26's
     journeys-6 at 21), until two green runs give M5-30's measurements; the workflow's comment says so.
+  As built (M6 commit U2h, from run 44306763928 at 0973bfab, the lead's reading of its logs; two test defects, no
+  app defect):
+  - The lost press is the TestHooks panel's, a test-only cause (Shipping has no panel). DynamicTypeUITests on the
+    narrow iPhone (macos-15): Dice-only seed's press to Length "never reached the app" three times, the touches
+    seen staying at 7 while the last touch down read "at 0 ms": the touch guard ran with no touch in its area.
+    The touch guard's view is the screens' background, so it ends at the panel's top (the panel is a bottom
+    safe-area inset), while the screen's scroll view runs on under the panel (0,57 375x609); after U2g's drag
+    the button sat at 23,579 329x82, inside the scroll view but under the panel, still hittable to XCUITest, and
+    the tap landed on the panel. U2g's account (a tap past the scroll view's edge) was near: the edge that cuts is
+    the panel's top. The panel is now one container, hook_panel (each hook keeps its own id). JourneySupport's
+    shownRegion is the region the screens show (a control's scroll view, or the app, cut at the panel's top);
+    bringIntoView drags a control into it (slowly, held, from the column's left margin inside the region), and
+    DynamicTypeUITests' reach() asserts the control wholly inside it. pressUntil, before every press, looks at
+    two frames (the control's and the panel's) and, when the control is not wholly above the panel, drags it
+    in first with a probe line, instead of a press counted as never reached. place() gives the panel's frame too.
+    Places are given only for public controls (pressTo's, placed: true): a pad's key (a face, a letter, a
+    symbol) gets no place in any line, its place naming the key (U2g's pressUntil gave every button's).
+  - The gate's double tap (LifecycleUITests, macos-26): no entry came, the app was back on Home, and the
+    classifier asked the gone pass_gate its frame, which failed the test before the facts line printed. place()
+    now reads "gone" for a missing control (and a missing panel) and asks it nothing; every classifier builds the
+    facts line first, then the place, and pressUntil asks a gone button nothing. What took the app home is not
+    known yet (the facts will give the last KitButton action and the press guard's view); no app change before
+    they show it.
+  - Budgets unchanged (the lead: run 44306763928's cancellations were the runners' slowness, not hangs; M5-30
+    re-measures from two green runs).
+  Proof (M6 commit U2h, local; the UI tests run on CI): the three schemes built for testing and the Shipping
+  device build, no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` exit 0, "36
+  passed, 0 failed"; the gate exit 0 and `--workflows ../.github/workflows` exit 0; `cargo fmt --all --check`
+  exit 0.
 - [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
   do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
   docs is fixed with a test; a change the docs do not allow becomes a question for the owner.

@@ -93,7 +93,7 @@ extension XCUIApplication {
     ) {
         let button = buttons[id]
         XCTAssertTrue(button.waitForExistence(timeout: 30), "no button " + id + "; " + facts(), file: file, line: line)
-        pressUntil(button, id + " to " + screen, file: file, line: line) {
+        pressUntil(button, id + " to " + screen, placed: true, file: file, line: line) {
             ([screen] + passing).contains { self.element($0).exists }
         }
         on(screen, screen + " after " + id, file: file, line: line)
@@ -150,16 +150,73 @@ extension XCUIApplication {
         return scroll.exists ? scroll : nil
     }
 
-    /// Where control lies, and the scroll view that clips it (U2g): frames in points, of a public control.
+    /// Where control lies, the scroll view that clips it and the TestHooks panel (U2g, U2h): frames in points,
+    /// of a public control alone (never a pad's key: its place names the key). "gone" for a control, or a
+    /// panel, no longer there, without asking a missing element its frame (which fails the test there).
     func place(_ control: XCUIElement) -> String {
         func text(_ frame: CGRect) -> String {
             "\(Int(frame.minX)),\(Int(frame.minY)) \(Int(frame.width))x\(Int(frame.height))"
         }
+        guard control.exists else { return "gone" }
         var line = "at " + text(control.frame)
         if let scroll = scrollViewHolding(control.identifier) {
             line += ", its scroll view at " + text(scroll.frame)
+        } else {
+            line += ", in no scroll view"
         }
+        let panel = element("hook_panel")
+        line += panel.exists ? ", the hooks panel at " + text(panel.frame) : ", the hooks panel gone"
         return line
+    }
+
+    /// The region the screens show around control (U2h): its scroll view's frame, or the app's for a control in
+    /// none, cut at the TestHooks panel's top. The screens' scroll views run on under the panel (it is a bottom
+    /// safe-area inset), and the screens' touch guard ends at its top, so a tap below that lands on the panel.
+    func shownRegion(_ control: XCUIElement) -> CGRect {
+        var region = scrollViewHolding(control.identifier)?.frame ?? frame
+        let panel = element("hook_panel")
+        if panel.exists {
+            region.size.height = max(0, min(region.maxY, panel.frame.minY) - region.minY)
+        }
+        return region
+    }
+
+    /// Whether control, if there, lies wholly above the TestHooks panel's top and below the app's: the cheap look
+    /// before every press (two frames), the scroll view asked only when it fails.
+    func abovePanel(_ control: XCUIElement) -> Bool {
+        guard control.exists else { return true }
+        let panel = element("hook_panel")
+        let top = panel.exists ? panel.frame.minY : frame.maxY
+        let bounds = control.frame
+        return bounds.maxY <= top + 1 && bounds.minY >= frame.minY - 1
+    }
+
+    /// Whether control is there and wholly inside the region the screens show (a point's rounding allowed).
+    func wholeInView(_ control: XCUIElement) -> Bool {
+        control.exists && shownRegion(control).insetBy(dx: -1, dy: -1).contains(control.frame)
+    }
+
+    /// control, where it scrolls with a column and is not wholly shown, dragged into view as a person scrolls a
+    /// half-shown button: slowly and held (no glide), from the column's left margin (24 pt, no control there)
+    /// inside the shown region, by what is cut and a margin, at most half the region a drag, at most six. Each
+    /// drag logs a probe line named what, with the control's place only when placed (a public control).
+    func bringIntoView(_ control: XCUIElement, _ what: String, placed: Bool) {
+        guard control.exists, let scroll = scrollViewHolding(control.identifier) else { return }
+        var drags = 0
+        while control.exists, !wholeInView(control), drags < 6 {
+            pass("probe: \(what): not wholly shown above the hooks panel" + (placed ? " (" + place(control) + ")" : "") + "; dragged into view")
+            let shown = shownRegion(control)
+            let frame = control.frame
+            let lift = frame.maxY > shown.maxY
+                ? min(frame.maxY - shown.maxY + 16, shown.height / 2)
+                : -min(shown.minY - frame.minY + 16, shown.height / 2)
+            let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+                .withOffset(CGVector(dx: 8, dy: shown.midY - scroll.frame.minY))
+            start.press(
+                forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -lift)), withVelocity: .slow,
+                thenHoldForDuration: 0.3)
+            drags += 1
+        }
     }
 
     /// The TestHooks panel's touch counts: the touches the screens' touch guard saw, and those its press guard
@@ -174,21 +231,31 @@ extension XCUIApplication {
         element("hook_facts").label
     }
 
-    /// button pressed as a person presses it (U1d): once, then its effect awaited. A press that does nothing is
-    /// told apart by the panel's touch counts: one the press guard refused (a view shown under 300 ms before, the
-    /// app working as designed) or one that never reached the app's window is pressed again, the screen settled
-    /// by then, each named in a probe line; one the app saw and admitted that did nothing is the app's defect,
-    /// and fails the test there. At most three presses.
+    /// button pressed as a person presses it (U1d): once, then its effect awaited. Before each press, a button
+    /// not wholly shown above the TestHooks panel is dragged into view first (U2h: XCUITest calls a control under
+    /// the panel hittable, and its tap lands on the panel). A press that does nothing is told apart by the
+    /// panel's touch counts: one the press guard refused (a view shown under 300 ms before, the app working as
+    /// designed) or one that never reached the app's window is pressed again, the screen settled by then, each
+    /// named in a probe line; one the app saw and admitted that did nothing is the app's defect, and fails the
+    /// test there. At most three presses. placed: a public control, whose place the lines may give; a pad's key
+    /// (a face, a letter, a symbol) is never placed, its place naming the key.
     func pressUntil(
-        _ button: XCUIElement, _ what: String, file: StaticString = #filePath, line: UInt = #line, effect: () -> Bool
+        _ button: XCUIElement, _ what: String, placed: Bool = false, file: StaticString = #filePath, line: UInt = #line,
+        effect: () -> Bool
     ) {
         for attempt in 1...3 {
+            if !abovePanel(button) {
+                bringIntoView(button, what + ", press \(attempt)", placed: placed)
+            }
             let before = touchCounts()
             button.tap()
             if effect() || within(5, effect) { return }
             let after = touchCounts()
-            let held = facts() + "; the button enabled \(button.isEnabled ? "yes" : "no"), hittable \(button.isHittable ? "yes" : "no"), "
-                + place(button)
+            // The facts first, then the button: a button gone with its screen is asked nothing that fails.
+            var held = facts() + "; the button "
+            held += button.exists
+                ? "enabled \(button.isEnabled ? "yes" : "no"), hittable \(button.isHittable ? "yes" : "no")" : "gone"
+            if placed { held += ", " + place(button) }
             if after.refused > before.refused {
                 pass("probe: \(what): press \(attempt) refused by the press guard (touches \(before) to \(after)); \(held); pressed again")
             } else if after.seen == before.seen {

@@ -27,10 +27,11 @@ final class DynamicTypeUITests: XCTestCase {
     }
 
     /// The control id scrolled into view as a person scrolls it, whole: the screen's column swiped up (at most
-    /// six times) until the control is hittable, then, where it scrolls with the column, dragged slowly until
-    /// the column's scroll view shows all of it. U2g: hittable alone can let a tap meant for a control the
-    /// column cuts land past the scroll view's edge, where nothing is pressed (the leading account of U2f's lost
-    /// press on Home again at the largest size on 375 to 393 pt wide phones); the probe line names each cut.
+    /// six times) until the control is hittable, then, where it scrolls with the column, dragged slowly until it
+    /// is wholly shown above the TestHooks panel (JourneySupport's bringIntoView). U2h: the column's scroll view
+    /// runs on under the panel, so a control there is hittable to XCUITest while its tap lands on the panel (run
+    /// 44306763928: Dice-only seed at 23,579 329x82 inside a scroll view at 0,57 375x609, the panel over it, and
+    /// three presses that never reached the app); the probe line names each drag.
     private func reach(_ app: XCUIApplication, _ id: String) {
         let control = app.buttons[id]
         XCTAssertTrue(control.waitForExistence(timeout: 30), id)
@@ -40,24 +41,8 @@ final class DynamicTypeUITests: XCTestCase {
             swipes += 1
         }
         XCTAssertTrue(control.isHittable, id + " cut: not reachable at the largest text size")
-        guard let scroll = app.scrollViewHolding(id) else { return }
-        var drags = 0
-        while !scroll.frame.insetBy(dx: -1, dy: -1).contains(control.frame), drags < 6 {
-            pass("probe: \(id) hittable but cut by its scroll view (\(app.place(control))); dragged into view")
-            let shown = scroll.frame
-            let frame = control.frame
-            // Up by what is cut below (or down by what is cut above), a margin more, at most half the column.
-            let lift = frame.maxY > shown.maxY
-                ? min(frame.maxY - shown.maxY + 16, shown.height / 2)
-                : -min(shown.minY - frame.minY + 16, shown.height / 2)
-            // From the column's left margin (24 pt, no control there), slowly and held, so it does not glide on.
-            let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0.5)).withOffset(CGVector(dx: 8, dy: 0))
-            start.press(
-                forDuration: 0.1, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -lift)), withVelocity: .slow,
-                thenHoldForDuration: 0.3)
-            drags += 1
-        }
-        XCTAssertTrue(scroll.frame.insetBy(dx: -1, dy: -1).contains(control.frame), id + " cut by its scroll view: " + app.place(control))
+        app.bringIntoView(control, id, placed: true)
+        XCTAssertTrue(app.wholeInView(control), id + " not wholly shown above the hooks panel: " + app.place(control))
     }
 
     func testTheLargestTextSizeGrowsTheTextAndEveryControlStaysReachable() {
