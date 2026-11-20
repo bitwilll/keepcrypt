@@ -159,9 +159,8 @@ extension XCUIApplication {
 
     /// The scroll view whose column holds the element id (a control, or a QR code), if it scrolls with one (a
     /// KitScreen's actions do once they are taller than half the screen). A button is looked for as a button, the
-    /// query U2 used: U3i's `.any` query, asked before every press, snapshots the whole tree each time, and on
-    /// iOS 18.6 every journey then lost the app on entering a screen (runs at e32fd98a and 82c4f7a8, macos-15).
-    /// Only an element that is no button (the check QR) takes the `.any` query.
+    /// cheaper query U2 used; only an element that is no button (the check QR) takes U3i's `.any` query. (U3l
+    /// suspected that query of iOS 18.6's lost app; the crash reports showed KitPair instead, fixed in U3m.)
     func scrollViewHolding(_ id: String) -> XCUIElement? {
         var scroll = scrollViews.containing(.button, identifier: id).firstMatch
         if !scroll.exists, !buttons[id].exists {

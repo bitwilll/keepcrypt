@@ -55,18 +55,18 @@ struct KitPair: Layout {
     /// What a KitButton adds around its label's text: its padding, 16 a side.
     static let labelInset: CGFloat = 32
 
-    /// The two buttons' labels, whose widest word decides.
-    let labels: [String]
+    /// The widest word of either label, at the user's text size, rounded up: measured once, here, as the pair is
+    /// made in a view's body on the main thread. U3m: SwiftUI may lay a pair out on its AsyncRenderer thread, and on
+    /// iOS 18.6 measuring there (KitType.scaled reads UIApplication) aborted the app in the Main Thread Checker
+    /// (crash reports of the run at 156422fb: KitPair.placeSubviews -> widestWord -> KitType.scaled on
+    /// com.apple.SwiftUI.AsyncRenderer, __ASSERT_API_MUST_BE_CALLED_FROM_MAIN_THREAD_FAILED__). The layout methods
+    /// below read only this stored width.
+    let widestWord: CGFloat
 
     init(_ first: String, _ second: String) {
-        labels = [first, second]
-    }
-
-    /// The widest word of either label, at the user's text size, rounded up.
-    private var widestWord: CGFloat {
         let font = KitType.buttonFont
-        let words = labels.flatMap { $0.split(separator: " ") }
-        return ceil(words.map { (String($0) as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0)
+        let words = [first, second].flatMap { $0.split(separator: " ") }
+        widestWord = ceil(words.map { (String($0) as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0)
     }
 
     private func sideBySide(_ width: CGFloat) -> Bool {

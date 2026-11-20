@@ -20442,6 +20442,15 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Fix (test-only): a button is looked for as a button, as before U3i; `.any` only for an element that is no button
   (the check QR). With it, entropy-ios.yml's journeys print the simulator's KeepCrypt crash and hang reports on a
   failure, so a lost app is never again read from "not running" alone. Proof: CI at the head that carries it.
+  U3m (2026-11-21, the lead's): U3l's suspicion was wrong; its run at 156422fb lost the app on iOS 18.6 again, and
+  the new step printed the crash reports: SIGABRT on com.apple.SwiftUI.AsyncRenderer, KitPair.placeSubviews ->
+  widestWord -> KitType.scaled (UIApplication.shared.preferredContentSizeCategory) ->
+  __ASSERT_API_MUST_BE_CALLED_FROM_MAIN_THREAD_FAILED__. SwiftUI lays a custom Layout out off the main thread on
+  iOS 18.6; U3i's KitPair measured its words there. Fix (an app defect, U4): the widest word is measured once in
+  KitPair's init, in the view's body on the main thread, and the layout methods read only the stored width.
+  KitPair is the app's one custom Layout; every other KitType.scaled call is in a view body. U3l's button-first
+  query stays (cheaper); its comment now says what was found. Proof: the iOS 18.6 journeys at the head carrying it,
+  whose crash-report step reads "no KeepCrypt crash or hang report" or does not run.
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 
