@@ -76,6 +76,7 @@
 				Ceremony.swift,
 				Core.swift,
 				DrawingMath.swift,
+				KitLayout.swift,
 				Pads.swift,
 				PressGuard.swift,
 				Screen.swift,

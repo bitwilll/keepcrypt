@@ -20378,6 +20378,21 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
     below, in the screens' VStack above the screen.
   Proof (local): the three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app`
   clean; `--selftest-ios-app` exit 0, "36 passed, 0 failed". The runs themselves are CI's.
+  As built (M6 commit U3k-1, a U4 defect U3i's KitPair brought; the run at e32fd98a): on iOS 18.6 every macos-15
+  journey hung as a screen with a pair opened (the dice after words_12, the words after pass_gate), XCUITest
+  reporting the app not running. KitPair's sizeThatFits answered proposal.replacingUnspecifiedDimensions().width:
+  the placeholder 10 for an ideal-size query (a nil width), which stacked, and an infinite width for an unbounded
+  one, side by side with infinite halves. It now answers the ideal size for a nil or infinite width (the two side
+  by side at their ideal widths, the spacing between, the taller's height) and never an infinite or placeholder
+  width; placeSubviews places by the same rule on the finite width it is given, the stacked rows touching as the
+  actions' column puts buttons (each KitButton pads itself 6 above and below), as before U3h. KitType and KitPair
+  move to KitLayout.swift, a member of the unit tests too. KitType.scaled reads UIApplication's content size
+  category, on the main thread, where SwiftUI lays out. KitPairTests (new) lays a pair out through a hosting
+  controller's sizeThatFits: an infinite width gives a finite size, the two side by side (200 plus the spacing);
+  an ideal (fixedSize) one the same, not 10; a finite one the row's width. At e32fd98a the infinite case answered
+  an infinite width, so it fails there (CI's unit job). Proof (local): the three schemes built for testing (the
+  unit test compiles) and the Shipping device build, no Swift warning; `--ios-app` clean; `--selftest-ios-app` exit
+  0, "36 passed, 0 failed".
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 
