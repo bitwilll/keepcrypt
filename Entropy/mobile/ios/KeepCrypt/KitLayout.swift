@@ -47,8 +47,8 @@ enum KitType {
 /// any text does, unless one word of either label is wider than a half's text width, which would break it inside
 /// the word; then one per row, each the row's width. U3h stacked whenever a whole label did not fit its half on one
 /// line, so at the default size the check QR's four answers stood one per row and the check QR lost its full view
-/// (Android's CheckTest, run 44398792258). Android's KitPair (Kit.kt) asks its labels' min intrinsic width, their
-/// widest word; here the words are measured in the button's face (KitType.buttonFont).
+/// (Android's CheckTest, run 44398792258). Android's KitPair (Kit.kt) measures its labels' words the same way (U3k);
+/// here the words are measured in the button's face (KitType.buttonFont).
 struct KitPair: Layout {
     /// The space between the two, side by side (the rows' 12 before Q97).
     static let spacing: CGFloat = 12

@@ -1,9 +1,9 @@
 // The app's screens over its ceremony model (tasks/todo.md, M6 item D3; Android's Screens.kt): the screen is
 // a switch over the model's state. Every touch first reaches the model (input, the idle timer; touched,
-// which Device entropy mixes in), and then reaches the screen's controls only if the press guard admits it
-// (PressGuard.swift: a new screen, gate or overlay takes no touch until 300 ms after it was shown, judged by
-// the touch's own time; M5-79): TouchGuard below, a gesture recognizer on the window that cancels a refused
-// touch before any control gets it. The cover and the warning lie over the screen and take the tap that
+// which Device entropy mixes in), and a press's action runs only if the press guard admitted the touch that
+// made it (PressGuard.swift: a new screen, gate or overlay takes no touch until 300 ms after it was shown, judged
+// by the touch's own time; M5-79; the press gate decides at the action, M6-23, M6-27): TouchGuard below, an
+// observe-only gesture recognizer on the window that records each down's verdict. The cover and the warning lie over the screen and take the tap that
 // removes them, and while either is up the screen under it is hidden from VoiceOver (Q80 (a)). Each state's
 // pane title (paneTitle(of:), fixed text) is posted to VoiceOver as it opens (U3g). The scan screen's scanner
 // and the document pickers are the platform's seams (GoAheadScanner.swift, DocumentPicker.swift: the
@@ -453,10 +453,13 @@ final class TouchGuardView: UIView {
 
 /// Sees every touch that goes down in the window, before any control: inside the screens' area (not the
 /// TestHooks panel's), each down is the model's input and, on Device entropy, its touched, with the
-/// touch's own uptime; a touch the press guard refuses is taken here (the recognizer recognizes, which
-/// cancels it in the views under it and fails their gestures), and one it admits goes on untouched (the
-/// recognizer fails at once).
-final class TouchGuardRecognizer: UIGestureRecognizer {
+/// touch's own uptime, and its verdict, admitted or refused, goes to the press guard (noteDown), which the
+/// press gate asks when a press's action comes. Observe-only (lead decision M6-27): it never recognizes, cancels
+/// no touch, fails at once, recognizes alongside every other recognizer and is never required to fail, so it
+/// takes no part in the controls' gesture arbitration. Before M6-27 it recognized a refused touch, cancelling it
+/// in the views; on iOS 26 a SwiftUI Button then lost an admitted press now and again, its closure never
+/// run (U2j's probe: "the button never fired", run at e32fd98a, MatchFoundJourneyUITests' roll 38's Confirm).
+final class TouchGuardRecognizer: UIGestureRecognizer, UIGestureRecognizerDelegate {
     private let model: CeremonyModel
     private let pressGuard: PressGuard
     /// The screens' area: touches outside it (the TestHooks panel) are neither input nor guarded.
@@ -466,9 +469,26 @@ final class TouchGuardRecognizer: UIGestureRecognizer {
         self.model = model
         self.pressGuard = pressGuard
         super.init(target: nil, action: nil)
-        cancelsTouchesInView = true
+        cancelsTouchesInView = false
         delaysTouchesBegan = false
         delaysTouchesEnded = false
+        delegate = self
+    }
+
+    /// Alongside every recognizer (M6-27).
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer
+    ) -> Bool {
+        true
+    }
+
+    /// No recognizer waits for this one to fail, and this one prevents none (M6-27).
+    override func shouldBeRequiredToFail(by otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        false
+    }
+
+    override func canPrevent(_ preventedGestureRecognizer: UIGestureRecognizer) -> Bool {
+        false
     }
 
     override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent) {
@@ -485,8 +505,7 @@ final class TouchGuardRecognizer: UIGestureRecognizer {
             if !pressGuard.admits(shownView(model.state), millis) { refused = true }
             downs += 1
         }
-        // The verdict the press gate asks again when a press's action comes (M6-23): iOS 26 runs a Button's
-        // action for a touch this recognizer cancelled.
+        // The verdict the press gate asks when a press's action comes (M6-23, M6-27: the gate alone decides).
         if downs > 0 {
             pressGuard.noteDown(shownView(model.state), admitted: !refused)
         }
@@ -496,6 +515,6 @@ final class TouchGuardRecognizer: UIGestureRecognizer {
         let uptime = inArea.first.map { Int64($0.timestamp * 1_000) } ?? 0
         MainActor.assumeIsolated { TestHooks.shared.noteTouches(inArea.count, refused: held, uptime: uptime) }
         #endif
-        state = refused ? .recognized : .failed
+        state = .failed
     }
 }

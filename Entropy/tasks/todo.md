@@ -18462,6 +18462,13 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Android's sp do (Q78): the notice bar, the TEST REGISTRY strip, the cover and idle-warning lines, the pads' key
   labels and the braille faces' letters and dot numbers, by KitType.scaled (capped at 2x); a key stays at least
   44 pt high.
+- M6-27 (2026-11-21, the lead's, from the run at e32fd98a; U2j's probe located the dead press): the touch guard
+  only observes. Its recognizer records each down (input, touched, noteDown with its verdict) as before, but
+  cancels no touch, never recognizes, fails at once, recognizes alongside every other recognizer and is never
+  required to fail; the press gate (M6-23) alone decides whether a press's action runs. Why: on iOS 26 a SwiftUI
+  Button now and again never ran its closure for an admitted touch ("roll 38's Confirm: ... the button never
+  fired", MatchFoundJourneyUITests on macos-26; the dead Confirm and dead face before it), and the recognizer's
+  part in the gestures' arbitration was the one thing of ours between the touch and SwiftUI.
 - Open item (2026-11-18), the dead Confirm: run 44185394720 at 8112f0d5, WordsUITests on macos-26, every Confirm
   from roll 32 to 50 "reached the app and was admitted, and did nothing" (touches seen, none refused) while the
   face keys went on working; run 44173357483 lost one roll of 50 in SnapshotJourneyUITests (macos-26), maybe the
@@ -20401,6 +20408,16 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   half. CaptureTest's walk at 2.0 is the failing-first test (CI). Proof (local): scripts/android-gradle.sh
   --dependency-verification strict with CI's build step's tasks "BUILD SUCCESSFUL", exit 0; :screens' host tests
   210, :core-ffi's 34, :app's 11 and 11, :secure-ui's 5, none failed.
+  As built (M6 commit U3k-3, lead decision M6-27): TouchGuardRecognizer is observe-only (cancelsTouchesInView
+  false, state .failed at once on every down, its own delegate answering true to simultaneous recognition,
+  shouldBeRequiredToFail and canPrevent false); it records each down exactly as before (input, touched, noteDown,
+  the TestHooks touch counts with "refused yes/no"), and every probe stays. A refused touch now reaches the
+  control, whose closure fires ("last fired") and whose action the press gate drops ("presses dropped"); the
+  journeys' classification reads that as refused, as before. PressGuard.swift's comment and Screens.swift's say
+  the cancel is gone and why. Covered by the existing tests: LifecycleUITests' double taps (the refused second
+  touch on the next screen does nothing: the gate drops it) and every journey's presses (CI). Proof (local): the
+  three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean;
+  `--selftest-ios-app` exit 0, "36 passed, 0 failed".
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 

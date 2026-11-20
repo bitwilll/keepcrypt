@@ -7,11 +7,13 @@
 // touch event carries), so a double tap's second touch is refused even when a slow frame delays its
 // handling. The SwiftUI screens (D3 on) report each view as they show it and ask before every press.
 //
-// Twice (lead decision M6-23, a U4 defect U2 found): the touch guard (Screens.swift) refuses a touch at its
-// down by recognizing, which cancels it in the views under it; on iOS 26 a SwiftUI Button still runs its
+// At the action (lead decision M6-23, a U4 defect U2 found): the touch guard (Screens.swift) refused a touch at
+// its down by recognizing, which cancelled it in the views under it; on iOS 26 a SwiftUI Button still ran its
 // action for that touch (run 44326338905: a double tap's second touch, refused on the passphrase's entry, ran
-// its Back 248 ms later and took the app home past the gate). So the cancel is only the first line: every
-// press's action also runs through the press gate (Kit.swift's PressGate, which KitButton, the pads' keys and
+// its Back 248 ms later and took the app home past the gate). Since M6-27 the cancel is gone, and the gate alone
+// decides: the touch guard only observes (the verdict of each down, noteDown), because taking part in the
+// gestures' arbitration made an iOS 26 Button lose an admitted press now and again, its closure never run (U2j's
+// probe, "the button never fired"). Every press's action runs through the press gate (Kit.swift's PressGate, which KitButton, the pads' keys and
 // the overlay's tap all go through), which asks permits when the action comes. An action runs only if the
 // latest touch down in the screens' area was admitted (a down whose touches were refused in part counts as
 // refused) and the view shown admits a touch at that moment; otherwise it is dropped, silently. A refusal
