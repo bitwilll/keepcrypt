@@ -251,7 +251,9 @@ xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -
 # test-without-building of each scheme on a simulator found by name, the TestHooks UI tests but the journeys,
 # --ios-app on the Shipping and WithTestRegistry simulator apps and an unsigned Shipping device build, the TestHooks
 # app's hooks marker, and the journeys' groups checked against KC_JOURNEYS) and journeys, one job a group
-# (-only-testing of its TestHooks UI test classes); each job builds its own Rust library.
+# (-only-testing of its TestHooks UI test classes, journeys-1 to journeys-6, each with its measured budget); each job
+# builds its own Rust library. journeys-6 also runs DynamicTypeUITests on a narrow iPhone (an SE-size device type of
+# the runner's image, made for the run); a failed journey prints the simulator's KeepCrypt crash and hang reports.
 sh scripts/ios-rust.sh --selftest    # 12 cases on a stand-in cargo, uname and shasum (CI's gates job)
 scripts/banned-api-check.sh --ios-app CONFIG APP mobile/ios/expected   # CONFIG Shipping or WithTestRegistry: a built
                                      # .app's Info.plist and privacy manifest against expected/, its own files alone, its
@@ -266,6 +268,8 @@ sh scripts/android-rust.sh withTestRegistry
 sh scripts/android-gradle.sh --dependency-verification strict :app:assembleShippingRelease :app:assembleWithTestRegistryRelease :app:assembleShippingReleaseAndroidTest :app:assembleWithTestRegistryReleaseAndroidTest :capture-control:assembleRelease :core-ffi:testAndroidHostTest :screens:testAndroidHostTest test
 python3 -I scripts/android-deps-review.py classpath   # every Maven module on the shipped classpath, against expected/
 sh scripts/android-deps-review.sh DIR   # the dependency review on a mirror of the locked artifacts (CI-only)
+                                     # (8 transfers at once; a 429 or 5xx is fetched again next round, after a pause
+                                     # of 15 s a round up to 120 s; 12 rounds at most, then it fails)
 scripts/banned-api-check.sh --apk VARIANT APK mobile/android/expected MERGER_REPORT CERT_SHA256 mobile/android/app/src/VARIANT/jniLibs
                                      # VARIANT shipping or withTestRegistry: the manifest summary (no INTERNET), the
                                      # merger report, the signing cert, the native libraries and the dex reference scan

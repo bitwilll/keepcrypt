@@ -15378,6 +15378,23 @@ Send back only: pass or fail, "matched", the iPhone model and iOS version, and t
 - **I4. The test registry:** as P4, with the iOS test-registry build.
 - **I5. App Privacy Report and braille:** after I2-I4, the report lists no network activity for the app. If the owner has a braille display, VoiceOver reads a words page on it (MA:31).
 
+**I0's steps in full** (drafted 2026-11-21 for issue with the M6 gate report; Q89's route: a free Personal Team in
+Xcode on the owner's Mac, the owner pressing Run with the iPhone attached; the lead runs nothing on the phone):
+1. On the Mac, in the keepcrypt clone at the gate's head: `cd Entropy`, then `sh scripts/ios-rust.sh shipping` and
+   `sh scripts/ios-rust.sh withTestRegistry` (the Rust libraries, as CI builds them).
+2. Open `mobile/ios/KeepCrypt.xcodeproj` in Xcode. Xcode > Settings > Accounts: add your Apple ID (a free Personal
+   Team). In the KeepCrypt target's Signing & Capabilities, choose that team for the Shipping and WithTestRegistry
+   configurations. If Xcode says the bundle id is taken, add a suffix of your own to it on your Mac only and do not
+   commit that change.
+3. On the iPhone: Settings > Privacy & Security > Developer Mode on (it restarts); Settings > Privacy & Security >
+   App Privacy Report on, before the session.
+4. Attach the iPhone, choose the scheme `KeepCrypt-Shipping` and your iPhone, press Run. On the phone, trust the
+   developer profile under Settings > General > VPN & Device Management. The app opens to First launch.
+5. For I4, the same with the scheme `KeepCrypt-WithTestRegistry` (its strip reads TEST REGISTRY); its test files are
+   P0's (`with-dice-50.kcr`, `goahead-collision-dice-50.png`, `p4-seal-ids.txt` in `p0-62396383/`), copied to the
+   iPhone's Files by AirDrop.
+A Personal Team's profile lasts 7 days, enough for one session; nothing is sent to Apple but the signing request.
+
 **Doc edits** (Q72; the exact current text on this branch, shortened with "...")
 
 Now (commit 8l):
