@@ -614,3 +614,17 @@ jobs:
           xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
             -destination "id=$KC_NARROW" -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO \
             -only-testing:KeepCryptUITests/DynamicTypeUITests test-without-building
+      # On a failure, the simulators' crash and hang reports for the app (U3l: an app lost on iOS 18.6 left
+      # nothing but "not running"). Thread backtraces of the TestHooks app on test values; no artifact.
+      - name: The app's crash reports (on a failure)
+        if: failure()
+        run: |
+          found=0
+          for f in "$HOME"/Library/Logs/DiagnosticReports/KeepCrypt*; do
+            [ -f "$f" ] || continue
+            found=1
+            echo "== $f"
+            head -c 20000 "$f"
+            echo
+          done
+          [ "$found" = 1 ] || echo "no KeepCrypt crash or hang report on this runner"

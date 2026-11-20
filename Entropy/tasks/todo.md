@@ -20418,6 +20418,13 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   touch on the next screen does nothing: the gate drops it) and every journey's presses (CI). Proof (local): the
   three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean;
   `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  U3l (2026-11-21, the lead's): every iOS 18.6 journey lost the app on entering a screen at e32fd98a and again at
+  82c4f7a8 (U3k-1's KitPair fix did not change it; KitPairTests passed on iOS 18.6, so a pair alone lays out there).
+  The one change in what the tests ask between the green 78c6e338 and e32fd98a: U3i's scrollViewHolding queried
+  `scrollViews.containing(.any, identifier:)`, asked before every press, which snapshots the whole tree each time.
+  Fix (test-only): a button is looked for as a button, as before U3i; `.any` only for an element that is no button
+  (the check QR). With it, entropy-ios.yml's journeys print the simulator's KeepCrypt crash and hang reports on a
+  failure, so a lost app is never again read from "not running" alone. Proof: CI at the head that carries it.
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 
