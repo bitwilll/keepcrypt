@@ -34,6 +34,7 @@ import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Constraints
@@ -222,20 +223,28 @@ const val WHOLE_SCALE = 0.5f
 private val PAIR_GAP = 12.dp
 
 /**
- * Two buttons sharing a row (Q97; U3i): side by side, each half the row, a label wrapping between its words as any
- * text does, unless one word of either label is wider than a half's text width (the label's min intrinsic width,
- * its widest word, with the button's padding), which would break it inside the word; then one per row, each the
- * row's width. U3h stacked whenever a whole label did not fit its half on one line (its max intrinsic width), so at
- * font scale 1.0 the check QR's four answers stood one per row and the check QR lost its full view (CheckTest, run
- * 44398792258). The iPhone's KitPair (Kit.swift).
+ * Two buttons sharing a row (Q97; U3i, U3k), first and second their labels: side by side, each half the row, a label
+ * wrapping between its words as any text does, unless one word of either label (a whitespace-separated token,
+ * measured whole at the button's style, with the button's padding) is wider than a half, which would break it
+ * inside the word; then one per row, each the row's width. U3h stacked whenever a whole label did not fit its half
+ * on one line, so at font scale 1.0 the check QR's four answers stood one per row and the check QR lost its full
+ * view (CheckTest, run 44398792258); U3i's min intrinsic width broke "go-ahead" at its hyphen, so at 2.0 the pair
+ * stayed two-up and the label broke (CaptureTest). The iPhone's KitPair (KitLayout.swift).
  */
 @Composable
-fun KitPair(content: @Composable () -> Unit) {
+fun KitPair(first: String, second: String, content: @Composable () -> Unit) {
+    // U3k: each whitespace-separated token of either label measured whole (one unbreakable run, the iPhone's rule),
+    // at the button's style and this composition's font scale: Compose's min intrinsic width broke "go-ahead" at
+    // its hyphen, so the pair stayed two-up and the label broke across lines at font scale 2.0 (CaptureTest).
+    val measurer = rememberTextMeasurer()
+    val widest = listOf(first, second).flatMap { it.split(' ') }.filter { it.isNotEmpty() }.maxOf { token ->
+        measurer.measure(token, KitType.button, softWrap = false, maxLines = 1).size.width
+    }
     Layout(content, Modifier.fillMaxWidth()) { measurables, constraints ->
         val width = constraints.maxWidth
         val gap = PAIR_GAP.roundToPx()
         val half = (width - gap) / 2
-        if (measurables.all { it.minIntrinsicWidth(Constraints.Infinity) <= half }) {
+        if (widest + LABEL_INSET.roundToPx() <= half) {
             val placeables = measurables.map { it.measure(Constraints.fixedWidth(half)) }
             layout(width, placeables.maxOf { it.height }) {
                 placeables.forEachIndexed { index, placeable -> placeable.placeRelative(index * (half + gap), 0) }
@@ -252,6 +261,9 @@ fun KitPair(content: @Composable () -> Unit) {
         }
     }
 }
+
+/** What a KitButton adds around its label's text: its padding, 16 dp a side (KitPair). */
+private val LABEL_INSET = 32.dp
 
 /** The test tag (UI Automator's resource id) of every node that shows a secret: the capture harness reads each one's mark. */
 const val SECRET_TAG = "secret"

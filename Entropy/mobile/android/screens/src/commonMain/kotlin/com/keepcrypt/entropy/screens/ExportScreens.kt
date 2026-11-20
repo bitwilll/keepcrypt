@@ -159,7 +159,7 @@ fun Bip39Entry(
             actions = {
                 BasicText(bip39Shown(letters), Modifier.padding(vertical = 6.dp).secret(), style = KitType.hex)
                 AsciiPad(keys, onKey = onKey)
-                KitPair {
+                KitPair("Previous keys", "Next keys") {
                     KitButton(
                         "Previous keys",
                         "keys_previous",
@@ -173,7 +173,7 @@ fun Bip39Entry(
                         onClick = onNextKeys,
                     )
                 }
-                KitPair {
+                KitPair("Delete", "Done") {
                     KitButton(
                         "Delete",
                         "bip39_delete",
@@ -258,7 +258,7 @@ fun WatchDescriptorQr(state: UiState, testRegistry: Boolean, passGate: () -> Uni
                 screenId(Screen.WatchDescriptorQr),
                 testRegistry,
                 actions = {
-                    KitPair {
+                    KitPair("Previous", "Done") {
                         KitButton("Previous", "watch_previous", onClick = onPrevious)
                         KitButton("Done", "watch_done", onClick = onDone)
                     }

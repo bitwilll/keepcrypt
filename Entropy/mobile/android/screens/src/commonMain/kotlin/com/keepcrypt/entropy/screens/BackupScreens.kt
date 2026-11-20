@@ -203,7 +203,7 @@ fun BackupPassphrase(
                 screenId(Screen.BackupPassphrase),
                 testRegistry,
                 actions = {
-                    KitPair {
+                    KitPair("Previous", "Next") {
                         KitButton("Previous", "previous", enabled = last, onClick = onPrevious)
                         KitButton("Next", "next", enabled = !last, onClick = onNext)
                     }
@@ -291,7 +291,7 @@ private fun LetterEntry(
 ) {
     WholeLines(typedFaces(letters), Modifier.padding(vertical = 6.dp).secret(), KitType.large.copy(fontFamily = FontFamily.Monospace))
     LetterPad(onKey)
-    KitPair {
+    KitPair("Delete", "Done") {
         KitButton("Delete", "letters_delete", enabled = canDelete, onClick = onDelete)
         KitButton(
             "Done",

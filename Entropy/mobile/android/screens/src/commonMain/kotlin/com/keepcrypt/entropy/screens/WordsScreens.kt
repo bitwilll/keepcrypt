@@ -222,7 +222,7 @@ fun WordsInsert(
                     if (state.reviewing) {
                         KitButton("Back to the read-back", "back_to_readback", onClick = onBackToReadback)
                     } else {
-                        KitPair {
+                        KitPair("Previous", "Next") {
                             KitButton("Previous", "previous", enabled = state.page > 0, onClick = onPrevious)
                             KitButton("Next", "next", enabled = !last, onClick = onNext)
                         }
@@ -274,7 +274,7 @@ fun WordsOverview(
                 screenId(Screen.WordsOverview),
                 testRegistry,
                 actions = {
-                    KitPair {
+                    KitPair("Previous", "Next") {
                         KitButton("Previous", "previous", enabled = state.page > 0, onClick = onPrevious)
                         KitButton("Next", "next", enabled = more, onClick = onNext)
                     }
@@ -347,7 +347,7 @@ fun ReadbackEntry(
                             KitType.large.copy(fontFamily = FontFamily.Monospace),
                         )
                         LetterPad(onKey)
-                        KitPair {
+                        KitPair("Delete", "Done") {
                             KitButton(
                                 "Delete",
                                 "letters_delete",

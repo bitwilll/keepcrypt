@@ -225,7 +225,7 @@ fun Dice(
                 )
             }
             DicePad(enabled = open, onKey = onKey)
-            KitPair {
+            KitPair("Undo", "Confirm") {
                 KitButton("Undo", "undo", enabled = dice.rolls > 0, onClick = onUndo)
                 KitButton(
                     "Confirm",

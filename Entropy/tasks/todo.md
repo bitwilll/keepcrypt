@@ -20393,6 +20393,14 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   an infinite width, so it fails there (CI's unit job). Proof (local): the three schemes built for testing (the
   unit test compiles) and the Shipping device build, no Swift warning; `--ios-app` clean; `--selftest-ios-app` exit
   0, "36 passed, 0 failed".
+  As built (M6 commit U3k-2, Android): CaptureTest at font scale 2.0, "check_qr: 2 of its texts break a word or a
+  group across lines (Q97): scan_qr, type_code": Compose's min intrinsic width breaks "go-ahead" at its hyphen, so
+  U3i's KitPair saw "go-" and "ahead" and kept the pair two-up while the label broke. KitPair(first, second) now
+  measures each whitespace-separated token of its labels whole (TextMeasurer at KitType.button and the
+  composition's font scale, one line, no wrap), the iPhone's rule, plus the button's 32 dp padding, against a
+  half. CaptureTest's walk at 2.0 is the failing-first test (CI). Proof (local): scripts/android-gradle.sh
+  --dependency-verification strict with CI's build step's tasks "BUILD SUCCESSFUL", exit 0; :screens' host tests
+  210, :core-ffi's 34, :app's 11 and 11, :secure-ui's 5, none failed.
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 

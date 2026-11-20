@@ -224,11 +224,11 @@ fun CheckQrScreen(
         screenId(Screen.CheckQr),
         testRegistry,
         actions = {
-            KitPair {
+            KitPair("Scan go-ahead QR", "Type go-ahead code") {
                 KitButton("Scan go-ahead QR", "scan_qr", onClick = onScan)
                 KitButton("Type go-ahead code", "type_code", onClick = onTypeCode)
             }
-            KitPair {
+            KitPair("Match found", "Cannot check") {
                 KitButton("Match found", "match_found", onClick = onMatchFound)
                 KitButton("Cannot check", "cannot_check", onClick = onCannotCheck)
             }
@@ -323,7 +323,7 @@ fun CodeEntry(
                 KitType.large.copy(fontFamily = FontFamily.Monospace),
             )
             CrockfordPad(onKey)
-            KitPair {
+            KitPair("Delete", "Done") {
                 KitButton("Delete", "code_delete", enabled = code.length > 0, onClick = onDelete)
                 KitButton("Done", "code_done", enabled = code.isFull, onClick = onDone)
             }
