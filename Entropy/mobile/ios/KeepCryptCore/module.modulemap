@@ -1,0 +1,4 @@
+module KeepCryptCore {
+    header "../../../ffi/capi/include/keepcrypt.h"
+    export *
+}

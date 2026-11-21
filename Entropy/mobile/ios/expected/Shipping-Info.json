@@ -1,0 +1,53 @@
+{
+  "CFBundleDevelopmentRegion": "en",
+  "CFBundleDisplayName": "KeepCrypt",
+  "CFBundleExecutable": "KeepCrypt",
+  "CFBundleIdentifier": "com.keepcrypt.entropy",
+  "CFBundleInfoDictionaryVersion": "6.0",
+  "CFBundleName": "KeepCrypt",
+  "CFBundlePackageType": "APPL",
+  "CFBundleShortVersionString": "0.0.0",
+  "CFBundleVersion": "1",
+  "LSRequiresIPhoneOS": true,
+  "MinimumOSVersion": "17.0",
+  "NSCameraUsageDescription": "The camera reads the go-ahead QR code from the second device. It is asked for only when you scan one.",
+  "UIApplicationSceneManifest": {
+    "UIApplicationSupportsMultipleScenes": false
+  },
+  "UIDeviceFamily": [
+    1
+  ],
+  "UILaunchScreen": {},
+  "UIRequiredDeviceCapabilities": [
+    "arm64"
+  ],
+  "UISupportedInterfaceOrientations": [
+    "UIInterfaceOrientationPortrait"
+  ],
+  "UTImportedTypeDeclarations": [
+    {
+      "UTTypeConformsTo": [
+        "public.data"
+      ],
+      "UTTypeDescription": "KeepCrypt encrypted backup",
+      "UTTypeIdentifier": "com.keepcrypt.entropy.age-backup",
+      "UTTypeTagSpecification": {
+        "public.filename-extension": [
+          "age"
+        ]
+      }
+    },
+    {
+      "UTTypeConformsTo": [
+        "public.data"
+      ],
+      "UTTypeDescription": "KeepCrypt registry snapshot",
+      "UTTypeIdentifier": "com.keepcrypt.entropy.registry-snapshot",
+      "UTTypeTagSpecification": {
+        "public.filename-extension": [
+          "kcr"
+        ]
+      }
+    }
+  ]
+}

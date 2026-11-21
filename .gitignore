@@ -1,0 +1,5 @@
+# graphify knowledge graph (local, rebuilt with `graphify update .`)
+graphify-out/
+
+# macOS Finder metadata
+.DS_Store

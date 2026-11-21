@@ -1,0 +1,1 @@
+ATTrackingManager.requestTrackingAuthorization { status in }

@@ -1,0 +1,4 @@
+module KeepCryptCore {
+    header "keepcrypt.h"
+}
+extern module Other "other.modulemap"

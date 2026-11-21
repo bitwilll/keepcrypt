@@ -171,7 +171,13 @@ scripts/banned-api-check.sh          # grep gate for banned RNG, network and cli
                                      # clock in the games, game_random only in core and the games, one Session::new
                                      # in pi/app, and the release probe's game_random call; and the Device category:
                                      # pi/app's path literals only in device/paths.rs, file APIs, rppal and nix only
-                                     # under device/, no process, thread or BufReader
+                                     # under device/, no process, thread or BufReader; and the Swift rules under
+                                     # mobile/ios (M6 A1: RNG, network, clipboard, logging, storage, keyboard and
+                                     # package APIs refused, the offline check's import and monitor, the secure
+                                     # layer's UITextField and the document picker's writes each in its one file;
+                                     # KC_TEST_HOOKS only in Swift, the test targets' settings and the app's
+                                     # TestHooks configuration, which only the UI-test scheme names and never
+                                     # archives; Swift, Objective-C and Xcode projects only under mobile/ios)
 scripts/banned-api-check.sh --workflows ../.github/workflows   # every entropy-*.yml keeps the hardening: read-only
                                      # token, the three actions pinned by SHA, no secret, no fork-trusting trigger,
                                      # no expression in a run step (the path is the monorepo's, as CI's gates job runs it)
@@ -221,9 +227,40 @@ scripts/banned-api-check.sh --image-lists IMG KCONFIG          # the listing pi/
 scripts/banned-api-check.sh --selftest-image IMG KCONFIG       # the scan's positive controls, as mutations of the built image
 scripts/banned-api-check.sh --image IMG pi/os/expected KCONFIG BIN_SHA256   # the scan; a hit fails the leg before
                                      # leg a's upload, so an uploaded image passed it
-# The phone FFI (ffi/: keepcrypt-ffi, keepcrypt-guard, keepcrypt-jni), release and test-registry configurations:
-cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked
-cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni --locked --features keepcrypt-core/test-registry
+# The phone FFI (ffi/: keepcrypt-ffi, keepcrypt-guard, keepcrypt-jni, keepcrypt-capi), release and test-registry
+# configurations (keepcrypt-capi's header test builds its staticlib for the host and reads it with llvm-nm):
+cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni -p keepcrypt-capi --locked
+cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni -p keepcrypt-capi --locked --features keepcrypt-core/test-registry
+sh scripts/capi-exports.sh --selftest   # 10 cases: the archive's exports judged by member, a planted export among them
+# CI's two iOS legs only (no xcrun on the owner's Mac): libkeepcrypt_capi.a in release and test-registry, the C probe
+# ffi/capi/probe/probe.c linked against each with the SDK's clang and -dead_strip, --artifact T on each linked probe
+# (the test-registry one exactly its registry marker and the test key), and the two archives' exports:
+sh scripts/capi-exports.sh target/T/release/libkeepcrypt_capi.a target/capi-test-registry/T/release/libkeepcrypt_capi.a
+# The iPhone app (mobile/ios; macOS arm64 with Xcode, DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer on the
+# owner's Mac, whose xcode-select points at the Command Line Tools). The Rust library for each configuration, copied
+# into mobile/ios/build/rust/FLAVOUR/TARGET/ (ignored by git), then the project's build and tests on the simulator:
+sh scripts/ios-rust.sh shipping
+sh scripts/ios-rust.sh withTestRegistry
+xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-Shipping -configuration Shipping -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test
+xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-WithTestRegistry -configuration WithTestRegistry -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test
+# The UI tests with the app's test hooks (M6-5, M6-7: the TestHooks configuration, the test-registry library, the
+# hooks compiled in; never archived, never scanned as a shipped app; its binary must hold KC_TEST_HOOKS_DO_NOT_SHIP):
+xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks -destination 'platform=iOS Simulator,name=iPhone 17' CODE_SIGNING_ALLOWED=NO build test
+# CI: .github/workflows/entropy-ios.yml (not a required check) runs these on macos-26 (Xcode 26.6, iOS 26.5) and
+# macos-15 (Xcode 16.4, iOS 18.6), each leg as jobs: unit (both libraries, --selftest-ios-app, build-for-testing and
+# test-without-building of each scheme on a simulator found by name, the TestHooks UI tests but the journeys,
+# --ios-app on the Shipping and WithTestRegistry simulator apps and an unsigned Shipping device build, the TestHooks
+# app's hooks marker, and the journeys' groups checked against KC_JOURNEYS) and journeys, one job a group
+# (-only-testing of its TestHooks UI test classes, journeys-1 to journeys-6, each with its measured budget); each job
+# builds its own Rust library. journeys-6 also runs DynamicTypeUITests on a narrow iPhone (an SE-size device type of
+# the runner's image, made for the run); a failed journey prints the simulator's KeepCrypt crash and hang reports.
+sh scripts/ios-rust.sh --selftest    # 12 cases on a stand-in cargo, uname and shasum (CI's gates job)
+scripts/banned-api-check.sh --ios-app CONFIG APP mobile/ios/expected   # CONFIG Shipping or WithTestRegistry: a built
+                                     # .app's Info.plist and privacy manifest against expected/, its own files alone, its
+                                     # binary under the artifact rules (no hooks marker; the registry marker and test key
+                                     # in WithTestRegistry alone), no network, clipboard or embedded library (macOS)
+scripts/banned-api-check.sh --selftest-ios-app   # 36 cases on stand-in apps built with the SDK's clang and swiftc
+                                     # (macOS with Xcode only; entropy-ios.yml runs it, the gates job cannot)
 # The Android app (mobile/android; CI: .github/workflows/entropy-android.yml, not a required check; needs the
 # Android SDK, NDK and JDK the workflow pins). Rust libraries for both flavours, then the strict Gradle build:
 sh scripts/android-rust.sh shipping
@@ -231,6 +268,8 @@ sh scripts/android-rust.sh withTestRegistry
 sh scripts/android-gradle.sh --dependency-verification strict :app:assembleShippingRelease :app:assembleWithTestRegistryRelease :app:assembleShippingReleaseAndroidTest :app:assembleWithTestRegistryReleaseAndroidTest :capture-control:assembleRelease :core-ffi:testAndroidHostTest :screens:testAndroidHostTest test
 python3 -I scripts/android-deps-review.py classpath   # every Maven module on the shipped classpath, against expected/
 sh scripts/android-deps-review.sh DIR   # the dependency review on a mirror of the locked artifacts (CI-only)
+                                     # (8 transfers at once; a 429 or 5xx is fetched again next round, after a pause
+                                     # of 15 s a round up to 120 s; 12 rounds at most, then it fails)
 scripts/banned-api-check.sh --apk VARIANT APK mobile/android/expected MERGER_REPORT CERT_SHA256 mobile/android/app/src/VARIANT/jniLibs
                                      # VARIANT shipping or withTestRegistry: the manifest summary (no INTERNET), the
                                      # merger report, the signing cert, the native libraries and the dex reference scan
@@ -247,7 +286,9 @@ sh scripts/android-instrument.sh --selftest
 sh scripts/android-emulator.sh --selftest
 sh scripts/android-handoff.sh --selftest
 sh scripts/android-local.sh --selftest
-scripts/canaries.sh                  # 94 checks: proves every gate still fires, the scan's positive controls included
+sh scripts/banned-api-faults.sh      # the gate's fault check (CI's lint job): every tool the gate runs, faulted at every
+                                     # place that runs it, must stop it with exit 2; run it after any change to the gate
+scripts/canaries.sh                  # 102 checks: proves every gate still fires, the scan's positive controls included
 ```
 
 ## Definition of done (every task)

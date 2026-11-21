@@ -15378,6 +15378,23 @@ Send back only: pass or fail, "matched", the iPhone model and iOS version, and t
 - **I4. The test registry:** as P4, with the iOS test-registry build.
 - **I5. App Privacy Report and braille:** after I2-I4, the report lists no network activity for the app. If the owner has a braille display, VoiceOver reads a words page on it (MA:31).
 
+**I0's steps in full** (drafted 2026-11-21 for issue with the M6 gate report; Q89's route: a free Personal Team in
+Xcode on the owner's Mac, the owner pressing Run with the iPhone attached; the lead runs nothing on the phone):
+1. On the Mac, in the keepcrypt clone at the gate's head: `cd Entropy`, then `sh scripts/ios-rust.sh shipping` and
+   `sh scripts/ios-rust.sh withTestRegistry` (the Rust libraries, as CI builds them).
+2. Open `mobile/ios/KeepCrypt.xcodeproj` in Xcode. Xcode > Settings > Accounts: add your Apple ID (a free Personal
+   Team). In the KeepCrypt target's Signing & Capabilities, choose that team for the Shipping and WithTestRegistry
+   configurations. If Xcode says the bundle id is taken, add a suffix of your own to it on your Mac only and do not
+   commit that change.
+3. On the iPhone: Settings > Privacy & Security > Developer Mode on (it restarts); Settings > Privacy & Security >
+   App Privacy Report on, before the session.
+4. Attach the iPhone, choose the scheme `KeepCrypt-Shipping` and your iPhone, press Run. On the phone, trust the
+   developer profile under Settings > General > VPN & Device Management. The app opens to First launch.
+5. For I4, the same with the scheme `KeepCrypt-WithTestRegistry` (its strip reads TEST REGISTRY); its test files are
+   P0's (`with-dice-50.kcr`, `goahead-collision-dice-50.png`, `p4-seal-ids.txt` in `p0-62396383/`), copied to the
+   iPhone's Files by AirDrop.
+A Personal Team's profile lasts 7 days, enough for one session; nothing is sent to Apple but the signing request.
+
 **Doc edits** (Q72; the exact current text on this branch, shortened with "...")
 
 Now (commit 8l):
@@ -16351,6 +16368,28 @@ disable at 10.188, all with airplane mode on. Capture.whileOffline's ready check
 can read offline before the system has handled a late airplane-mode broadcast (the earlier block's restore is the
 likely one), so Wi-Fi can come on briefly inside a block. Here the app ended offline with no notice. No failure has
 been traced to it; a follow-up for the lead, not changed here.
+
+**Repeats (2026-11-18), Entropy Android run 44148124713 at fed382ff** (M6's branch, no Android change since M5's
+merge; the run was cancelled by the next push after both API 34 jobs had failed). Not rerun to green; a side
+session was proposed to diagnose both (2026-11-18).
+- The lit raw frame (item of 2026-10-21), API 34's capture job, the shipping cold-launch recording, read with
+  lit_source's lines for the first time: "lit frame 6 of the stream: 219812 pixel(s) in the app's window, columns
+  1-358, rows 25-638, brightest #d4dbe0"; "its most frequent colours in the app's window #d4dbe0 (219812), of 1
+  distinct; 10588 of the 10588 pixels outside it lit"; 1 of 17 frames, the two control recordings before it visible
+  (817 and 12356 known-colour pixels). One colour over the whole window and every pixel of the system bars: a
+  whole-screen flat fill, nothing drawn and not the app's theme. That fits the leading guess (the system's backdrop
+  behind a cross-task launch animation) and shows no app content in the stream. The check is not changed: telling
+  such a fill from content would change a security check, the owner's to decide.
+- LifecycleTest leavingDuringABackupsScryptDiscardsTheSession, the same failure as run 43836938055 (2026-11-16): "the
+  dice's Done did not start the seed" (LifecycleTest.kt:527, toTheLastAnswer). Facts at the failure: every block
+  began airplane_mode_on=0, wifi_on=1, wifi_apm_state=null; at the failure airplane_mode_on=1, wifi_on=0,
+  wifi_apm_state=0, every Wi-Fi toggle the shell's or android_apm's; "the app: RESUMED, screen CheckPrompt, page 0,
+  gate false, overlay null, notice null, airplane mode true, Wi-Fi off true". The app ended on CheckPrompt, so a Done
+  ran finish; yet diceDone() shows Working synchronously (work()'s show(busy)) and the worker resumes on
+  Dispatchers.Main.immediate, which cannot run inside the test's runOnMainSync block, so the read could miss Working
+  only if diceDone() returned early (pressOn refused, or fewer than 50 rolls counted), which the final CheckPrompt
+  contradicts. Not explained. Item 5 of M5's gate list was closed by the stale-bounds tap (e60e5444), but this test
+  calls the model in-process with no tap, so that fix never covered it: its LifecycleTest half is open again.
 
 **Open item (2026-11-16): two failures of android-local.sh's whole run alone.** On one boot the ui part runs before the
 registry part, and two tests leave state that a later one trips on (found by the Stage U-6 workflow, seen again on kc37
@@ -18203,6 +18242,2323 @@ docs fixed; a change the docs do not allow becomes a question for the owner and 
   lead re-plans by M5-30's rule or splits the legs into jobs (the Android workflow has no required check names). (L9 split
   them, M5-70 (b): each leg job's budget is its measured time plus 25%, re-measured when Stage U adds journeys. U1a
   made them six, M5-73 (b); their budgets from run 40903211202 are in the Budgets entry.)
+
+## M6: iPhone app (`mobile/ios`, the iPhone boundary under `ffi/`)
+
+Gate (docs/build-plan.md:300): "Words hide during recording and mirroring; a screenshot discards the session; App
+Privacy Report shows no network use; snapshot import and Sparrow watch-only import work; a go-ahead QR from the test
+registry reveals the words and a Stop wipes them". Deliverables: "Screens and binding chosen when M6 starts (Q73),
+capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses the shared screens.
+
+### Inputs from M5 and earlier
+- M5 merged 2026-11-17 as d5c1a3a6 (PR bitwilll/keepcrypt#9, the owner's "approve M5 gate, merge it"); `m6-iphone`
+  is cut from it. Main's push runs at d5c1a3a6, all green: Entropy CI 44004400421, Entropy Android 44004400403 (every
+  job), Entropy Pi image 44004400523 (both legs built, their scans passed, the two images equal).
+- Main's weekly Pi image run failed on 2026-11-02, 11-09 and 11-16 (runs 41444141646, 42620364124, 43869162827), all at
+  95c43598 (M4's merge): the scan's Kconfig compare, "CONFIG_RUSTC_VERSION=109900" against 109901 in that tree's
+  expected/linux.config, the kernel's probe of the runner's own rustc after a runner-image update. M4b's probe fix
+  (74b80be, cherry-picked into M5 as 8y 79c75de, M5-34; expected/linux.config now pins 0) reached main only with
+  d5c1a3a6, so the scheduled runs built the old tree. The push run at d5c1a3a6 (44004400523) passed the Kconfig
+  compare with the probe pinned to 0, which is the fix's own path on main; the next weekly run on main confirms it
+  holds across a runner update.
+- From M5 for the iPhone: core, keepcrypt-ffi (the safe layer, its wire protocol and every rule) and keepcrypt-guard
+  (the one panic catch) are platform-free; the cross legs already build and scan core for aarch64-apple-ios and
+  aarch64-apple-ios-sim (`_CCRandomGenerateBytes` imported, no other RNG symbol). The screens' flow and every
+  Protected/Public rule live in `:screens`' CeremonyModel (Kotlin); the JVM walk (Walk.kt, 48 screens) and the U-pass
+  edge cases pin them.
+- M5's Q65-Q72 iPhone plan (shared screens through Kotlin/Native, `keepcrypt-capi` over cinterop, konan-deps.sh's
+  signed fetch) was dropped by Q73 when two of the three Kotlin/Native archives failed their own JetBrains signatures.
+- Facts read 2026-11-17 from published sources (no tool was run on the owner's Mac; lessons 2026-10-20):
+  - Kotlin 2.4.21 (2026-10-08) and 2.5.0-RC still fetch `lldb-4-macos` and `libffi-3.3-1-macos-arm64` at build time
+    (konan.properties, no checksum property), and Kotlin/Native's DependencyDownloader checks only the byte count, no
+    hash or signature. No JetBrains issue or release note acknowledges Q73's BADSIG or the shared `.sha256`.
+  - GitHub's macOS runners: macos-26 (Xcode 26.0.1-26.6, default 26.6; iOS 26.2, 26.4, 26.5 simulators) and macos-15
+    (Xcode 16.0-16.4 and 26.x; iOS 18.5, 18.6 and 26.x simulators). No iOS 17 simulator on any runner image. iOS 27 is
+    current (2026-09-14).
+  - Capture: `sceneCaptureState` (UIKit) and `isSceneCaptured` (SwiftUI), iOS 17+, not deprecated; `UIScreen.isCaptured`
+    marked 11.0-27.0 and reported reading true with nothing recording on iOS 26; `userDidTakeScreenshotNotification`
+    fires after the screenshot is saved. Apple DTS (forum thread 824922, Apr-May 2026): no public API prevents
+    screenshots, and a secure text field used as a container is "not its intended purpose" (Guideline 2.5.1), with no
+    guarantee; one third-party report says the trick no longer works on iOS 26 (unconfirmed).
+  - Installing on the owner's iPhone: a free Personal Team (Xcode on the owner's Mac) gives 7-day profiles, 3 apps per
+    device; the paid Developer Program adds Ad Hoc and TestFlight. App Privacy Report (Settings, Privacy & Security,
+    iOS 15.2+) lists each app's network activity over 7 days, from when it is turned on.
+  - Bindings: UniFFI 0.32.2 (BP:78 rules it out: a banned random crate, a second getrandom user, MPL-2.0 and a logging
+    crate in its generator), swift-bridge 0.1.59 (pre-1.0), cbindgen 0.29.4 (a header generator, a new dependency).
+
+### Questions for the owner (Q86-Q92, asked 2026-11-17)
+86. **The iPhone's screens** (BP:300 "Screens and binding chosen when M6 starts"; MA:17, MA:21)
+    Recommended: native SwiftUI screens in `mobile/ios`, over the same core through a C bridge. Only Apple's
+    toolchain and SDK; no JetBrains download, so Q73's unverifiable archives never reach a build; VoiceOver and its
+    braille displays work natively (MA:31); each capture layer sits on the views it protects. Two of MA:17's four
+    iPhone residuals go (the Kotlin/Native runtime's unwipeable memory, Skia's cache of drawn texts); Swift's own
+    strings and a crash report on an unexpected Swift trap stay, and the MA:17 paragraph is rewritten to say so. The
+    cost: the flow and the Protected/Public rules are written a second time in Swift, so a Swift CeremonyModel is
+    pinned by its own tests that mirror the JVM walk (every screen, Back, leaving, idle, refusals), and the two must
+    agree screen for screen (one shared table of screen ids, titles and kinds, read by both test suites).
+    Otherwise: reuse the Compose Multiplatform screens through Kotlin/Native, pinning `lldb-4-macos` and
+    `libffi-3.3-1-macos-arm64` by our own SHA-256 with two independent fetches as cross-checks (Q73's first option),
+    and accepting MA:17's four residuals.
+87. **The iPhone's binding** (BP:35, BP:37, BP:78; Q66)
+    Recommended: `keepcrypt-capi` (`ffi/capi`), a hand-written C ABI crate over keepcrypt-guard, built as a
+    `staticlib` for aarch64-apple-ios and aarch64-apple-ios-sim: one `kc_call(request bytes) -> response bytes` and
+    one `kc_free`, the same wire protocol keepcrypt-jni carries, so every rule stays in keepcrypt-ffi; a hand-written
+    `keepcrypt.h` that a test compares with the library's exported symbols; the Swift side decodes the wire bytes. No
+    new crate (no cbindgen, no UniFFI, no swift-bridge). The gate's FFI rule gains capi as the second boundary over the
+    one catch.
+    Otherwise: cbindgen generating the header (a new build dependency, cargo vet entry).
+88. **Secure-layer rendering** (MA:86, MA:100: the words drawn inside an `isSecureTextEntry` field's layer)
+    Apple says it is not an intended use and may break, and App Review guideline 2.5.1 may refuse it; a third-party
+    report says it no longer hides content on iOS 26. MA:86 already calls it undocumented and never the only layer.
+    Recommended: build it as MA:100 shows, as the fourth layer, and test on the owner's iPhone whether a screenshot
+    and a recording of a words page show the words blank (I1); if it does not hide them on current iOS, drop it with
+    a doc edit (MA:86, MA:100) and say so in the gate report. The other three layers (capture-state redaction, the
+    screenshot discard, the app-switcher cover) carry the gate either way.
+    Otherwise: drop it now (doc edit), three layers only.
+89. **The owner's iPhone and how the app reaches it** (MA:116; the gate's App Privacy Report item)
+    Needed: the iPhone model and iOS version. Recommended: a free Personal Team in Xcode on the owner's Mac, the
+    owner pressing Run with the phone attached (a 7-day profile is enough for a gate session; no App Store, no
+    TestFlight, no paid program); the lead prepares the project and the steps, and runs no Xcode tool on the Mac
+    itself unless Q90 allows it.
+    Otherwise: the paid Developer Program, with an Ad Hoc build from CI or TestFlight.
+90. **Xcode on the owner's Mac for the local loop** (tasks/lessons.md 2026-10-20; Q76's Android analogue)
+    Recommended: yes, as Q76 did for Android: the lead may run `xcodebuild`, `xcrun simctl` and the iOS simulator on
+    the owner's Mac for local builds and tests, installing one iOS simulator runtime (iOS 26.x, several GB) once, with
+    every run reported as local and CI the gate. Nothing else on the Mac is changed; no device command runs without
+    the owner at the phone.
+    Otherwise: CI only (each change waits for a macOS run).
+91. **CI for the iPhone** (Q55's Android model; BP:322-323)
+    Recommended: a new non-required workflow `entropy-ios.yml` on `macos-26` (Xcode 26.6, the iOS 26.5 simulator) with
+    a second leg on `macos-15` (Xcode 16.4, iOS 18.6), the same hardening as the other three (read-only token, the
+    three approved actions pinned by SHA); the 14 required checks keep their names. It builds keepcrypt-capi for both
+    iOS targets and scans them (`--artifact`), builds the app with `xcodebuild` and no third-party package, scans the
+    built app (no networking symbol, `URLSession`, `NWConnection`, `CFNetwork`, `UIPasteboard`; the RNG and marker scan
+    on the linked binary), and runs XCTest and XCUITest on the simulator: every screen's walk, the capture layers
+    driven by test hooks (a simulator cannot record its own screen), the screenshot discard by posting the
+    notification, the document picker save and open, and the test-registry drills. The deployment target stays iOS 17
+    (BP:77); no runner has an iOS 17 simulator, so iOS 17 itself is untested in CI and named in the gate report.
+    Otherwise: macos-26 alone.
+92. **The doc edits these answers need** (Q72's pattern: each exact edit listed for approval before it lands)
+    BP:35, BP:37, BP:58, BP:77, BP:78 and BP:300; MA:17, MA:21, MA:23, MA:24, MA:31 and, by Q88, MA:86 and MA:100.
+    Recommended: the lead lists each sentence's exact old and new text in this file after Q86-Q91 are answered, and
+    they land as one docs commit only after the owner approves that list.
+
+- **Answered 2026-11-17 (the owner): "approve all as recommended"** for Q86-Q92: native SwiftUI screens (86);
+  `keepcrypt-capi`, a hand-written C ABI staticlib over keepcrypt-guard with the JNI bridge's wire protocol (87); the
+  secure layer built and tested on the iPhone, dropped by a doc edit if it does not hide the words (88); a free
+  Personal Team in Xcode on the owner's Mac (89; the iPhone model and iOS version still to come); Xcode, simctl and
+  one iOS 26 simulator runtime on the owner's Mac for the local loop, every run reported as local (90);
+  `entropy-ios.yml`, non-required, on macos-26 and macos-15 (91); the doc edits listed below for approval first (92).
+
+### Q92's doc edits (the exact current text, then the new; for the owner's approval before they land)
+- BP:35 "... `keepcrypt-jni` (the Android boundary, `libkeepcrypt.so`); the iPhone boundary and screens are chosen
+  when M6 starts." -> "... `keepcrypt-jni` (the Android boundary, `libkeepcrypt.so`) and `keepcrypt-capi` (the iPhone
+  boundary, `libkeepcrypt_capi.a`, a C ABI called from Swift); the iPhone's screens are SwiftUI (Q86)."
+- BP:37 "(`keepcrypt-jni` for Android, over `keepcrypt-guard`; the iPhone boundary is chosen in M6)" ->
+  "(`keepcrypt-jni` for Android and `keepcrypt-capi` for iPhone, both over `keepcrypt-guard`)".
+- BP:49-51, the tree: a new line under `ffi/`: "│  ├─ capi/                  keepcrypt-capi: hand-written C ABI for iPhone,
+  built as libkeepcrypt_capi.a".
+- BP:58 "│  └─ ios/                    the iPhone app (M6)" -> "│  └─ ios/                    Xcode project: the SwiftUI iPhone app,
+  no third-party packages".
+- BP:77 "| iOS | Screens and binding chosen in M6; iOS 17+ | iOS 17 adds `sceneCaptureState` for capture detection |"
+  -> "| iOS | Swift, SwiftUI, `libkeepcrypt_capi.a` (`keepcrypt-capi` over `keepcrypt-ffi`) built with plain `cargo`
+  for aarch64-apple-ios and aarch64-apple-ios-sim, no generated bindings, no third-party Swift package; iOS 17+ | iOS
+  17 adds `sceneCaptureState` for capture detection; Apple's toolchain alone, so no unverifiable download (Q73, Q86) |".
+- BP:78, the Bindings row's first cell, after "`keepcrypt-jni` (the JNI boundary over `jni-sys`, `libkeepcrypt.so`)":
+  add "and `keepcrypt-capi` (the C ABI for iPhone, `libkeepcrypt_capi.a`, no dependency beyond the guard and
+  keepcrypt-ffi)".
+- BP:300, the M6 row's deliverables "Screens and binding chosen when M6 starts (Q73), capture handling, backup via
+  document picker" -> "SwiftUI screens over `keepcrypt-capi` (Q86, Q87), capture handling, backup via document picker";
+  its Needs "M1, M2; M5 if it reuses the shared screens" -> "M1, M2".
+- MA:17, "M6 decides whether the iPhone reuses them." -> "The iPhone's screens are SwiftUI (Q86), written over the
+  same bridge, so the flow is written twice, in Kotlin and in Swift, and one shared table of screens holds both to
+  the same list."; "(... the iPhone boundary is chosen in M6)" -> "(... `keepcrypt-capi` for iPhone, a C ABI over the
+  same guard)"; the last sentence "If the iPhone reuses the shared screens, four residuals, ... only answered by a
+  discard." -> "On the iPhone three residuals, also accepted for the M7 audit, limit it: Swift's strings and the
+  text SwiftUI draws cannot be wiped; an unexpected Swift trap ends the app with a system crash report that can name
+  where it stopped; and a screenshot cannot be blocked, only answered by a discard."
+- MA:21 "| UI | Compose Multiplatform, shared | Chosen in M6 (Q73) |" -> "| UI | Compose Multiplatform, shared |
+  SwiftUI (Q86) |".
+- MA:23's iPhone cell "Chosen in M6 (Q73)" -> "`libkeepcrypt_capi.a` (`keepcrypt-capi` over `keepcrypt-ffi`) built with
+  plain `cargo` (aarch64-apple-ios, aarch64-apple-ios-sim); a hand-written C header, no generated bindings".
+- MA:24's iPhone cell "Chosen in M6 (Q73)" -> "One Xcode app target and its test targets; no Swift packages".
+- MA:34 "One shared `CeremonyModel` owns the FFI session." -> "One `CeremonyModel` owns the FFI session (the shared
+  Kotlin one on Android, a Swift one on iPhone, held to the same screens by one table)."
+- MA:86 and MA:100 stay until I1 tests the secure layer (Q88).
+- Approved 2026-11-17 (the owner): "approve all as recommended". Landed in M6 commit 1 as listed; `git grep` finds
+  none of the replaced texts outside this file.
+
+### Plan (provisional, for the recommended answers; refined into items once Q86-Q92 are answered)
+- **Stage A, docs and rules:** Q92's edits; CLAUDE.md rule 9's iOS sentence checked against the choice; the gate's
+  Swift rules (banned RNG everywhere in Swift: `arc4random*`, `SecRandomCopyBytes`, `SystemRandomNumberGenerator`,
+  `.random(`, since only core draws randomness; network: `URLSession`, `NWConnection`, `CFNetwork`, `Network` framework imports outside
+  the one `NWPathMonitor` offline check; clipboard: `UIPasteboard`; logging: `print`, `NSLog`, `os_log`, `Logger`;
+  no third-party Swift package) with hit and clean fixtures before any Swift exists, and their canaries.
+- **Stage B, the bridge:** `ffi/capi` (staticlib, `kc_call`, `kc_free`, the header test, the one-catch rule), its
+  Rust tests in both configurations, the cross legs building and scanning `libkeepcrypt_capi.a`.
+- **Stage C, the app shell and CI:** the Xcode project (no packages), the Swift wire codec over the vectors, the
+  self-test at start, `entropy-ios.yml` with its scans; the capture layers (`isSceneCaptured` cover, screenshot
+  discard, app-switcher cover, and Q88's secure layer) and the offline check (`NWPathMonitor`, no usable path).
+- **Stage D, the screens:** the shared screen table; the Swift CeremonyModel and its tests mirroring the JVM walk; the
+  48 screens in SwiftUI with the pads (no system keyboard), VoiceOver labels and the 30-second cover, the idle rules,
+  the document picker backup (`.fileExporter`, read back and verified) and the `.age`/`.kcr` import, the camera
+  go-ahead scan (AVFoundation's QR reader, permission asked only at the scan).
+- **Stage U, the end-to-end pass:** XCUITest journeys through the UI alone on both simulators, edge cases, a UX audit
+  against the docs and the Android app.
+- **Stage F, evidence:** CLAUDE.md Commands, the CI proof at the final head, the owner's I0-I5 issued (todo.md,
+  "iPhone phone checklists"), the Review and the gate report.
+
+### Lead decisions (M6-n, dated; each for the owner's review at the gate)
+- M6-1 (2026-11-17): the C ABI has no `kc_free`, unlike Q87's wording: Swift passes its own output buffer, so no Rust
+  memory crosses the boundary and Swift wipes the one buffer it owns (M5's 8p design, kept from before Q73).
+  `kc_max_out()` gives that buffer's size, a fixed bound the ffi tests show every reply fits under; a reply past
+  `out_cap` halts the slot (fail closed). Two exports, `kc_call` and `kc_max_out`.
+- M6-2 (2026-11-17): Stage B (the bridge) runs before Stage A's Swift rules, since no Swift exists before Stage C and
+  B's own gate change (capi as the second boundary over the one catch) is the FFI rule's; the Swift rules and their
+  fixtures land before the first Swift file (Stage C's first commit needs them green).
+- M6-3 (2026-11-17): B1's planted-panic case is dropped from keepcrypt-capi's tests. The panic path is
+  keepcrypt-guard's alone (its unit test with `PLANTED`); capi reaches the slot only through `guarded`, which the gate's
+  B4a rule ties to every export. The guard is not changed. capi's guard-test-op case stays (the guard's test op is no
+  op of the table outside the guard's own tests).
+- M6-4 (2026-11-17): B5's cross legs, on CI only (no xcrun on the owner's Mac): the two iOS legs build keepcrypt-capi's
+  staticlib in release and in the test-registry configuration (separate target dirs, as the Android legs build jni);
+  a tiny C probe, `ffi/capi/probe/probe.c` (keepcrypt.h's kc_max_out and kc_call of Self test), is linked against each
+  archive with the SDK's clang and `-Wl,-dead_strip`, and each linked probe gets the existing `--artifact` scan (the
+  OS import `_CCRandomGenerateBytes` required, no other RNG symbol, no std random-key path; no marker or test key in
+  the release probe, exactly the registry marker and the test key in the test-registry one). If std's random-key path
+  survives the dead-strip, stop and report; the scan is not relaxed. The exports check on each archive: the defined
+  global unmangled symbols of the workspace's own keepcrypt_* members are exactly `_kc_call` and `_kc_max_out`
+  (secp256k1-sys's four may appear from its own members), with a selftest that a planted extra export fails.
+
+- M6-5 (2026-11-17, from A1's report): test hooks for the UI tests. XCUITest drives the app as its own process, so
+  a flag set on the test targets never reaches the app. The app gains a third build configuration, `TestHooks`,
+  used only by the UI-test scheme and never archived; `KC_TEST_HOOKS` may be set there alone (the gate's SwTestHook
+  rule is narrowed to that configuration's build settings in C5). The hook code embeds `KC_TEST_HOOKS_DO_NOT_SHIP`,
+  and C4's `--ios-app` scan requires that marker absent from both shipped configurations' apps, so a build that sets
+  the flag by an `xcodebuild` argument is still caught (rule 10's pattern).
+- M6-6 (2026-11-17, from A1's report): before the first Swift file, A2 adds the Swift fail-closed rule (rule 3:
+  `try?` and `try!` refused under mobile/ios; a `catch` must end in the halt path, as KtFailOpen requires of
+  Kotlin's) and limits URL opening to `UIApplication.openSettingsURLString` in one file (the camera prompt's "Open
+  Settings"); M5's rule that flags any tracked file under mobile/ios/ is retired in C2's commit, replaced by A1's
+  rules.
+- M6-7 (2026-11-17, from D4's report): the TestHooks configuration links the test-registry core and sets
+  `KC_WITH_TEST_REGISTRY` with `KC_TEST_HOOKS`, so a UI test can scan a test-registry go-ahead QR to its result
+  (ScanUITests). It is still used only by the UI-test scheme, never archived and never scanned as a shipped app;
+  Shipping and WithTestRegistry hold no hook, and `--ios-app` still requires the hooks marker absent from both. The
+  capture and offline UI tests now run over that core too; neither depends on the registry key.
+- M6-8 (2026-11-17, from D4's report): where an iOS API can fail only by throwing, Swift's rule 3 (a `catch` ends in
+  `Ceremony.halt` or a rethrow) makes that failure end the app. Two places differ from Android, which shows a line
+  and stays: the camera input that cannot be made after access was granted ends the app (`Ceremony.End.camera`,
+  Android: "camera stopped working"); a read error part-way through a picked `.kcr` or `.age` file ends the app
+  (FileHandle's read; the gate refuses `.open(`), where a file that cannot be opened at all still gets the refusal
+  line. Both fail closed and wipe; neither can come from a well-formed file on a working phone.
+- M6-9 (2026-11-17, from D4's report): the scan screen shows "Open Settings" after a refused camera, since iOS
+  asks for the camera once; it goes through `OpenSettings.swift`, the gate's one allowed URL. iOS cannot open the
+  airplane-mode settings page, so Go offline has no such button (D3's deviation 1).
+- M6-10 (2026-11-17, from D6's report): the backup's save is SwiftUI's `.fileExporter` over an in-memory
+  FileDocument (BackupDocument) whose bytes are the model's Secret of core's age file, copied once into the Data the
+  exporter writes, only as it asks to write. The exporter may stage the document in a temporary file of its own
+  (SwiftUI's writeToTemporaryLocation) and keeps its Data: ciphertext alone, the system's, which the app neither
+  names nor can wipe (the gate keeps the app out of its own directories). Rule 8 holds: the only file the app
+  causes is the .age backup. iOS 27's direct-write document API would avoid the staging but needs iOS 27 (the
+  target is 17). I2 looks at the app's container (tmp) after a save and after a cancel; anything left there is
+  named in the gate report.
+- M6-11 (2026-11-17, from D6's report): the shell's picker seam for the backup is `create(name:bytes:)`, not
+  Android's place-then-write: the exporter writes as it opens, so it takes the bytes then. The read-back goes
+  through the URL it returns (ExportedPlace), the same one-read path as a picked file; a read that fails shows the
+  save's failure line, never "Backup verified".
+- M6-12 (2026-11-17, from D6's report): KeepCryptTests links CommonCrypto (SHA-256) and Core Image (the QR
+  detector, in ZXing's place on Android) for the exports' tests; both are system frameworks, in the test target
+  alone, so no dependency is added and the shipped app links neither for this. Android's account, descriptor and
+  registration QR screens are Protected; the iPhone also draws those QRs inside SecureLayer, as D4's report QR.
+  The BIP39 passphrase entry uses the ASCII pad, as Android's does.
+- M6-13 (2026-11-18, from D7's report): the TestHooks build's Backup file hook. With KC_HOOK_BACKUP_NAME and
+  KC_HOOK_BACKUP_HEX in the UI test's launch environment (a public backup.json vector), Check a backup's picker
+  waits for the hook instead of opening the system's document browser, and the file goes to the model's
+  backupPicked, the importer's own entry; readAtMost is the unit tests', not the UI test's. TestHooks.swift alone,
+  under the hooks marker; Shipping and WithTestRegistry hold none of it.
+- M6-14 (2026-11-18, from D7's report): Check a backup and Load registry snapshot share one fileImporter (two on
+  one view are not reliably both presented); the model, not the picker, refuses a wrong name or size before any
+  byte is read. I2 opens a .age and a .kcr through it on the owner's iPhone.
+- M6-15 (2026-11-18, from D7's report): the stop screen has one line per halt reason, as Android's; an app end
+  (closed, bridge, and the iPhone's camera, M6-8) ends the process with no screen, as Android's crash handler
+  does, so it has no stop line.
+- M6-16 (2026-11-18, from D8's report): VoiceOver and SecureLayer. The secure field and its view are not
+  accessibility elements, so what SecureLayer hosts is offered in their place: WordsUITests asserts insert 1's
+  SeedBook line (drawn inside it) is in the accessibility tree, matching its "SeedBook " prefix and printing no
+  value. If it is, a screen-reader user reads the words as on Android and SecureLayer hides them only from captures;
+  if CI shows it is not, a VoiceOver user could not read the words, which Android does not have, and that goes to
+  the owner. The iPhone residual stands either way: iOS has no accessibility-data-sensitive mark, so VoiceOver reads
+  the words, the passphrases, D and the Protected keys' letters aloud or to a braille display; every privacy gate's
+  headphones warning holds, as on Android; I5 checks it.
+- M6-17 (2026-11-18, from D8's report): reading counts as input for the idle rule (Q80 (b)) through
+  `UIAccessibility.elementFocusedNotification` (VoiceOver's cursor, a braille display, Switch Control), handed to
+  the model's reading(), as Android's accessibility focus is. Whether VoiceOver posts it for every element of a
+  continuous read-all is I5's to see.
+- M6-18 (2026-11-18, from D8's report): a live line (Android's liveRegion Polite) is a queued announcement of its
+  own fixed or public text when it appears or changes, with the updates-frequently trait; the live set is Android's
+  eleven tags (scan line, refusals, the keys' page, the dice count, minimum and cap, More below) and the iPhone's
+  network_state, none holding a secret. The capture and app-switcher covers post a screen change as they come and
+  go (iPhone only: Android has no whole-scene capture cover). XCUITest cannot read the header trait; the unit table
+  and I5 cover it.
+- M6-19 (2026-11-18, from U5's report): entropy-ios.yml's legs are a unit job and journeys jobs (one per group of
+  TestHooks UI test classes, KC_JOURNEYS, checked against the matrix by the unit job); each job builds its own Rust
+  library from the pinned toolchain, and only the crate registry's sources are cached (Cargo checks them against
+  Cargo.lock). Each job's budget is its measured time plus 25% (M5-30).
+- M6-20 (2026-11-18, the lead's, from U1's report): Q84's answer ("shipping builds drop testTagsAsResourceId") on
+  the iPhone: an accessibility identifier on a node that holds a secret (a word, the backup passphrase, D, the
+  letters typed back, the BIP39 passphrase, the dice pick in dice-only mode) is compiled in under KC_TEST_HOOKS
+  alone, never in Shipping or WithTestRegistry. iOS has no third-party accessibility services, so the exposure is
+  smaller than Android's, but the shipping app names no secret node, as the owner chose for Android.
+- M6-21 (2026-11-18, from U1d's report): each pad press in the UI tests waits for its effect on screen; a press
+  with none is classified by the TestHooks app's touch counts. Refused by the press guard (the app as designed) or
+  never seen by the app's window (the simulator's): pressed again, at most three times, each with a probe line
+  naming the roll or position and the app's facts. Seen and admitted with no effect: a failure, never re-pressed,
+  since that would be an app defect. The TestHooks panel's facts line (what the model holds and what the last pad
+  key or Confirm did; nothing secret) is printed with every probe.
+- M6-22 (2026-11-18, the lead's, from U2d's run 44225340107; a U4 defect U2 found): the picker rule's exemption
+  ends at the picker's answer, any answer, none or a cancel included (Timers.pickerAnswered, where the model frees
+  the picker's buttons: backupPlaced and the open picker's answer), as well as at a resume. On an iPhone the
+  document picker is the app's own sheet and the scene stays active, so no resume followed its answer, and after
+  any file was picked the next real leaving counted as none: a Protected screen was not discarded. Android's
+  picker is an activity of its own, whose stop and start end the exemption there.
+- M6-23 (2026-11-18, the lead's, from U2h's run 44326338905; a U4 defect U2 found): on iOS 26 a touch the press
+  guard refuses still runs the SwiftUI Button's action (the touch guard's recognizer recognizes and cancels the
+  touch in the views, and the Button runs anyway), so the guard decides again when the action comes: every press
+  on the screens (KitButton, the pads' keys, the overlay's tap and its VoiceOver action) runs through one press
+  gate, which drops the action, silently, unless the latest touch down in the screens' area was admitted and the
+  view shown admits a touch then. A refusal holds until the next down or until another view is shown. The
+  recognizer's cancel stays as the first line. Android's PressGuard.kt decides at the down alone (its pointer
+  handler consumes the refused pointer's every event); Android is unchanged.
+- M6-24 (2026-11-19, the lead's, from U3's audit): Back on Go offline, Home and Length, each a KitButton through
+  the press gate calling the model's back, whose routes (backTo) are Android's: Go offline to First launch, Home to
+  Go offline, Length to Home. Android reaches them by the system Back; an iPhone has none, so a wrong choice on
+  Length could only go forward (PF's "back, only where nothing is lost" on menus).
+- M6-25 (2026-11-19, the lead's, from U3's audit): VoiceOver's escape (the two-finger scrub) is the iPhone's
+  system Back: on every screen it calls the model's back through the press gate, and answers false where back has
+  no route, so VoiceOver users reach every Back and Previous as TalkBack's back gesture does on Android.
+- M6-26 (2026-11-19, the lead's, from U3's audit): the kit's last fixed sizes follow the user's text size, as
+  Android's sp do (Q78): the notice bar, the TEST REGISTRY strip, the cover and idle-warning lines, the pads' key
+  labels and the braille faces' letters and dot numbers, by KitType.scaled (capped at 2x); a key stays at least
+  44 pt high.
+- M6-27 (2026-11-21, the lead's, from the run at e32fd98a; U2j's probe located the dead press): the touch guard
+  only observes. Its recognizer records each down (input, touched, noteDown with its verdict) as before, but
+  cancels no touch, never recognizes, fails at once, recognizes alongside every other recognizer and is never
+  required to fail; the press gate (M6-23) alone decides whether a press's action runs. Why: on iOS 26 a SwiftUI
+  Button now and again never ran its closure for an admitted touch ("roll 38's Confirm: ... the button never
+  fired", MatchFoundJourneyUITests on macos-26; the dead Confirm and dead face before it), and the recognizer's
+  part in the gestures' arbitration was the one thing of ours between the touch and SwiftUI.
+- M6-28 (2026-11-21, the lead's, from the runs at 82c4f7a8 to 9b82391b): a journey press that went down and whose
+  button never fired (U2j's probe: no closure ran after the touch went down, the press gate dropped nothing, the
+  model took nothing) is pressed again, named in a probe line, as a press that never reached the app is; one whose
+  button fired and did nothing still fails (M6-21). Why: it happened on iOS 18.6 and 26.5 alike, on random controls
+  (a dice face, Confirm, First launch's Continue), with nothing of the app's running after the touch-down, which
+  reads as a synthesized tap whose release was lost; M6-27 (the guard only observes) did not change it. The cause is
+  not proven, and the gate report names it open. First launch's Continue in launchedToGoOffline goes through
+  pressUntil too (a plain tap there left Go offline unreached). Extended 2026-11-21 (run 44887514334 at 491b3cdf,
+  journeys-5, iOS 26.5): CheckEdgesUITests' tap of Don't Allow on iOS's camera prompt was sent and the prompt stayed
+  (facts at 60 s: screen scan, scene not active), covering the app for LifecycleUITests' seven tests after it (each
+  "First launch first"). The tap is now repeated while the prompt is still up 5 s on, named, at most three.
+- Open item (2026-11-18), the dead Confirm: run 44185394720 at 8112f0d5, WordsUITests on macos-26, every Confirm
+  from roll 32 to 50 "reached the app and was admitted, and did nothing" (touches seen, none refused) while the
+  face keys went on working; run 44173357483 lost one roll of 50 in SnapshotJourneyUITests (macos-26), maybe the
+  same. U1f's reading of the model found no path that holds Confirm dead while the faces work (the same pressOn
+  gate, the pick label drawn only while a face is picked, core's refusal or halt ending on the stop screen, the
+  guard closing only on a new screen, gate or overlay, the timers acting only after 60 s away or 10 minutes idle).
+  Run 44197752716 at c52342ef did not repeat it. A repeat is diagnosed from the facts line and the button's
+  enabled, hittable and frame in the probe, never rerun to green; the gate report names this item until its cause
+  is shown.
+
+### Stage B: the bridge (M6 commits 2-4)
+- [x] B1. `ffi/capi` (`keepcrypt-capi`): `[lib] name = "keepcrypt_capi"`, `crate-type = ["staticlib", "rlib"]`,
+  dependencies keepcrypt-guard alone (as keepcrypt-jni, M5-35; no new crates.io crate), the workspace's lints and
+  clippy.toml as jni's, `[profile.release.package.keepcrypt-capi]` `overflow-checks = true`. `src/lib.rs` exports:
+  - `kc_max_out() -> usize`: `MAX_OUT`, the reply bound;
+  - `kc_call(op: u32, input: *const u8, input_len: usize, out: *mut u8, out_cap: usize) -> i64`: a slice from `input`
+    only when `input_len > 0` (null allowed then), under jni's `MAX_INPUT`; `keepcrypt_guard::guarded(op, bytes)`; the
+    reply copied once into `out` and dropped (wiped); returns the reply's length. Halts the slot through `guarded`'s
+    `HALT` op and returns -1 on: a null pointer with a non-zero length, `input_len > MAX_INPUT`, a null `out`,
+    `out_cap < reply length` (the reply wiped unread), an op past i32's range is not possible (u32 in);
+  - no callback, no thread, no `static mut`; every unsafe block one operation with a SAFETY: line.
+  Proof: `ffi/capi/tests/` call the two functions by Rust path over vectors/ (self-test, a dice-only 50-roll ceremony to
+  Ready and its words page reply, every halt case above, a short `out_cap`, a planted panic under the guard's test
+  op), in both configurations (release and `--features keepcrypt-core/test-registry`).
+  Proof (M6 commit B1, partial: local; CI at the next push; the planted panic is open, below): ffi/capi as specified,
+  keepcrypt-guard its one dependency, jni's lint tables, a clippy.toml identical to core's, `overflow-checks = true` in
+  release. kc_call copies the input once (none for a zero length, a null pointer allowed then), runs
+  `keepcrypt_guard::guarded(op, input)` in its own body, copies the reply once into `out` (copy_nonoverlapping) and drops
+  it; -1 with the slot halted through `HALT` (op 0) on a null input with a non-zero length, `input_len > MAX_INPUT`
+  (75,497,598, jni's), a null `out` and a reply past `out_cap` (wiped unread); lengths through TryFrom; four unsafe blocks,
+  one operation and a SAFETY: line each. ffi/capi/tests/call.rs runs each case on a fresh slot in a child process
+  (`each_case_passes_on_a_fresh_slot`): self-test (also a null input of length 0 and a buffer of exactly the reply),
+  ceremony (dice-50-words12 to Ready, all 12 words pages against kcr.json's mnemonic and braille.json's SeedBook numbers,
+  Finish), null-input, past-the-input-cap, null-out, short-out-cap (Ready's words page into a buffer one byte short:
+  -1, nothing written, the slot halted for good), zero-out-cap, guard-test-op; and
+  `the_reply_bound_and_the_input_cap`. `cargo test -p keepcrypt-capi --locked` 3 passed; `cargo test -p keepcrypt-ffi
+  -p keepcrypt-guard -p keepcrypt-jni -p keepcrypt-capi --locked --features keepcrypt-core/test-registry` 3 passed (ffi
+  16 + 28, guard 4, jni 11). Cargo refuses `--features keepcrypt-core/test-registry` on `-p keepcrypt-capi` alone (no
+  keepcrypt-core edge, as on jni), so the registry configuration runs with the FFI's other crates selected.
+  Open: the planted panic under the guard's test op. keepcrypt-guard's `PLANTED` op is `#[cfg(test)]`, in the guard's
+  own unit tests only, so no capi test can reach it, and no other route plants a panic under the catch without a change
+  to the guard (M5's old plan had a panic planted under `test-sources`). The guard-test-op case shows that op is no op
+  of the table in this build (halts as internal). For the lead. Decided by M6-3 (2026-11-17): the case is dropped,
+  the guard unchanged, guard-test-op kept; B1 ticked. The registry configuration runs with keepcrypt-ffi,
+  keepcrypt-guard and keepcrypt-jni selected beside keepcrypt-capi (cargo refuses the feature on capi alone).
+  Pulled forward from B4 so this tree passes check-path-deps and canaries.sh: check-path-deps pins seven members
+  (ffi/capi); canaries.sh's `pinned_seven`, its manifest copies and profile pin grown by ffi/capi, and
+  `path-member-capi` (a member in M5) now `path-member-capi-missing` (the copy without ffi/capi fails as a pinned member
+  missing); the four testdata workspaces (path-member, path-member-listed, path-override, source-replacement) gain an
+  ffi/capi stand-in. On the commit's own tree (a worktree at it): fmt, both clippy runs, deny ok, Vetting Succeeded (18
+  fully audited, 86 exempted), check-path-deps clean (104 packages; members exactly core, ffi, ffi/guard, ffi/jni,
+  ffi/capi, pi/app, pi/sim), the gate clean (419 files), `--workflows` clean, `--selftest` 414 + 414 + 414 + 413 passed,
+  0 failed, `scripts/canaries.sh` PASS, all 94 checks ran (8 min 31 s).
+- [x] B2. `MAX_OUT`: a test in keepcrypt-ffi drives every op over the vectors and records the longest reply (the age
+  backup's armored file, the QR matrices, the watch-only export), and asserts it is under `MAX_OUT` with room; the
+  bound and the measured longest are named in the Proof.
+  Proof (M6 commit B2, partial: local; CI at the next push): `ffi_wire_every_reply_fits_max_out` (ffi/tests/ceremony.rs)
+  drives all 38 ops (REVEAL_SNAPSHOT in the test-registry build alone), each in a stage that offers it, with the inputs
+  of its longest reply (24 words for the words page, the encrypted backup and zoo-24's "Check a backup"; the watch-only
+  export with and without "TREZOR"; a read-back mismatch; both passphrase pages), every reply OK but the registry's two
+  ops' refusal 19 in a release build. It reads `MAX_OUT` from ffi/capi/src/lib.rs (keepcrypt-ffi cannot depend on the
+  boundary) and holds the longest under a quarter of it. Measured longest: 1,399 bytes, ENCRYPT_BACKUP of
+  dice-99-words24 (then WATCH_ONLY 818, OPEN_BACKUP 241, CHECK_REQUEST 213), the same in both configurations; `MAX_OUT`
+  = 16,384, 11.7 times it. Release 1 passed, test-registry 1 passed; with `MAX_OUT` set to 4,096 the test fails ("the
+  longest reply, op 32's, is 1399 bytes: past a quarter of MAX_OUT, 4096"), restored.
+- [x] B3. `ffi/capi/include/keepcrypt.h`, hand-written: exactly the two prototypes; a test (macOS and Linux hosts)
+  builds the staticlib, reads its defined `kc_*` symbols with `llvm-nm` (the toolchain's) and compares them with the
+  header's two names; a planted extra export fails it.
+  Proof (M6 commit B3, partial: local on the Mac, aarch64-apple-darwin; the Linux host at the next push, in the test
+  job, whose toolchain step installs llvm-tools-preview from rust-toolchain.toml): keepcrypt.h holds `size_t
+  kc_max_out(void);` and `int64_t kc_call(uint32_t op, const uint8_t *input, size_t input_len, uint8_t *out, size_t
+  out_cap);` and nothing else outside its comment. ffi/capi/tests/header.rs: `the_header_names_exactly_the_librarys_exports`
+  builds `-p keepcrypt-capi --lib` with the test's own cargo (`env!("CARGO")`), `--locked --offline`, into
+  `CARGO_TARGET_TMPDIR/capi-header` (the workspace's target dir is the running cargo's), reads `llvm-nm --defined-only
+  --extern-only` (the toolchain's, beside `rustc --print target-libdir`, as entropy-ci.yml finds it), strips Mach-O's
+  leading underscore on Apple hosts only, and needs the `kc_` symbols to be exactly the header's two prototypes, each
+  pinned whole (types too); `the_comparison_fails_on_a_planted_export_or_prototype` feeds the comparison a planted
+  `_kc_planted` (Mach-O) and `kc_planted` (ELF, weak), a missing export, a prototype twice, a changed one and a planted
+  one (each refused), and a commented-out prototype (no declaration). `cargo test -p keepcrypt-capi --locked --test
+  header`: 2 passed (21 s with a fresh build dir). The real build with a planted export is B4b's canary
+  capi-header-planted-export. The host library defines 14,671 external symbols, of them exactly `_kc_call` and
+  `_kc_max_out` named `kc_`.
+- [x] B4. The gate: capi becomes the second boundary. `#[no_mangle]`/`extern "C"` exports only in ffi/jni/src/lib.rs and
+  ffi/capi/src/lib.rs; a capi export needs the guard's one catch (as jni's); unsafe only in keepcrypt-jni and
+  keepcrypt-capi; JNI names never in capi; the thread ban, Rule1's hashing and FailOpen over ffi/capi/src. Fixtures for
+  each placement (hit and clean), the canaries' crate pins (members, direct dependencies, identical clippy.toml and
+  lint tables) grown by capi, check-path-deps' member list.
+  Proof: the gate's --selftest and canaries.sh green, each new fixture named.
+  Proof (M6 commit B4a, partial: the gate's half, landed ahead of B1 so that B1's tree passes the gate; the crate pins
+  come in B4b): ffi/capi/src/lib.rs is the second boundary. The export scan reads both boundaries' lib.rs, each export's
+  own body calling keepcrypt_guard::guarded(, the one exempt export by file (jni's JNI_OnLoad, capi's kc_max_out, the
+  crate root's no_mangle fn, neither name exempt in the other file); capi's extern fns name "C" alone (ffi_capi_abi,
+  ffi_jni_abi's scan made ffi_abi_scan ABI FILE); macro_rules and macro_export refused in ffi/capi/src but its lib.rs
+  (the export scan's); an export in capi's lib.rs needs the guard's one catch site (reported at its line 1, as jni's).
+  JNI names, the thread ban, Rule1's hashing and FailOpen already covered ffi/capi (their fixtures
+  `ffi-jni-names-in-capi`, `ffi-thread-in-capi`, `rule1-hashset-in-ffi-capi-src`, `failopen-ffi-capi-discard`
+  pass unchanged). Fixtures: new `ffi-capi-export-without-catch-unwind` (was `ffi-export-in-capi-lib`, which named
+  capi "no boundary in M5"), `ffi-macro-rules-in-capi-other-file`, `ffi-thread-in-capi-tests`,
+  `ffi-session-new-in-capi-lib`; in the selftest beside the guard `ffi-capi-*-beside-the-guard` for extern-system,
+  extern-c-unwind, extern-no-abi, extern-system-split-over-lines, safe-layer-directly, second-export,
+  guarded-in-a-helper, export-name, extern-c-without-no-mangle, no-mangle-static, max-out-in-a-mod,
+  max-out-without-no-mangle, max-out-exported-as-kc-call, onload-name, macro-written-exports (each at its line),
+  `ffi-capi-export-beside-a-guard-without-catch-unwind`, and `clean-ffi-capi-exports-each-calling-guarded`; the
+  capi tests' macros join `clean-ffi-macros-outside-shipped-src`. The four single-file capi lib fixtures that the
+  site rule now hits twice (`ffi-export-extern-c-in-capi-lib`, `-extern-no-abi-`, `-export-name-`,
+  `-no-mangle-static-`) moved into those beside-the-guard cases. `scripts/banned-api-check.sh --selftest` in four
+  shards: 414, 414, 414 and 413 passed, 0 failed (1655 cases; 1639 before). On the commit's own tree (a worktree at
+  it): `cargo fmt --all --check`, both clippy runs, `cargo deny --locked check`, `cargo vet --locked`,
+  check-path-deps and `--workflows ../.github/workflows` clean; the gate clean, 414 files; `scripts/canaries.sh`
+  PASS, all 94 checks ran (9 min 34 s).
+  Proof (M6 commit B4b, partial: local; CI at the next push): the canaries' crate pins grown by capi. Unsafe only in
+  keepcrypt-jni and keepcrypt-capi: the lint-table pin adds ffi/capi/Cargo.toml (`unused_must_use` forbid, no
+  `unsafe_code` forbid, as jni's), and jni_lint became boundary_lint CRATE, so `real-keepcrypt-capi-undocumented-unsafe-
+  block` and `real-keepcrypt-capi-two-unsafe-ops` fail clippy on the copy's capi lib.rs as jni's two do; ffi/capi/
+  clippy.toml joins the cmp with core's; the direct-dependency pin (now boundary_pins ROOT CRATE) holds keepcrypt-capi
+  to exactly keepcrypt-guard, and `capi-safe-layer-edge` (a dev-dependency on keepcrypt-ffi in the copy) fails it;
+  ffi_paths holds capi's targets at their default paths; `capi-export-tie` (the copy's real capi lib.rs with kc_call's
+  guarded call replaced by the safe layer's) fails the gate with exactly 1 hit at kc_call's fn line; and
+  `capi-header-planted-export` (a planted `kc_planted` export in the copy) fails ffi/capi/tests/header.rs on a real
+  build, naming it. The shared lint and clippy.toml comments name ffi/capi (all six clippy.toml files changed alike, so
+  the cmp and the guard check still hold); jni's description and doc say capi is the other unsafe crate. want_checks
+  94 -> 101, and CLAUDE.md's canaries line says 101. On the commit's own tree (a worktree at it): fmt, both clippy runs,
+  the FFI's four crates' tests in both configurations (10 suites ok each), deny ok, Vetting Succeeded, check-path-deps
+  clean, the gate clean (421 files), `--workflows` clean, `--selftest` 414 + 414 + 414 + 413 passed, 0 failed,
+  `scripts/canaries.sh` PASS, all 101 checks ran (8 min 59 s).
+  Proof (M6 commit B4c, the lead's review fix after Entropy CI 44016444537 at d9d6da16): the lint job's fault check
+  failed, "ffi_abi_scan: called from 2 places in the text, reached from 1 (lines 3124)": B4a added ffi_capi_abi, the
+  second caller, and the fault check's tree held no ffi/capi/src/lib.rs to reach it. clean-ffi gains the real
+  ffi/capi/src/lib.rs and banned-api-faults.sh's tree lists it. Locally: banned-api-faults.sh 591 runs, 591 passed,
+  0 failed (217 s); the gate's --selftest 1655 passed, 0 failed. CLAUDE.md's Commands gain the fault check, so every
+  change to the gate runs it (tasks/lessons.md, 2026-10-31: the scripts that read the changed one).
+- [x] B5. CI: entropy-ci.yml's two iOS cross legs build `-p keepcrypt-capi` as a staticlib (release and
+  test-registry, as the Android legs build jni) and scan `libkeepcrypt_capi.a` with `--artifact`
+  (`_CCRandomGenerateBytes` imported, no other RNG symbol; the test-registry build exactly its marker and the test
+  key); the exports check allows exactly `_kc_call` and `_kc_max_out` beside secp256k1-sys's four. The test job runs
+  `cargo test -p keepcrypt-capi` in both configurations.
+  Proof: the run IDs; the legs' scan lines.
+  Proof (M6 commit B5a, partial: the test job's half, local only; CI at the next push; the cross legs are held, below):
+  entropy-ci.yml's test job runs `cargo test -p keepcrypt-ffi -p keepcrypt-guard -p keepcrypt-jni -p keepcrypt-capi`
+  in both configurations (capi alone cannot take `--features keepcrypt-core/test-registry`, B1), so call.rs and
+  header.rs run there, header.rs on the Linux host with the toolchain step's llvm-tools-preview; CLAUDE.md's FFI test
+  lines match. `scripts/banned-api-check.sh --workflows ../.github/workflows` clean, 3 workflows; no action added.
+  Held for the lead (not guessed; no iOS build was run on the Mac, as cc-rs calls xcrun for the iOS SDK): (1) a
+  staticlib carries every upstream rlib's objects, libstd's whole archive among them, so `--artifact` on
+  libkeepcrypt_capi.a gives StdRandom hits for std's own RandomState and hashmap_random_keys (the host build,
+  `--artifact aarch64-apple-darwin`: 3 hits, all std's), and OSImport skips archives, so it cannot require
+  `_CCRandomGenerateBytes`; (2) the archive defines 14,671 external symbols on the host (69 secp256k1-sys, 192
+  compiler-builtins, LLVM's `anon.*`), so "exactly `_kc_call` and `_kc_max_out` beside secp256k1-sys's four" cannot hold
+  for it as for the cdylib. Options: link a small probe (an example in keepcrypt-capi calling both exports) per iOS target
+  and scan it, as core's release_probe is scanned (dead-stripped, OSImport then requires `_CCRandomGenerateBytes`), with
+  the archive's Marker and TestKey scan and `llvm-nm -u` showing its `_CCRandomGenerateBytes`; and judge the exports as
+  the `kc_` symbols of the whole archive (exactly the two) plus no other unmangled symbol in the workspace's own
+  members (keepcrypt_*), with secp256k1-sys's four printed.
+  Decided by M6-4 (2026-11-17).
+  Proof (M6 commit B5b, partial: written and checked locally where no Apple SDK is needed; CI at the next push): the two
+  iOS legs' crates gain keepcrypt-guard and keepcrypt-capi (so the target clippy covers capi), and four steps follow
+  the jni ones. `cargo rustc --release -p keepcrypt-capi --lib --crate-type staticlib -- --print native-static-libs`
+  builds the release archive and hands its system libraries to the link (the Mac's host build prints `-lc -lm -liconv
+  -lSystem -lc -lm`; empty fails); the test-registry archive builds with `-p keepcrypt-capi -p keepcrypt-core --features
+  keepcrypt-core/test-registry` into target/capi-test-registry. `ffi/capi/probe/probe.c` (keepcrypt.h's kc_max_out, then
+  kc_call of Self test into a 16,384-byte buffer; never run) is linked against each archive by `xcrun --sdk
+  iphoneos|iphonesimulator clang -target arm64-apple-ios17.0[-simulator] -Wall -Wextra -Werror ... -Wl,-dead_strip`.
+  The release probe joins the release scan step (`--artifact T`, OSImport requiring `_CCRandomGenerateBytes`, which
+  `llvm-nm -u` prints first); the test-registry probe gets the jni-style step: exit 1 with exactly its registry marker
+  and the test key (2 hits) and no stub marker. `scripts/capi-exports.sh` judges both archives by member: the
+  workspace's keepcrypt_* members define exactly `kc_call` and `kc_max_out` once each as unmangled globals (Rust
+  `_ZN`/`_R` and LLVM `anon.` names aside), no member of any crate defines another `kc_` name, and secp256k1-sys's four
+  are counted from its own members and printed. Its `--selftest` (10 cases: clean; a planted `_kc_planted` and a
+  planted C name in capi, an export in the guard's and the safe layer's members, a `kc_` name in a dependency, kc_call
+  twice, kc_max_out missing, kc_call from std's member, a listing with no member) passes under sh and dash: 10 passed,
+  0 failed; the gates job runs it. On the Mac's host debug archive (aarch64-apple-darwin, the B3 build) it reports "ours
+  exactly kc_call and kc_max_out (secp256k1-sys's: 4 of its four)". keepcrypt-capi's header test runs in the test job
+  (B5a, Linux), not on these legs. Not run here: any iOS build, the probe's link and its scans (M6-4: CI only). If std's
+  random-key path survives the probe's dead-strip, the release scan fails on StdRandom, which is to be reported, not
+  relaxed. `--workflows ../.github/workflows` clean (no action added; the hardening canary's pinned line 32 unchanged);
+  the gate clean; CLAUDE.md's Commands name the selftest and the legs' exports run.
+  Proof (CI, the lead's, 2026-11-17: Entropy CI 44019673293 at 93da802f, all 14 required checks green): both iOS
+  cross legs build libkeepcrypt_capi.a both ways and link ffi/capi/probe/probe.c with the SDK's clang and
+  -dead_strip; the release probe "banned-api-check --artifact aarch64-apple-ios[-sim]: clean, 3 file(s): no marker,
+  no test key, no other RNG symbol, no std random-key path, no stripped file; _CCRandomGenerateBytes imported"; the
+  test-registry probe "2 hit(s) in 1 file(s)", its registry marker and the test key alone; capi-exports on all four
+  archives "ours exactly kc_call and kc_max_out (secp256k1-sys's: 4 of its four)". The test job runs capi's call.rs
+  and header.rs in its three configurations on Linux: the_header_names_exactly_the_librarys_exports and
+  the_comparison_fails_on_a_planted_export_or_prototype ok in each. M6-4's two risks did not arise: std's random-key
+  path did not survive -dead_strip, and the registry marker did.
+
+### Stage A: the Swift rules (M6 commit 5, before the first Swift file)
+- [x] A1. The gate's Swift category over `mobile/ios/` (`.swift`, `.h`, `.m`, `.plist`, `.pbxproj`, `.entitlements`):
+  banned RNG (`arc4random`, `SecRandomCopyBytes`, `SystemRandomNumberGenerator`, `.random(`, `drand48`, `rand(`),
+  network (`URLSession`, `NWConnection`, `NWListener`, `CFNetwork`, `CFStream`, `URLRequest`, `import Network` outside
+  the one offline-check file, which may use `NWPathMonitor` alone), clipboard (`UIPasteboard`), logging (`print(`,
+  `NSLog`, `os_log`, `Logger(`, `OSLog`, `debugPrint`), persistence (`UserDefaults`, `FileManager` writes outside the
+  document picker file, `NSKeyedArchiver`, `@AppStorage`, `@SceneStorage`, Core Data, Keychain), the system keyboard
+  (`TextField`, `SecureField`, `TextEditor`, `UITextField` outside Q88's secure-layer file, `UITextView`), and any
+  Swift package (`Package.swift`, `XCRemoteSwiftPackageReference` in the project file).
+  Proof: a hit and a clean fixture per rule; --selftest and canaries green.
+  As built (the gate's header, "Swift and the iPhone", holds the full lists): every scanned file under `mobile/ios/`
+  (comments and strings counting, as everywhere), RNG, Network and Clipboard keeping their names, and new categories
+  SwLog, SwStorage, SwInput, SwPackage, SwTestHook and SwRoot. The allowed files, one path each, which Stage C writes
+  at exactly these paths: `mobile/ios/KeepCrypt/OfflineCheck.swift` (C5's offline check: `import Network` as the
+  exact line, and `NWPathMonitor` alone of the framework's names), `mobile/ios/KeepCrypt/SecureLayer.swift` (Q88:
+  `UITextField`, with a line `field.isSecureTextEntry = true`; no `becomeFirstResponder` there either),
+  `mobile/ios/KeepCrypt/DocumentPicker.swift` (the `.fileExporter` backup and its read back: the only file that may
+  write, `FileDocument`, `FileWrapper`, `write(to:`) and `mobile/ios/KeepCryptCore/module.modulemap` (C2's one module
+  map; no `link`, `extern`, `umbrella` or `framework`). `KC_TEST_HOOKS` passes in `.swift` files and, in a `.pbxproj`,
+  only inside the build settings of configurations that only unit-test or UI-test targets' lists hold (read as a
+  property list by the gate's own awk); in any other file under `mobile/ios` (an `.xcconfig`, a header, a plist, a
+  scheme) it is a hit. Beyond A1's list, from the same rules: `RandomNumberGenerator` conformances, `UUID()`,
+  CryptoKit, iOS 26's `NetworkConnection` names, BSD sockets, Bonjour, Multipeer and CoreBluetooth, the paste, copy,
+  drag and drop APIs, trap messages built with `\(`, `CustomStringConvertible`, SwiftData, CloudKit, state
+  restoration and the app's directories, focus and search fields, CocoaPods, Carthage, SDK imports, AdSupport,
+  tracking and MetricKit; and SwRoot: `.swift`, `.m`, `.mm`, `.modulemap` and Xcode projects outside `mobile/ios/`.
+  Left for Stage C: KtRoot's M5 clause (any tracked file under `mobile/ios/` is a hit) stays until the app's first
+  file, whose commit retires it. And for C5: the condition set in the test targets compiles the test bundles' code
+  only, never the app's, so a hook that an XCUITest needs inside the app process cannot come from it; such a hook
+  needs its own design (and the gate's rule with it) before C5.
+  Proof (local, 2026-11-17, the Mac's sh; long runs on a scratch copy of the tree): 201 new fixtures (199 hit, one
+  per rule shape, each exactly one hit; clean-sw-allowed, clean-sw-near-misses; clean-near-misses' offline file moved
+  to OfflineCheck.swift) and one built case (a NUL before the condition in the project file);
+  `scripts/banned-api-check.sh` "clean, 427 files scanned"; `--workflows ../.github/workflows` clean, 3 workflows;
+  `--selftest` "1882 passed, 0 failed" (the Network fixtures' registry/ copies of Swift files are SwRoot's one hit);
+  `sh scripts/banned-api-faults.sh` "669 runs (3 ways): 669 passed, 0 failed" (scan: 169 places at 134 lines);
+  `scripts/canaries.sh` "all 102 checks ran", 0 FAIL (new: ios-swift-rules, eleven hits, the three allowed files
+  clean); `cargo fmt --all --check` clean.
+
+- [x] A2. SwFailOpen and SwOpenURL (M6-6): `try?` and `try!` are hits under mobile/ios; a `catch` block that does not
+  end in the halt call (the CeremonyModel's halt, named in C3) is a hit, as KtFailOpen's catch list; `open(`,
+  `openURL`, `UIApplication.shared.open` and SwiftUI's `Link(` are hits except `UIApplication.openSettingsURLString`
+  opened from `mobile/ios/KeepCrypt/OpenSettings.swift`. Hit and clean fixtures; selftest, fault check, canaries.
+  As built (the gate's header, SwFailOpen and SwOpenURL): the halt is `Ceremony.halt(`, a static func returning
+  `Never` that C3 defines in `mobile/ios/KeepCrypt/Ceremony.swift`; a catch (Objective-C's @catch too) passes only
+  when its block's last statement is that call, closed on its line with a case argument (no string), or a `throw`.
+  A type, extension or typealias named Ceremony, or a `func halt`, outside that file is a hit, and there a `func halt`
+  without `-> Never`. Also KtFailOpen's other Swift forms: `Result(catching:`, `Result { }`, `flatMapError`,
+  Combine's `.catch`/`.replaceError`, `NSSetUncaughtExceptionHandler`, `signal(`/`sigaction(`, and unstructured
+  tasks (`Task { }`, `Task.detached`, throwing task groups, `async let`; `Task.sleep` and `.task { }` pass). No test
+  scope (XCTest needs no catch). In `OpenSettings.swift` the one call allowed is
+  `UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!` (options and a completion may
+  follow); the word `URL`, any other URL construction or a scheme-like string literal there is a hit; callers use
+  `OpenSettings.show()`, since any `.open(` elsewhere is a hit.
+  Proof (local, 2026-11-17, long runs on a scratch copy): 52 new hit fixtures (35 SwFailOpen, 17 SwOpenURL), each
+  exactly one hit, and clean-sw-allowed's Ceremony.swift, OpenSettings.swift and Core.swift (catches ending in the
+  halt and a rethrow) with clean-sw-near-misses' FailOpenNearMisses.swift clean; clean-near-misses' Backup.swift no
+  longer names the settings URL; `scripts/banned-api-check.sh` "clean, 427 files scanned"; `--workflows` clean;
+  `--selftest` "1934 passed, 0 failed"; `sh scripts/banned-api-faults.sh` "699 runs (3 ways): 699 passed, 0 failed"
+  (scan: 179 places at 141 lines); `scripts/canaries.sh` "all 102 checks ran" (ios-swift-rules now fourteen hits,
+  five allowed files clean); `cargo fmt --all --check` clean.
+
+### Stage C: the app shell and its CI (M6 commits C1-C5, after Stage A)
+- [x] C1. `scripts/ios-rust.sh FLAVOUR` (shipping or withTestRegistry): plain `cargo build --release --locked` of
+  keepcrypt-capi for aarch64-apple-ios and aarch64-apple-ios-sim (the test-registry flavour with
+  `-p keepcrypt-core --features keepcrypt-core/test-registry`, its own target dir), copying each `.a` to
+  `mobile/ios/build/rust/FLAVOUR/TARGET/` and printing each SHA-256; no Xcode call inside it. `--selftest` on a
+  stand-in cargo (as android-rust.sh's). Proof: the selftest count; a local run's hashes.
+  Proof (M6 commit C1, partial: local; CI at C4): `sh scripts/ios-rust.sh --selftest` "12 passed, 0 failed" under the
+  Mac's sh and dash (both flavours with their features and target dirs, both targets in order, IPHONEOS_DEPLOYMENT_TARGET
+  17.0 given to cargo, each copy equal to cargo's archive, a stale file removed; exit 1 for a failing build, a missing
+  archive and a copy with other bytes; exit 2 for a failing or junk shasum, no cargo, Linux x86_64 and macOS x86_64
+  hosts, another flavour, no argument). The test-registry flavour builds into target/capi-test-registry, the cross
+  legs' own dir. Local runs (DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer, Xcode 27.2, for cc's xcrun):
+  shipping aarch64-apple-ios 29,756,384 bytes SHA-256 b50203e3d67d68a81ef62446ca69d5b5508acc731d30e93fd53b50d40b22b7f2,
+  aarch64-apple-ios-sim 29,733,512 bytes cb09409ceeca7f840761112abe5baf8186247c773b459e1cad743391b2f062a1;
+  withTestRegistry aarch64-apple-ios 29,775,104 bytes 9560b3adad43cb7e57bbbeb0aa14612d2fcb86bd5592f996b4753db5747e0cfd,
+  aarch64-apple-ios-sim 29,735,288 bytes 0820b45e80fe52b3cb2e48ea6f8c26d6e6941631c8fb21143adbda230774df08 (each copy
+  the same). The gates job runs the selftest after android-rust.sh's; CLAUDE.md's Commands list the script and its
+  selftest; `--workflows ../.github/workflows` clean.
+- [x] C2. `mobile/ios/KeepCrypt.xcodeproj`, written by hand: one app target and two test targets (XCTest unit, XCUITest),
+  Xcode's synchronized folders (objectVersion 77, Xcode 16 and later), deployment target iOS 17.0, no Swift package,
+  no Run Script phase that fetches anything. Two configurations per flavour: `Shipping` (bundle id
+  com.keepcrypt.entropy) and `WithTestRegistry` (com.keepcrypt.entropy.testregistry, its "TEST REGISTRY" strip), each
+  linking its flavour's prebuilt `.a` by path. The C header through a module map (`mobile/ios/KeepCryptCore/`), so
+  Swift imports `KeepCryptCore` and calls `kc_call` and `kc_max_out` alone. Info.plist: the camera usage string (asked
+  only at the scan), no `NSAppTransportSecurity`, no background modes, no URL schemes, no document types beyond
+  `.age` and `.kcr` import; `PrivacyInfo.xcprivacy` declaring no data collected and no tracking.
+  As built (M6 commit C2): project.pbxproj by hand, objectVersion 77, three PBXFileSystemSynchronizedRootGroups
+  (KeepCrypt, KeepCryptTests, KeepCryptUITests); the app's folder excludes Info.plist from the app's resources and adds
+  Core.swift, Wire.swift and Ceremony.swift to KeepCryptTests (two exception sets). No package reference, no Run Script
+  phase, no xcconfig. Project settings: iOS 17.0, iphoneos and iphonesimulator, arm64 only (the two Rust targets),
+  -O whole-module, ENABLE_TESTABILITY NO, DEVELOPMENT_TEAM empty (Q89's Personal Team later), automatic signing (builds
+  here pass CODE_SIGNING_ALLOWED=NO). The app links its flavour's archive by path, "OTHER_LDFLAGS[sdk=iphoneos*]" and
+  "[sdk=iphonesimulator*]" = mobile/ios/build/rust/FLAVOUR/aarch64-apple-ios[-sim]/libkeepcrypt_capi.a (no system
+  library beyond what Xcode links was needed), and finds the module map by SWIFT_INCLUDE_PATHS; the module map names
+  ffi/capi/include/keepcrypt.h by relative path, so there is one header, not a copy. WithTestRegistry: bundle id
+  com.keepcrypt.entropy.testregistry, display name "KeepCrypt TEST REGISTRY" and the condition KC_WITH_TEST_REGISTRY,
+  which draws the strip. Info.plist: the camera string, portrait, no ATS key, no background modes, no URL types, no
+  CFBundleDocumentTypes (the app opens no file handed to it), UTImportedTypeDeclarations for .age and .kcr only (for
+  Stage D's pickers). PrivacyInfo.xcprivacy: no tracking, no domains, no data collected, no accessed API types. Shared
+  schemes KeepCrypt-Shipping and KeepCrypt-WithTestRegistry (every action in their configuration; both test targets).
+  The unit tests are not hosted (no TEST_HOST): they compile the three app files and link the archive themselves, so
+  they run on a slot of their own, never after the app's start-up self-test. mobile/ios/build/ and xcuserdata/ ignored.
+  The gate: KtRoot's M5 clause (any tracked file under mobile/ios/) retired as M6-6 said; its four selftest cases
+  (ktroot-tracked-ios-swift, -ios-plist, -ios-xcode-project, clean-ktroot-untracked-under-mobile-ios) became one,
+  clean-tracked-files-under-mobile-ios; canaries.sh's ios-swift-rules no longer plants Ceremony.swift (the real one is
+  in the copy and must pass, checked present). With the files staged, before the retirement: exactly 14 KtRoot hits,
+  no Swift-rule hit; after it `scripts/banned-api-check.sh` "clean, 442 files scanned (10 binary by extension)" (the
+  four local archives under mobile/ios/build/ among the binaries); `--workflows ../.github/workflows` clean, 3
+  workflows; `--selftest` "1931 passed, 0 failed" (1934 - 3); `sh scripts/banned-api-faults.sh` "696 runs (3 ways):
+  696 passed, 0 failed" (699 - 3: the retired clause's grep); `scripts/canaries.sh` "PASS: all 102 checks ran"
+  (ios-swift-rules with the real tree's Swift files in its copy); `cargo fmt --all --check` clean (no Rust changed).
+  Proof (partial: local; CI at C4): `xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-Shipping
+  -configuration Shipping -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO
+  build-for-testing` "TEST BUILD SUCCEEDED" (app, unit and UI test bundles; no Swift warning), the same for
+  KeepCrypt-WithTestRegistry, and `-sdk iphoneos -destination 'generic/platform=iOS' build` "BUILD SUCCEEDED". The
+  built app: Info.plist's id, display name and MinimumOSVersion 17.0 as set, PrivacyInfo.xcprivacy in the bundle, no
+  Info.plist copied twice; `_kc_call` and `_kc_max_out` defined, `_CCRandomGenerateBytes` its one RNG import;
+  KC_TEST_REGISTRY_DO_NOT_SHIP once in the test-registry app's binary, never in the shipping one's.
+  Open (not ticked): no test could run on a simulator here. Xcode 27.2's simulator support needs CoreSimulator
+  1174.21; the Mac has 1174.9.2, so xcodebuild says "CoreSimulator is out of date ... Simulator device support
+  disabled" and no named simulator destination exists, and simctl's wrapper starts `xcodebuild -runFirstLaunch`, which
+  asks for an administrator password (a system install; stopped unanswered). The runtimes are already installed (iOS
+  26.5 23F77, iOS 27.0 24A434; none was installed). Needed from the owner: `sudo env
+  DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer xcodebuild -runFirstLaunch` (or Xcode's own first-launch
+  prompt), after which `build test` on iPhone 17 (iOS 26.5) runs the unit and UI tests; or CI at C4.
+  Proof (CI, the lead's, 2026-11-17: Entropy iPhone 44049143630 at ab3e8ab0, both legs green, macos-26 (Xcode 26.6,
+  iPhone 17, iOS 26.5) 826 s and macos-15 (Xcode 16.4, iPhone 16, iOS 18.6) 857 s; Entropy CI green): the hand-written project builds for testing and tests
+  for both schemes on both Xcodes ("** TEST BUILD SUCCEEDED **", "** TEST EXECUTE SUCCEEDED **" twice per leg), so
+  objectVersion 77's synchronized folders hold on Xcode 16.4 too; the device build of Shipping with
+  CODE_SIGNING_ALLOWED=NO succeeds on both legs.
+- [x] C3. `Core.swift`: the one wrapper over `kc_call`, a reply buffer of `kc_max_out()` bytes allocated once, wiped
+  with `memset_s` after each call is read, -1 a halt; `Wire.swift`: keepcrypt-ffi's wire protocol (wire.rs), its
+  status byte and every op's encoding, its decoders over `Data` copies that are wiped (`resetBytes`) when dropped.
+  XCTest over vectors/: the self-test, a dice-only 50-roll ceremony to its words (dice-50-words12), every refusal and
+  halt status, and the start-up self-test failing closed.
+  As built (M6 commit C3): Core.swift, one Core per process, an NSRecursiveLock held for each call; the reply buffer
+  kc_max_out() bytes, allocated once and zeroed, wiped whole with memset_s after every call is decoded (memset_s's
+  result checked: a wipe that fails ends the app); each input one array made once (secrets copied in), passed inout and
+  wiped with memset_s; -1 or a reply past the buffer, and a reply that is not its layout, halt the slot (op 0) and give
+  halted with the reason it latched; an argument out of range ends the app. Typed calls for all 38 ops, as Core.kt's.
+  Wire.swift: the status bytes, Op 0-38, the 42 refusal codes and their groups, the 6 halt codes (an unknown halt code
+  is internal, an unknown refusal code malformed), every layout, a pure decoder; Secret owns a Data, wiped by
+  resetBytes on wipe() and in deinit, never handed out. Ceremony.swift: `enum Ceremony` with `static func halt(_ end:
+  End) -> Never` (halts the slot, wipes the buffer, exit), StartScreen (only OK passes; a refusal or discard stops as
+  internal) and the stop screen's fixed lines. One deviation from Android, for the lead: the halt status is a Reply case
+  (halted(reason)), not thrown, since a Swift handler must end in Ceremony.halt, which ends the process, and the stop
+  screen has to be shown from the value; Swift's exhaustive switch keeps every caller handling it. For Stage D: the lock
+  makes a discard during a long call wait for it (the result is then wiped by the discard, not dropped as DISCARDED);
+  ffi_discard_during_call's rule needs a second, small reply buffer for DISCARD and WIPE_ALL, or another design.
+  The test data: kcr.json, braille.json and keepcrypt-ffi's wire.rs as file references (../../vectors, ../../ffi/src)
+  in the unit-test bundle's Copy Bundle Resources, so the tests read the repo's own files and wire.rs pins the tables.
+  Tests (7): CoreTests.testTheSlotFromStartUpToItsHalt, one ordered walk on the real kc_call (the slot's first halt
+  latches): the self-test and StartScreen passed; dice-50-words12's 50 rolls (dice progress 50 of 50, 129,250
+  millibits), its Seal ID, Check: "ZZZZ-ZZZZ" refused wrongCode (2), "0000" malformedCode (1), Cannot check; the
+  restart, Skip, all 12 words pages against kcr.json's mnemonic and braille.json (SeedBook number, position, count,
+  device, sequence, every face's letter, dots, lighter flag and mirror partner), each page wiped; Finish, the self-test
+  at home; a snapshot one byte past the input cap, kc_call's -1, halted internal; then the self-test halted internal,
+  StartScreen stopped(internal) and a start halted; the reply buffer all zeros after every call. WireTests (6): the
+  status bytes and op table against wire.rs's pub consts, the refusal and halt tables against its PINNED and
+  PINNED_HALTS, every refused and halted code 0-255, malformed replies (8 statuses and 5 layouts), layouts' fields, and
+  StartScreen failing closed.
+  Proof (partial: local, on the macOS host, not the simulator; the simulator run at C2's open item or C4): the same
+  sources (Core.swift, Wire.swift, Ceremony.swift and KeepCryptTests/*.swift) built with `xcrun --sdk macosx swiftc
+  -O -wmo` into an XCTest bundle linking the host's release libkeepcrypt_capi.a (aarch64-apple-darwin) and run with
+  `xcrun xctest`: "Executed 7 tests, with 0 failures". With memset_s replaced by nothing in a copy of Core.swift, the
+  walk fails at "the reply buffer after a roll" and every later call's check. Not ticked until the simulator runs it.
+  Proof (CI, the lead's, 2026-11-17: Entropy iPhone 44049143630 at ab3e8ab0, both legs green, macos-26 (Xcode 26.6,
+  iPhone 17, iOS 26.5) 826 s and macos-15 (Xcode 16.4, iPhone 16, iOS 18.6) 857 s; Entropy CI green): on the simulators of both legs, in both schemes, KeepCryptTests' CoreTests and
+  WireTests "Executed 7 tests, with 0 failures" and StartUpUITests "Executed 1 test, with 0 failures" (the
+  start-up self-test reaching its screen through the real library).
+- [x] C4. `.github/workflows/entropy-ios.yml` (Q91): non-required, legs on macos-26 (Xcode 26.6, iOS 26.5 simulator)
+  and macos-15 (Xcode 16.4, iOS 18.6), the three approved actions pinned by SHA, read-only token, no secret: the
+  Rust libraries (C1), `xcodebuild build-for-testing` and `test-without-building` for both configurations on the
+  simulator, then the app scan: a new gate mode, `--ios-app APP`, over the built `.app` (its Mach-O: the
+  `CCRandomGenerateBytes` import and no other RNG symbol, no networking symbol or framework (`URLSession`,
+  `NWConnection`, `CFNetwork`, `Network.framework` but the offline check's `NWPathMonitor`), no `UIPasteboard`, no
+  marker or test key in the shipping app, exactly its two in the test-registry app; its Info.plist and privacy
+  manifest against `mobile/ios/expected/`) with `--selftest-ios-app` fixtures. Proof: the run ID, both legs' lines.
+  As built (M6 commit C4a, the gate's half): `scripts/banned-api-check.sh --ios-app CONFIG APP EXPECTED_DIR` (CONFIG
+  Shipping or WithTestRegistry; the header's "iPhone app mode" holds every rule), on macOS with python3's plistlib
+  (binary plists read as XML ones) and the pinned toolchain's llvm-nm and llvm-objdump (llvm-tools-preview, the copy
+  --artifact uses). IosPlist: bundle id per CONFIG, MinimumOSVersion 17.0, a camera string, none of 15 keys (ATS,
+  background modes, URL types, document types, exported types, query schemes, Bonjour, local network, activities,
+  file sharing, open in place, document browser, iCloud containers, background tasks, tracking), imported types
+  exactly .age and .kcr conforming to public.data, then the summary (every key but DT*, BuildMachineOSBuild and
+  CFBundleSupportedPlatforms, sorted JSON) equal to `mobile/ios/expected/CONFIG-Info.json`. IosPrivacy: the manifest
+  present, no tracking, domains or collected data, its summary equal to `CONFIG-PrivacyInfo.json`. IosBundle: no
+  entry but Info.plist, PkgInfo, PrivacyInfo.xcprivacy, the executable, _CodeSignature/CodeResources and
+  embedded.mobileprovision, no link. The executable under artifact_file's rules (aarch64-apple-ios's: OSImport
+  `_CCRandomGenerateBytes`), KC_TEST_HOOKS_DO_NOT_SHIP a Marker hit (M6-5), the registry marker and test key required
+  in WithTestRegistry (IosApp when missing) and hits in Shipping. Network: undefined symbols of URL loading, Network's
+  connections and nw_ API, CFNetwork, CF sockets and streams, WebKit, Safari, Multipeer, Bluetooth and BSD sockets;
+  the Network framework's symbols (llvm-nm -m's "from Network") only `_$s7Network13NWPathMonitorC*` and
+  `_$s7Network6NWPathV*`, measured from a stand-in offline check built with NWPathMonitor alone for the simulator (its
+  path handler setter, start(queue:), cancel, init, type metadata and descriptor, NWPath's status and
+  availableInterfaces, NWPath.Status's case, metadata and Equatable conformance: 11 symbols, every one under those two
+  prefixes); 11 denied frameworks. Clipboard: UIPasteboard, NSItemProvider. IosLink: a library outside
+  /System/Library/Frameworks and /usr/lib. `--selftest-ios-app`, a mode of its own because the gates job's Linux
+  runner has no SDK: stand-in apps built with the SDK's clang (a C main importing CCRandomGenerateBytes) and swiftc.
+  `mobile/ios/expected/`: the four summaries, written from the local builds (the device build's Info.plist summary
+  equals the simulator's).
+  Proof (M6 commit C4a, partial: local, Xcode 27.2; CI at C4b's run): `sh scripts/banned-api-check.sh
+  --selftest-ios-app` "33 passed, 0 failed" (8 s): clean shipping, test-registry and path-monitor apps and a stamped
+  key changed; each other case its named hits (the registry marker and key in Shipping, 2; the test-registry app
+  without its key, 1, or its marker, 2; the hooks and source markers; no OS import; arc4random; CFNetwork, 2;
+  UIPasteboard; an @rpath library; an NWConnection; an embedded framework, 3; PlugIns; a link; ATS, background modes,
+  URL types, no camera string, another imported type, iOS 16.0, 2 each; the shipping id in WithTestRegistry, 4;
+  tracking, 2; no privacy manifest); four refusals exit 2; the committed summaries in their own form and keeping every
+  hard rule. On the locally built apps (generic simulator and device builds, CODE_SIGNING_ALLOWED=NO): `--ios-app
+  Shipping` on the simulator and the device app and `--ios-app WithTestRegistry` on its simulator app each exit 0,
+  "clean: ... _CCRandomGenerateBytes imported, no network, clipboard or denied framework, 22 system libraries"; the
+  test-registry app as Shipping exit 1 (its id, the summary, its marker and key) and the shipping app as
+  WithTestRegistry 4 hits. The gate clean (446 files), `--workflows` clean, `--selftest` 1931 passed, 0 failed,
+  `sh scripts/banned-api-faults.sh` 696 passed, 0 failed (--ios-app, like --apk and --image, is not faulted there:
+  its input is a built app on macOS), `scripts/canaries.sh` all 102 checks ran, `cargo fmt --all --check` clean.
+  As built (M6 commit C4b, the workflow): `.github/workflows/entropy-ios.yml`, "Entropy iPhone", not a required check
+  (Q91), path filters as entropy-android.yml's for the app's inputs (mobile/ios, ffi, core, the manifests, the
+  toolchain file, vectors, banned-api-check.sh, ios-rust.sh, itself), push to main, weekly (Mondays 06:17 UTC) and
+  dispatch; read-only token, no secret, actions/checkout and actions/cache at the repo's pinned SHAs, no expression
+  in a run step (the matrix reaches the scripts through env), the PR head checked out, concurrency as
+  entropy-android.yml's. One job, two legs (fail-fast off): macos-26 with Xcode 26.6 and iPhone 17 on iOS 26.5;
+  macos-15 with Xcode 16.4 and iPhone 16 on iOS 18.6; each leg's Xcode by DEVELOPER_DIR
+  (/Applications/Xcode_X.app/Contents/Developer, the runner images' naming), its version checked; then the pinned
+  toolchain, the crate registry cache, `sh scripts/ios-rust.sh shipping` and `withTestRegistry`, `--selftest-ios-app`,
+  the simulator found by name and runtime in `simctl list devices available -j` (exactly one, none created), booted
+  and waited for (`bootstatus -b`), then per scheme `xcodebuild build-for-testing` and `test-without-building` on it
+  (`-destination id=`, CODE_SIGNING_ALLOWED=NO) and `--ios-app` on its simulator app, then a Shipping device build
+  (generic iOS, unsigned) scanned. Timeout 60 minutes until measured (M5-30's rule). CLAUDE.md's Commands note the
+  workflow.
+  Proof (M6 commit C4b, partial: local only, no CI run yet): `scripts/banned-api-check.sh --workflows
+  ../.github/workflows` "clean, 4 workflow(s)"; the file parses as YAML (Ruby's psych) with the matrix above, and its
+  device finder's Python, cut from the parsed step, picks a canned device list's one iPhone 17 on iOS 26.5. Not run:
+  the workflow itself (CI); the runner images' device names and the two Xcodes' handling of objectVersion 77 are read
+  from the plan's facts, not seen. C4 is ticked from the first green run (its ID and both legs' scan lines).
+  Proof (CI, the lead's, 2026-11-17, the first Entropy iPhone run 44046032987 at a83660d4): the macos-26 leg
+  (Xcode 26.6, iPhone 17 on iOS 26.5) green in 1211 s, the first run of the app's tests on a simulator; the macos-15
+  leg failed in its first step, "/Applications/Xcode_16.4.app/Contents/Developer is not Xcode 16.4", after the
+  first `xcodebuild -version` had printed "Xcode 16.4": the second, piped into `grep -q`, got SIGPIPE when grep
+  stopped at its match ("Abort trap: 6") and pipefail failed the step, a race the macos-26 leg won. The step now
+  reads the version once into a variable (M6 commit C4c); no other pipe in the workflow ends in an early-closing
+  reader.
+  Proof (CI, the lead's, 2026-11-17: Entropy iPhone 44049143630 at ab3e8ab0, both legs green, macos-26 (Xcode 26.6,
+  iPhone 17, iOS 26.5) 826 s and macos-15 (Xcode 16.4, iPhone 16, iOS 18.6) 857 s; Entropy CI green): "selftest-ios-app: 33 passed, 0 failed" on both legs; `--ios-app`
+  clean on the Shipping simulator app, the Shipping device app and the WithTestRegistry simulator app (Info.plist and
+  the privacy manifest equal to mobile/ios/expected/, the OS import, no other RNG, no networking, pasteboard or
+  denied framework, the markers as each configuration needs) on both legs. The budget: 857 s x 1.25, 18 minutes
+  (M5-30), set in this commit.
+- [x] C5. The capture layers and the offline check, before any Protected screen exists: a cover over the whole scene
+  while `isSceneCaptured` (SwiftUI) or `sceneCaptureState` (UIKit) reads active, and while `scenePhase` is not
+  `.active` (the app-switcher snapshot); `userDidTakeScreenshotNotification` discarding the session with its
+  explanation; Q88's secure-text-field layer for the word views; the offline check, `NWPathMonitor` reporting no
+  usable path, re-read on every change, going online wiping a session as on Android. XCTest and XCUITest through test
+  hooks that the shipping configuration compiles out (`#if KC_TEST_HOOKS`, set only in the test targets), and the
+  gate refusing the hook flag in the shipping configuration.
+  As built (M6 commit C5a, the TestHooks configuration, M6-5, which replaces "set only in the test targets" above):
+  a third configuration, TestHooks, in all four lists of project.pbxproj: the project's a copy of Shipping's; the
+  app's links shipping's archive, bundle id com.keepcrypt.entropy.testhooks, display name "KeepCrypt TEST HOOKS"
+  and `SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS`; the unit tests' as Shipping's (no condition); the UI
+  tests' with the condition. The shared scheme KeepCrypt-TestHooks: the app built for testing and running only
+  (buildForProfiling, -Archiving and -Analyzing NO), TestAction and LaunchAction in TestHooks with KeepCryptUITests
+  alone (the unit tests run in the two other schemes), Profile, Analyze and Archive in Shipping, so archiving it
+  builds nothing. KeepCrypt/TestHooks.swift, all under `#if KC_TEST_HOOKS`: `TestHooks` with `static let marker =
+  "KC_TEST_HOOKS_DO_NOT_SHIP"`, drawn as the hook panel's identifier (so every hooks build holds it); the panel under
+  every screen in the TestHooks build. StartUpUITests: the marker's panel present under KC_TEST_HOOKS, absent
+  otherwise. The gate's SwTestHook: in the project file the condition is allowed in test targets' configurations
+  (as before) and in the one XCBuildConfiguration named TestHooks (one name key) listed once, in the one list of the
+  app target alone (the project's single PBXNativeTarget of type application); and, new, in any .xcscheme (any
+  letter case) the word TestHooks hits outside xcshareddata/xcschemes/KeepCrypt-TestHooks.xcscheme and inside that
+  scheme's ArchiveAction (sw_hooks_schemes). `--ios-app` unchanged: its Marker rule refuses the hooks marker in
+  Shipping and WithTestRegistry. entropy-ios.yml: a TestHooks step (build-for-testing and test-without-building
+  of KeepCrypt-TestHooks, then `grep -c -a KC_TEST_HOOKS_DO_NOT_SHIP` on its app's binary, a failure if none; it is
+  never given to --ios-app); the two shipped schemes' steps and scans unchanged; the budget 30 minutes until the
+  third scheme's first run is measured (M5-30's rule then sets it). CLAUDE.md's Commands: the TestHooks xcodebuild
+  line and the gate's summary.
+  Proof (M6 commit C5a, partial: local, Xcode 27.2; CI at the next push): 13 new fixtures, each exactly one
+  SwTestHook hit at its line: swtesthook-app-configuration-named-otherwise (testhooks), -named-twice,
+  swtesthook-app-testhooks-also-in-the-project-list, -listed-twice, swtesthook-project-testhooks-configuration,
+  swtesthook-testhooks-of-a-framework-target, swtesthook-testhooks-with-a-second-app-target,
+  swtesthook-testhooks-scheme-archived, -archive-self-closing, -archive-unclosed, swtesthook-testhooks-in-the-
+  shipping-scheme, swtesthook-testhooks-scheme-elsewhere, swtesthook-uppercase-scheme-extension; clean-sw-allowed's
+  project gains TestHooks configurations as the real one's (the app's and the UI tests' with the condition) and the
+  UI-test scheme (its ArchiveAction first, so the archive region's end is read), clean-sw-near-misses a scheme with
+  TestHooksLegacy, MyTestHooks and other non-words; the existing app-target-configuration fixture (the app's Shipping)
+  still hits. Before the rule changed, the real tree gave exactly 1 hit (the app's TestHooks line); after,
+  `scripts/banned-api-check.sh` "clean, 448 files scanned"; `--selftest` 4 shards of 486, "486 passed, 0 failed" each
+  (1944 = 1931 + 13); `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed" (its tree gains the
+  UI-test scheme and the shipping-scheme fixture, reaching sw_hooks_schemes' awk and its second grep; scan: 182
+  places at 143 lines); `scripts/canaries.sh` "PASS: all 102 checks ran" (ios-swift-rules now sixteen hits: the
+  condition planted in the copy's app Shipping configuration and a second scheme naming TestHooks, with the real
+  UI-test scheme and TestHooks.swift clean); `--workflows ../.github/workflows` clean, 4 workflows (a first `grep -F`
+  in the step was a hit, Gradle's -F; the plain grep needs no option); `cargo fmt --all --check` clean. Local builds
+  (generic simulator, CODE_SIGNING_ALLOWED=NO): build-for-testing "TEST BUILD SUCCEEDED" for all three schemes, the
+  Shipping device build "BUILD SUCCEEDED"; `--ios-app Shipping` on the simulator and device apps and `--ios-app
+  WithTestRegistry` on its simulator app clean; the marker on 1 line of the TestHooks app's binary, 0 in the
+  Shipping, WithTestRegistry and device binaries; the TestHooks app given to `--ios-app Shipping` 3 hits (its id,
+  its summary, the marker); `--selftest-ios-app` 33 passed, 0 failed. Not run here: any simulator test (CI).
+  As built (M6 commit C5b, the capture layers): KeepCrypt/CaptureShield.swift wraps the whole scene once
+  (KeepCryptApp's WindowGroup), before any Protected screen: while SwiftUI's isSceneCaptured or the window's own
+  sceneCaptureState reads active (a UIView in the window reads `window.traitCollection.sceneCaptureState` when it
+  joins the window and on every change of UITraitSceneCaptureState, registerForTraitChanges, iOS 17) the capture
+  cover replaces the content, and while scenePhase is not .active the privacy cover does (capture first). The
+  content is replaced, not overlaid, so nothing of it is drawn or left in the accessibility tree; its state lives in
+  the model, and the start-up self-test runs from the shield's root once. UIApplication.userDidTakeScreenshotNotification
+  goes to CeremonyModel.discardAfterScreenshot: Core's discard (Core.shared.discard, op 15) on every screen, the
+  self-test's and a Public one with no secret held too; a done reply puts up the fixed notice ("The session was
+  wiped: a screenshot was taken. ..."), a halted one the stop screen with its reason, a refusal or discarded (a
+  broken contract) the stop screen as internal; a stopped app discards nothing more. Ceremony.swift gains the model
+  (CeremonyModel, @MainActor, ObservableObject; Core reached through two injected calls, the self-test and the
+  discard, Core's own by default), Stage C's Screen (self-test, stopped, passed) and Notice. KeepCrypt/SecureLayer.swift
+  (Q88): SecureLayer { content }, a UIViewRepresentable whose view holds a UITextField with `field.isSecureTextEntry
+  = true`, no user interaction, not an accessibility element and never made first responder, and the content's
+  UIHostingController view inside the field's own drawing view (its first subview); with no such view nothing is
+  shown (fail closed). Not yet used by any screen (Stage D's words). TestHooks.swift's panel (drawn over the scene,
+  covers included): Capture (forces the capture state on), Inactive (forces the scene inactive) and Screenshot
+  (posts the system's notification, as iOS posts it). Unit tests (KeepCryptTests, which now also compile
+  CaptureShield.swift and SecureLayer.swift): CeremonyModelTests (6: the screenshot discard during the self-test and
+  after it, each counted and noticed; a halted discard stops the app and nothing more is discarded; refused and
+  discarded replies stop it as internal; a failed self-test stops it and a screenshot then discards nothing; the
+  self-test runs once; the notice line fixed) and CaptureLayerTests (2: the cover for each state; the secure layer's
+  field secure, without interaction, not first responder, not an accessibility element, and the content's host view
+  inside the field's drawing view). UI tests (KeepCryptUITests/CaptureUITests.swift, under KC_TEST_HOOKS, so only in
+  the TestHooks scheme): the capture cover replaces the screen and goes; the privacy cover likewise, capture taking
+  precedence; a screenshot gives the discard's notice with the app still on its screen, not stopped. canaries.sh's
+  ios-swift-rules reads the real SecureLayer.swift (no longer planted; checked present).
+  Proof (M6 commit C5b, partial: local, Xcode 27.2; CI at the next push, where the simulator runs the unit and UI
+  tests and I1 the real capture on the owner's iPhone): build-for-testing "TEST BUILD SUCCEEDED" for all three
+  schemes (generic simulator; no Swift warning) and the Shipping device build "BUILD SUCCEEDED"; `--ios-app Shipping`
+  on the simulator and device apps and `--ios-app WithTestRegistry` on its simulator app clean (23 system libraries:
+  UIKit now linked); the hooks marker on 1 line of the TestHooks binary, 0 in the other three. The macOS XCTest
+  stand-in (C3's way: Core, Wire and Ceremony.swift with CoreTests, WireTests, Vectors and CeremonyModelTests, the
+  host's release libkeepcrypt_capi.a, `xcrun xctest`): "Executed 13 tests, with 0 failures" (CeremonyModelTests 6,
+  CoreTests 1, WireTests 6); with the screenshot's discard call replaced by the notice alone in a copy of
+  Ceremony.swift, 7 failures in 3 tests (the discards counted 0, the halted and refused replies not stopping the app),
+  restored. CaptureLayerTests and the UI tests need UIKit and the simulator (CI). The gate clean (453 files),
+  `--workflows` clean, `--selftest` 4 x "486 passed, 0 failed", `sh scripts/banned-api-faults.sh` "708 runs (3 ways):
+  708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102 checks ran", `--selftest-ios-app` 33 passed,
+  `cargo fmt --all --check` clean.
+  For the lead: (1) the secure layer takes the field's first subview as its drawing view right after the field is
+  made; CaptureLayerTests fails on the simulator if iOS 26.5 or 18.6 builds none then, and then nothing is shown
+  (fail closed), which I1 and Stage D must settle; whether VoiceOver reads content inside the field (the field set
+  not an accessibility element) is unproven until Stage D's words use it. (2) Core's lock makes a screenshot's
+  discard during the start-up self-test wait for it on the main thread (Stage D's long calls: C3's open note on a
+  second reply buffer for DISCARD). (3) If a runner's simulator reports isSceneCaptured or sceneCaptureState active
+  with nothing recording, every UI test meets the capture cover; the first CI run shows it.
+  As built (M6 commit C5c, the offline check): KeepCrypt/OfflineCheck.swift, the one file importing Network: an
+  NWPathMonitor started at the app's launch for the process's life, its handler reading each update afresh,
+  offline being `path.status != .satisfied` (unsatisfied or requiresConnection: no usable path), reported on the main
+  queue to CeremonyModel.pathReported; until the first report the model counts the phone as online (fail closed, Start
+  disabled). Screens: the self-test's passed screen becomes Go offline ("Self-test passed" kept on it), with the
+  network state line and Start, disabled while a path is usable (a press does nothing then either), and Home behind
+  it. The rule, Android's offlineChanged mirrored as a pure function (CeremonyModel.afterPathReport): offline, or before
+  the start-up self-test has passed, only the state changes; online after it, a session held is discarded at once
+  through Core's discard and the start screen says "The session was wiped: the phone went online."; a screen past Go
+  offline that holds nothing (Home) goes back to Go offline with nothing to say; a stopped app takes no report. No
+  Stage C screen holds a session (Screen.holds is false for each; Stage D's screens and long calls bring them), so in
+  the app today going online from Home brings Go offline back, and the discard branch is the unit tests'. A
+  screenshot's discard now returns a screen past Go offline to Home or Go offline as Android's toStart. TestHooks:
+  "Path usable" and "No path" force the offline check's state (every later report is the forced one, whatever the
+  monitor says), so the UI tests drive the same report path the monitor does. canaries.sh's ios-swift-rules reads the
+  real OfflineCheck.swift (no longer planted; checked present).
+  Proof (M6 commit C5c, partial: local, Xcode 27.2; CI at the next push): CeremonyModelTests 9 (new: a report before
+  the start-up only changes the state; Start opens Home only offline, an offline report again changes nothing, going
+  online on Home brings Go offline back with no notice and no discard; the decision table, every holds and
+  needsOffline value offline, before the start-up and after it, the discard wherever a session is held); the macOS
+  stand-in "Executed 16 tests, with 0 failures"; with the rule's discard turned into Go offline in a copy, 2 failures
+  in testGoingOnlineDecidesAsAndroid, restored. OfflineUITests (TestHooks scheme): Start disabled with the path
+  usable, enabled with none, Home, then Go offline back on going online with no notice. The built apps' Network
+  symbols (llvm-nm -m -u, the Shipping device app): NWPathMonitor's init, metadata and descriptor, its
+  pathUpdateHandler setter and start(queue:), NWPath's status getter and NWPath.Status's satisfied case, metadata and
+  Equatable conformance, 9 in all, each under --ios-app's two allowed prefixes; `--ios-app Shipping` (simulator and
+  device) and `--ios-app WithTestRegistry` clean (24 system libraries: Network now linked); the hooks marker 1 line in
+  the TestHooks binary, 0 in the others; build-for-testing of all three schemes and the device build succeeded.
+  The gate clean (455 files), `--workflows` clean, `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran", `--selftest-ios-app` 33 passed, `cargo fmt --all --check` clean. C5 stays open until CI's run on both
+  legs (the three schemes' unit and UI tests on the simulators, the TestHooks step's marker line, the job's time for
+  the budget).
+
+  Proof (CI, the lead's, 2026-11-17: Entropy iPhone 44064121639 at b870ecd5, both legs green, macos-26 578 s and
+  macos-15 874 s; Entropy CI green): on both simulators (iOS 26.5, 18.6) and in every scheme, CaptureLayerTests,
+  CeremonyModelTests, CoreTests and WireTests pass (18 unit tests a scheme), and the TestHooks scheme's UI tests pass:
+  CaptureUITests testTheCaptureCoverReplacesTheSceneWhileCaptured, testThePrivacyCoverReplacesTheSceneWhileInactive,
+  testAScreenshotDiscardsTheSessionAndSaysWhy, OfflineUITests testStartOnlyOfflineAndGoingOnlineBringsGoOfflineBack,
+  and StartUpUITests; the hook panel's KC_TEST_HOOKS_DO_NOT_SHIP found in the TestHooks app, and `--ios-app` clean on
+  the Shipping simulator and device apps and the WithTestRegistry app (no other marker), so the marker never ships.
+  The capture state did not read active on either runner with nothing recording. The secure layer hosts its
+  content on both iOS versions in CaptureLayerTests; whether it hides that content from a screenshot is I1's (Q88).
+  The job's budget: 874 s x 1.25, 19 minutes (M5-30).
+### Stage D: the screens (M6 commits D1-D8)
+- [x] D1. One screen table, `mobile/screens.json`: each of the 49 screens of `:screens`' `Screen` enum, in its order,
+  with its id, its fixed title (screenTitle) and its kind (Protected or Public, isProtected). A JVM test in :screens'
+  commonTest holds the Kotlin enum, screenTitle and isProtected to the table, and an XCTest holds the Swift `Screen`
+  enum and its title and kind to it, so the two apps cannot drift (MA:17, MA:34).
+  As built (M6 commit D1): `mobile/screens.json`, written once by hand from Screen.kt's three tables (a one-off
+  reading of the file, not committed; the Kotlin test is the check, not a generator): an `about` line, then one line
+  per screen of the 49, in the enum's order, `{"id", "name", "title", "kind"}` (screenId, the Kotlin constant,
+  screenTitle, Protected or Public), 13 Protected. :screens' commonTest `ScreenTableTest` reads it through
+  entropyFile (the vectors' reader) as text and holds it whole: the opening, an about line of printable ASCII with
+  no quote or backslash, the screens' opening, each row exactly as rendered from Screen.entries (with its comma),
+  and the close, so any change to the enum, an id, a title or a kind fails until the table changes with it. The
+  iPhone: `KeepCrypt/Screen.swift`, `enum Screen: String, CaseIterable` in Screen.kt's order, the raw value its id,
+  `title` and `isProtected` exhaustive switches, `isWorking`; KeepCryptTests' `ScreenTableTests` reads the bundled
+  table (a TestVectors file reference, ../screens.json) with JSONSerialization and holds each case to its row: the
+  id, the Kotlin name in lower camel case against the case's own name, the title and the kind, and 49 rows. C5's
+  Stage C model now uses this Screen (.selfTest, .goOffline, .home, .stop with its reason beside it); its views and
+  tests follow. entropy-ios.yml's path filters gain Entropy/mobile/screens.json (entropy-android.yml's
+  Entropy/mobile/** has it).
+  Proof (M6 commit D1, partial: local; CI at the next push): `:screens:testAndroidHostTest` (JAVA_HOME the Android
+  Studio JBR, offline, strict verification) 38 classes, 209 tests, 0 failures (ScreenTableTest 1); with About's
+  title changed in Screen.kt, ScreenTableTest fails at the table's row (restored). The macOS XCTest stand-in (C3's
+  way: Core, Wire, Ceremony and Screen.swift with the unit tests but CaptureLayerTests, the host's release
+  libkeepcrypt_capi.a, `xcrun xctest`) "Executed 17 tests, with 0 failures" (ScreenTableTests 1); with D's title and
+  About's kind changed in Screen.swift, ScreenTableTests fails twice (restored). Local builds (Xcode 27.2, generic
+  simulator, CODE_SIGNING_ALLOWED=NO): build-for-testing "TEST BUILD SUCCEEDED" for all three schemes, no Swift
+  warning; the Shipping device build "BUILD SUCCEEDED"; `--ios-app Shipping` on the simulator and device apps and
+  `--ios-app WithTestRegistry` on its simulator app clean; the hooks marker on 1 line of the TestHooks binary, 0 in
+  the other three; `--selftest-ios-app` 33 passed. The gate clean (459 files), `--workflows` clean (4 workflows),
+  `cargo fmt --all --check` clean; on the commit's tree (a worktree): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (612 s).
+  CI proof (2026-11-17): ScreenTableTests passes in both schemes on both legs of Entropy iPhone run 44091376732 at
+  ac11013e; ScreenTableTest in Entropy Android run 44085800147 at 964154d1 (green).
+- [x] D2. `Ceremony.swift`'s CeremonyModel, the Swift port of `:screens`' CeremonyModel.kt: the same states, screens,
+  gate, overlays (the 30-second cover, the idle warning at 9 minutes and the wipe at 10), leaving rules (Protected:
+  discard at once; Public: the privacy cover and a wipe after 60 s away), the press guard (300 ms after a new view),
+  every refusal table, the offline rule and the halt path, over Core and Wire. XCTest mirroring the JVM walk
+  (Walk.kt's 48 screens: Back once and twice, leaving, idle, a configuration change being no leaving, every refusal)
+  at the same expectations. A discard while a long call runs must not wait for it (ffi's
+  `ffi_discard_during_call` rule): Core gains a second, small reply buffer for DISCARD and WIPE_ALL alone, called
+  outside the main call's lock.
+  As built (M6 commit D2a, the state machine and its screens): `KeepCrypt/Ceremony.swift`'s CeremonyModel is
+  CeremonyModel.kt's, method for method, with Kotlin's comments cut to what each does: UiState (Android's fields;
+  `offline`, one reading, for airplaneMode and wifiOff), every action from First launch's Continue to the
+  checklist's Finish, Check a backup, Load registry snapshot and About, `work` and `onWorker` (the long calls'
+  two looks at the discard flag, M5-54), show and enter (the gate, what each screen holds and wipes, the pads
+  wiped as their screens leave, the backup's, Check a backup's and the snapshot's files), Back (`backTo`),
+  `needsOffline`, the press rule (`pressOn`), the picker press rule (`pickerUp`, `appResumed`), the halt path
+  (`settle`, `halted`, the first halt's reason latched), going online (`pathReported`, Android's offlineChanged,
+  C5's pure `afterPathReport` kept) and C5's screenshot discard. `Seams.swift`: CeremonyCore (Core's 38 calls and
+  `shellHalt`, which Core gains: Android's Core.halt, named apart since the gate keeps `func halt` to
+  Ceremony.halt; the model's own halt is `failClosed`), MonotonicClock, UtcDate, MotionSource, Worker,
+  ScanStop, DocumentPickers (`openBackup` for Android's open, since `.open(` is SwOpenURL's), DocumentPlace,
+  PickedFile, and the app's SystemClock (CLOCK_MONOTONIC, which counts sleep), SystemDate (gmtime_r) and
+  QueueWorker (one serial queue, each reply on the main queue). `Pads.swift`: PadEntry (a buffer it owns, wiped
+  with memset_s, `take` one copy into a Secret) and the four pads' keys. Core: the four file constants (Android's
+  BACKUP_SUFFIX and the rest), `addExtra` and `loadSnapshot` taking a Secret. Wire: DiceProgress, SealCard,
+  RegistryHeader and Summary Equatable. The app: the model made over its seams (NoMotion until D3's Core Motion,
+  a zero-credit extra), Stage C's views on its state with First launch's Continue; the UI tests press Continue
+  first, and StartUpUITests checks First launch shows before the self-test.
+  Deviations from the Kotlin model, each the platform's or the gate's: (1) the offline check is C5's
+  process-long monitor reporting to `pathReported`, not a monitor started on each return; (2) a discard whose
+  reply is refused or discarded halts (C5's rule; Kotlin's discard ignores any reply but the halt), on the worker
+  too; (3) C5's screenshot discard, the iPhone's own, keeps First launch and Go offline in place with its notice
+  and otherwise lands as any discard; (4) a busy screen with no reply handed (impossible) halts.
+  Tests (KeepCryptTests, over the real slot; each leaves it at home, and each class checks it is live first,
+  since XCTest runs every class in one process and CoreTests' halt latches it, so they are named to run before
+  CoreTests): CeremonySupport.swift (Rig, HeldWorker, FakeOffline, FakeMotion, FakePickers, FakePlace, FakeFile,
+  SavedBackup, kcr.json's vectors and StandInCore, which forwards to Core and halts in its own place);
+  CeremonyWalk.swift, Walk.kt's 48 screens, branches, gated set and four words' states; CeremonyWalkTests (2:
+  every screen reached and checked, each gate, each state; isProtected against the docs' list, LeavingTest.kt's);
+  CeremonyBackTests (4, BackTest.kt's but the cover and warning half); CeremonyConfigurationAndOnlineTests (1,
+  goingOnlineOnEveryScreenDiscardsWhatIsHeld); CeremonyModelTests (9, C5's on the new model: First launch makes
+  no call before Continue, Start only offline, the pure rule, the screenshot on every kind of screen, a halted
+  and a broken discard, a failed self-test, the self-test once, the notice lines).
+  Proof (M6 commit D2a, partial: local; CI at the next push): the macOS stand-in (Core, Wire, Ceremony, Screen,
+  Seams and Pads.swift with the unit tests but CaptureLayerTests) over the host's release libkeepcrypt_capi.a
+  "Executed 24 tests, with 0 failures" (9 s), and over the host's test-registry archive (target/capi-test-registry,
+  `-D KC_WITH_TEST_REGISTRY`) the same; with Length's Back made nil, the code entry's wipe on leaving removed and
+  going online's discard made Go offline (in a copy), CeremonyBackTests and CeremonyConfigurationAndOnlineTests
+  fail at "length: Back once", "code_entry: Back left what was typed" and every held screen's "what is held"
+  (restored). Local builds (Xcode 27.2, generic simulator, CODE_SIGNING_ALLOWED=NO): build-for-testing "TEST BUILD
+  SUCCEEDED" for all three schemes, no Swift warning, and the Shipping device build "BUILD SUCCEEDED"; `--ios-app
+  Shipping` (simulator and device) and `--ios-app WithTestRegistry` clean; the hooks marker on 1 line of the
+  TestHooks binary, 0 in the others; `--selftest-ios-app` 33 passed. The gate clean (466 files; its first run
+  found four hits, fixed in the code: a comment naming the catch of KcHalt, `pickers.open()`, and two comments
+  naming the halt function), `--workflows` clean, `cargo fmt --all --check` clean; on the commit's tree (a
+  worktree): `--selftest` 4 x "486 passed, 0 failed", `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708
+  passed, 0 failed", `scripts/canaries.sh` "PASS: all 102 checks ran" (572 s). Not run here: the simulator (CI).
+  As built (M6 commit D2b, the timers, the cover, idle and leaving): `KeepCrypt/Timers.swift`, Timers.kt's rules
+  and boundaries on the injected clock (the cover at 30 s on a Protected screen, the warning at 9 minutes and the
+  idle wipe at 10 while something is held, the background wipe at 60 s away, the picker rule); the model gains
+  Android's appReturned, appLeft, pickerOpened, appResumed (the exemption's end with the picker buttons'), input,
+  reading (Q80 (b)), dismissOverlay and tick, the foreground flag (a screen shown away from the app comes up
+  covered), the idle time restarted by every press, a gate passed and a picker's answer, and openPicker's
+  exemption. The platform: CaptureShield maps the scene's phase to the model (active: a return and a resume;
+  background: leaving; inactive: the app-switcher cover alone, as C5's) and ticks the model every second
+  (Timer.publish); Stage C's shell draws the model's cover and warning as one button each (dismissOverlay) until
+  D3 draws them in full. On the iPhone a configuration change never reaches the model as leaving (the scene stays
+  active), so the configuration tests hold the repeated return and resume to changing nothing, as Android's
+  recreated activity does. Tests: TimersTests (8, TimersTest.kt's each), CeremonyLeavingTests (4, LeavingTest.kt's
+  but theProtectedScreensAreTheDocsList, which is CeremonyWalkTests'), CeremonyIdleTests (5, IdleTest.kt's: in the
+  shipping build the snapshot test checks core's NoRegistryKey, since a snapshot loads only in the test-registry
+  build), CeremonyPickerPressTests (4, PickerPressTest.kt's), CeremonyBackTests +1 (the cover and warning half),
+  CeremonyConfigurationAndOnlineTests +2 (the configuration change on every screen and in the words' states, the
+  state compared field by field and object by object, sameState); Rig.startUp now returns to the app first.
+  Proof (M6 commit D2b, partial: local; CI at the next push): the macOS stand-in "Executed 48 tests, with 0
+  failures" (32 s) over the host's release archive and the same over its test-registry archive; with leaving a
+  Protected screen made a cover, the warning dropped from tick and the background wipe moved to 61 s (in a copy),
+  CeremonyLeavingTests, CeremonyIdleTests, CeremonyBackTests and CeremonyConfigurationAndOnlineTests fail
+  (restored). Local builds: build-for-testing of all three schemes and the Shipping device build succeeded, no
+  Swift warning; `--ios-app` clean on the three shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere;
+  `--selftest-ios-app` 33 passed; the gate clean (471 files), `--workflows` clean, `cargo fmt --all --check` clean;
+  on the commit's tree (a worktree): `--selftest` 4 x "486 passed, 0 failed", `sh scripts/banned-api-faults.sh` "708
+  runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102 checks ran" (564 s).
+  As built (M6 commit D2c, refusals, the press guard and the halt path's tests): `KeepCrypt/PressGuard.swift`,
+  PressGuard.kt's ShownView and guard (300 ms after a view is first shown, by the touch's own time) for D3's screens
+  to report and ask; the model itself unchanged. Tests: PressGuardTests (8, PressGuardTest.kt's 7 and its probe
+  line); CeremonyRefusalTablesTests (4, RefusalTablesTest.kt's: every go-ahead QR text of kcr.json scanned on the
+  checks of dice-50-words12 and dice-99-words12, every age_refused backup of backup.json, now a bundled vector,
+  through Check a backup, every snapshot through Load registry snapshot, every mirror pair and a wrong insert on
+  the read-back; the shipping build runs them too, where an accepted proof or snapshot is refused NoRegistryKey
+  and a refused one gives its own refusal or NoRegistryKey; a file text is read with its JSON escapes undone by
+  hand, as Kotlin's jsonText, since JSONSerialization drops armor-bom's leading byte order mark);
+  CeremonyEntryRefusalTests (5, the refusals RefusalTablesTest.kt leaves to the screens' classes: CheckScreensTest's
+  wrong code, BackupScreensTest's wrong confirm answer, CheckBackupScreensTest's file refused by name, size or read
+  and wrong passphrase, no word or unreadable file, ExportScreensTest's empty BIP39 passphrase); CeremonyHaltTests
+  (8: CeremonyModelRefusalTest.kt, CeremonyModelHaltTest.kt, CheckBackupHaltTest.kt, CeremonyModelBusyScreenTest.kt
+  and the four Residual*HaltTest.kt). The halt tests run over StandInCore, which halts in its own place: XCTest runs
+  every class in one process, where the JVM gives each halting class a JVM of its own, so a real halt would latch
+  the slot for every later test; for M5-54's residual StandInCore answers the call core does not offer at home with
+  the halt core gives it (that rule itself is keepcrypt-ffi's, ffi/tests/ceremony.rs). Walk.to takes the core;
+  HeldWorker can run a long call's worker part alone (Android's HeldMain).
+  Proof (M6 commit D2c, partial: local; CI at the next push): the macOS stand-in "Executed 73 tests, with 0
+  failures" (35 s) over the host's release archive, and the same over its test-registry archive; with a
+  refusal from a call with no handler not halting, a refused code not saying so, BadSignature taken as no
+  snapshot refusal and the guard at 250 ms (in a copy), CeremonyHaltTests, CeremonyEntryRefusalTests,
+  CeremonyRefusalTablesTests and PressGuardTests fail (restored). Local builds: all three schemes built for
+  testing and the Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps; the hooks
+  marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate clean (476 files),
+  `--workflows` clean, `cargo fmt --all --check` clean; on the commit's tree (a worktree): `--selftest` 4 x "486
+  passed, 0 failed", `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed",
+  `scripts/canaries.sh` "PASS: all 102 checks ran" (566 s).
+  As built (M6 commit D2d, a discard never waits): Core gains a second, 16-byte reply buffer and a lock of its own
+  for DISCARD and WIPE_ALL alone (`callAside`), so either reaches the slot from the main thread while a long call
+  holds the main lock on the model's worker (keepcrypt-ffi's ffi_discard_during_call rule, C3's open note): the slot
+  drops the call's result and the call returns discarded. A reply past that buffer or not its layout halts the
+  slot through it; it is wiped with memset_s after each call; `replyBufferIsWiped` reads both buffers.
+  CoreDiscardTests (1, over the real kc_call, named to run before CoreTests' halts): Check a backup's opening of
+  SavedBackup (openBackup at home, scrypt) timed once, then run on a thread of its own, and a discard, then a
+  wipe, made a third of that time into it: each done while the call still runs and in under half its time, the
+  call discarded, both buffers wiped, the slot at home.
+  Proof (M6 commit D2d, partial: local; CI at the next push): on the D2c Core (one lock) the test fails 5 times:
+  the discard took 199 ms and the wipe 192 ms of a 310 ms call, waiting for it, and the call was not discarded;
+  with the second buffer it passes, five runs in a row, the call 314 ms and each cut 0 ms (a probe line in a
+  copy). The macOS stand-in "Executed 74 tests, with 0 failures" over the host's release archive and the same
+  over its test-registry archive. Local builds: all three schemes built for testing and the Shipping device
+  build, no Swift warning; `--ios-app` clean on the three shipped apps; the hooks marker 1 line in TestHooks, 0
+  elsewhere; `--selftest-ios-app` 33 passed; the gate clean (477 files; its first run refused two semaphore
+  `signal()` calls in the test as SwFailOpen's `signal(`, replaced by dispatch groups), `--workflows` clean,
+  `cargo fmt --all --check` clean; on the commit's tree (a worktree): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (573 s).
+  For the lead (D2): not run here, the simulator: on CI KeepCryptTests grows from 18 to 76 tests a scheme (the 74 here and CaptureLayerTests' 2) (two
+  schemes), about 35-37 s on this Mac's host; the iPhone job's 19-minute budget may need remeasuring. XCTest's
+  name order is relied on (the slot's users before CoreTests' latching halt); a run in another order fails by name
+  (assertLiveSlot), not silently.
+  CI proof (2026-11-17): Entropy iPhone run 44085800258 at 964154d1 failed in the WithTestRegistry scheme alone, 30
+  failures on both legs: KeepCryptTests' WithTestRegistry configuration lacked KC_WITH_TEST_REGISTRY (the app's and
+  the UI tests' had it), so the unit bundle, which compiles the app's sources itself, built the model and the tests
+  as the shipping build over the test-registry core; D2's tests are the first to read the flag. Fixed at ac11013e
+  (the setting added to that configuration alone; TestHooks' scheme runs no unit tests). Run 44091376732 at ac11013e
+  green: "Executed 76 tests, with 0 failures" in Shipping and WithTestRegistry on macos-15 (Xcode 16.4, iPhone 16
+  iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17 iOS 26.5), the UI tests passing in all three schemes; the jobs took
+  1036 s and 1117 s, so entropy-ios.yml's budget is 24 minutes (1117 s x 1.25 = 1397 s, M5-30's rule). Entropy CI
+  run 44091376237 green (14 jobs), Entropy Android 44085800147 and Entropy Pi image 44085800177 green at 964154d1.
+- [x] D3. The kit and the start: SwiftUI's fixed text, headings and pane titles; the pads (dice 1-6 with undo, letters
+  for the first four letters, the go-ahead code, the BIP39 passphrase) as buttons only, never the system keyboard;
+  First launch, Self-test, Go offline, Home, Length, Device entropy (Core Motion's accelerometer and gyroscope and
+  touch timing as zero-credit extras, M5's encoding), Commitment, Dice.
+  As built (plan, 2026-11-17): the screens mirror :screens' Kit.kt, Screens.kt, FirstLaunch.kt, StartScreens.kt
+  and HomeScreens.kt in wording, order and test tags (each screen's root its id, each control Android's tag), and
+  a KeepCryptTests case pins every fixed text to those Kotlin sources (bundled as file references, as wire.rs
+  is), so a wording change on either side fails until both agree; each screen's title is Screen.swift's, posted
+  to VoiceOver as the screen opens (Android's pane title; the rest of VoiceOver is D8). Where the iPhone cannot
+  do what Android does, the platform decides, and each is named here: (1) Go offline shows the offline check's
+  one reading (C5's two lines) instead of airplane mode's and Wi-Fi's, and has no "Open airplane-mode settings"
+  (iOS opens no settings page but the app's own, and rule 9 keeps that to OpenSettings.swift's camera prompt);
+  its note under a disabled Start names the path. (2) Home's Check a backup, Load registry snapshot and About lead
+  to D4's and D7's screens and pickers, so until those land they are drawn disabled (no control leads nowhere,
+  M5-48). (3) The press guard (PressGuard.swift, D2) is a UIKit gesture recognizer on the window, judging each
+  touch by UITouch's own timestamp (the uptime clock, as Android's pointer events carry) and cancelling a refused
+  touch before any control gets it, as Android's root pointer handler consumes it; every touch down is the
+  model's input and, on Device entropy, its touched. The TestHooks panel sits outside the guarded screens. (4)
+  Core Motion's accelerometer and gyroscope at 50 Hz, each update one sample in Android's layout (PhoneMotion:
+  the sensor's type, Android's numbers 1 and 4, 4 bytes; the timestamp in nanoseconds, 8; each value's IEEE
+  float bits, 4 each; big-endian), Core Motion's own units (g, rad/s), zero credit either way; raw
+  accelerometer and gyroscope updates need no NSMotionUsageDescription (that key is for motion activity and
+  fitness), so Info.plist is unchanged. (5) The stop and "Working..." screens are drawn with the kit now, as
+  Screens.kt draws them (D7 keeps its other screens). Screens past Dice stay the shell's title until D4-D7.
+  As built (M6 commit D3a, the kit, the pads and the start screens): `Texts.swift` (every fixed text, Android's,
+  and the laid-out values: diceText, registryDate, homeSnapshotLine, fileRefusalText, paneTitle(of:),
+  actionsScroll), `Kit.swift` (KitColors, KitType, KitScreen with its actions under the column or, past half the
+  screen, scrolling with it, and "More below"; Heading, Title, KitText, KitButton, NoticeBar,
+  TestRegistryStrip), `PadViews.swift` (the dice, letter, Crockford and ASCII pads as buttons, 44-point keys,
+  public keys identified key_ and their label), `StartScreens.swift` (First launch to Dice), `Screens.swift` (the
+  switch over the model's state, the notice bar, the real cover and idle warning replacing D2b's placeholder
+  buttons and hiding the screen under them from VoiceOver, the kit's Working and stop screens, each state's pane
+  title posted to VoiceOver as it opens, the press guard told of each view as it is shown); Pads.swift gains
+  keyLabel and the pads' columns. The TestHooks panel sits under the screens (safeAreaInset), no longer over
+  their actions. The UI tests find each screen by its root identifier (Android's tags: first_launch,
+  first_launch_continue, go_offline, home, notice, stop) and wait 500 ms past a new screen before a deliberate
+  press (UITestSupport.swift). The unit bundle gains :screens' FirstLaunch.kt, StartScreens.kt, Screens.kt,
+  HomeScreens.kt, Kit.kt and BackupScreens.kt as file references; entropy-ios.yml's path filters gain
+  Entropy/mobile/android/screens/src/commonMain/**. The macOS stand-in now reads the unit-test target's
+  compilation conditions from `xcodebuild -target KeepCryptTests -configuration X -showBuildSettings`.
+  Tests: ScreenTextsTests (4: every shared text a literal of those Kotlin sources, the iPhone's own lines none,
+  the dice line and C's groups against StartScreensTest.kt's specimens, Home's lines), PadsTests (7, PadsTest.kt's
+  but Compose's snapshot test), ScreenTitlesTests (3, ScreenTitlesTest.kt's and KitTest.kt's, and D3's screens
+  Public and titled by Screen.swift), CeremonyStartScreensTests (6, StartScreensTest.kt's dice, faces, 256 and
+  Back, PadPressTest.kt's dice-under-cover and code-entry cases).
+  Proof (M6 commit D3a, partial: local; CI at the next push): the macOS stand-in "Executed 94 tests, with 0
+  failures" over the host's release archive (Shipping's conditions: none) and the same over its test-registry
+  archive (WithTestRegistry's: KC_WITH_TEST_REGISTRY, from Xcode's settings); with the 256-roll line reworded in
+  Texts.swift (a copy), ScreenTextsTests fails naming it (restored). Local builds (Xcode 27.2, generic simulator,
+  CODE_SIGNING_ALLOWED=NO): build-for-testing of all three schemes and the Shipping device build succeeded, no
+  Swift warning, the six Kotlin files in the unit bundle; `--ios-app` clean on the three shipped apps (Info.plist
+  unchanged); the hooks marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate clean
+  (487 files), `--workflows` clean, `cargo fmt --all --check` clean. Not run: the simulator (CI).
+  As built (M6 commit D3b, touches and motion): Screens.swift's TouchGuard, a UIGestureRecognizer on the window
+  (put there by a view behind the screens, so the TestHooks panel under them is outside it): each touch down
+  inside the screens is the model's input and touched, at UITouch's own timestamp in milliseconds (the uptime
+  clock the guard's views are stamped on), and a touch the press guard refuses is recognized, which cancels it in
+  the views under it and fails their gestures; an admitted one fails the recognizer at once and goes on.
+  `MotionSource.swift`'s CoreMotionSource replaces D2's no-op behind the same seam: CMMotionManager's
+  accelerometer and gyroscope at 50 Hz on the main queue, each update Seams.swift's motionSample in Android's
+  layout (the sensor type 1 or 4, the timestamp in nanoseconds, three float bits, big-endian, 24 bytes); no
+  Info.plist key (raw sensor updates need none). StandInCore records each extra instead of forwarding it (an
+  extra outside Collecting would halt the slot for every later test). Tests: CeremonyStartScreensTests +3 (a
+  touch on Device entropy reaches add_extra as InputTiming in its 16-byte layout, TouchReachesCoreTest.kt's; a
+  motion sample reaches it as Motion and is wiped, and after the commitment neither reaches core,
+  MotionReachesCoreTest.kt's and StartScreensTest.kt's noTouchOrMotionSampleReachesCoreOffDeviceEntropy; a
+  sample's bytes against Android's layout, PhoneMotionTest.kt's).
+  Proof (M6 commit D3b, partial: local; CI at the next push): the macOS stand-in "Executed 97 tests, with 0
+  failures" over the host's release archive and the same over its test-registry archive; with the sensor type
+  written in 2 bytes (a copy), testAMotionSampleIsAndroidsLayout fails (restored). Local builds: all three
+  schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean on the three
+  shipped apps (CoreMotion now linked, a system framework, Info.plist unchanged); the hooks marker 1 line in
+  TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate clean (488 files), `cargo fmt --all --check`
+  clean; on the final tree (a worktree at D3b): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (642 s).
+  For CI (not provable here): the views, the press guard's recognizer (that a refused touch reaches no SwiftUI
+  button and an admitted one does) and the UI tests' new identifiers run only on the simulators; Core Motion's
+  samples only on a phone (the simulator has no motion hardware), I3's to watch.
+  CI proof (2026-11-17): Entropy iPhone run 44101856909 at 7b6eff87 green: "Executed 99 tests, with 0 failures" in
+  Shipping and WithTestRegistry on macos-15 (Xcode 16.4, iPhone 16 iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17
+  iOS 26.5), the UI tests (Android's tags, the 500 ms wait past a new screen) passing in all three schemes; the jobs
+  took 1060 s and 1382 s, so entropy-ios.yml's budget is 29 minutes (1382 s x 1.25 = 1728 s, M5-30's rule). Entropy CI
+  run 44101856914 green (14 jobs). Entropy Android run 44101857057 failed in its dependency review, not in the app:
+  Maven Central reset the connections mid-fetch (curl (56) and (55)), and the loop, which judged only the HTTP code,
+  stopped at "cannot move ...pom.asc.part" (a 200 header, then no file). Fail-closed held, but the message hid the
+  cause and a transient reset was not retried: android-deps-review.sh now records each transfer's own curl exit code
+  (%{exitcode}) and fails a non-zero one by name before its HTTP code, and retries any error (--retry-all-errors,
+  still 3 tries; whatever is kept is still checked against its hash and signature by the review). Local check (curl
+  8.7.1): a 200, a 404 and a refused connection report "0 200", "0 404" and, after 3 retries, "7 000".
+- [x] D4. The collision check: the prompt, Skip's confirm, the seal card and its check QR, the scan screen (AVFoundation's
+  QR reader, the camera asked for only there), the code entry, Match found's and Cannot check's confirms, the
+  collision result, its report QR, the result before the words; Load registry snapshot through the document picker
+  (`.kcr`, kept in memory only).
+  As built (plan, 2026-11-17): CheckScreens.kt's screens, words, order and tags, the fixed texts pinned to the
+  Kotlin sources as D3's (CheckScreens.kt, Drawing.kt and WordsScreens.kt bundled too). (1) QR codes: core draws
+  every matrix (QrMatrix, as on Android, whose screens only paint it), so the iPhone uses no QR generator;
+  Drawing.kt's layout (whole modules inside the four-module quiet zone), the seal card's palette and the braille
+  cells are ported and pinned by DrawingTest.kt's cases. (2) The scan: AVFoundation's capture session with a
+  metadata output for QR codes and no preview layer (nothing the camera sees is drawn); the camera is asked for
+  as the scan screen opens and only there; a QR's text alone goes to the model's onGoAheadText, which core
+  parses and judges; frames never reach the app. A runtime error or interruption is ScanStop.failed. The
+  capture input's creation throws, and rule 3's catch rule lets a catch only halt or rethrow, so a camera that
+  cannot be opened after access was granted ends the app (Ceremony.halt) where Android says SCAN_FAILED; it is
+  named here for the lead. (3) After a refused camera the iPhone can never ask again, so the scan screen adds
+  "Open Settings" (OpenSettings.swift, the gate's one allowed settings call, M6-6) beside Android's two actions;
+  an iPhone-own button. (4) The collision-report QR is the first Protected screen: the privacy gate (Screens.kt's
+  PrivacyGate) and the QR drawn inside SecureLayer (Q88, mobile-apps.md's wrapper list names the seal code's
+  screens). (5) Load registry snapshot: SwiftUI's fileImporter (any data file; the model refuses a name not ending
+  in .kcr and a size past Core.snapshotMaxBytes before any byte is read), the file sized by stat and read once on
+  the model's worker through a FileHandle (the gate refuses any `.open(` call, so no stream), at most one byte
+  past the limit, into a Secret, the Data wiped, nothing kept or copied; a read error there raises (the
+  app ends) rather than Home's "could not be read", the handle's read having no throwing form that rule 3's
+  catch rule would let the app answer. Home's Load registry snapshot is enabled. (6) The canned scan for CI: a TestHooks-only scanner that,
+  when the UI test's launch environment carries a scanned text, holds the scan screen's callbacks instead of
+  starting the camera (the simulator has none) and hands that text on the hook panel's Scan button, the camera's
+  own path; to let a test-registry go-ahead QR reveal its result, the TestHooks configuration links the
+  test-registry archive and sets KC_WITH_TEST_REGISTRY beside KC_TEST_HOOKS (it was shipping's, M6-5); it is
+  still never archived or shipped, and the Shipping and WithTestRegistry apps hold no hook.
+  As built (M6 commit D4a, the check's screens and Load registry snapshot): `CheckScreens.swift` (the prompt,
+  the seal card, the check QR with its four answers, the code entry on D3's Crockford pad, the collision result,
+  the collision-report QR behind the privacy gate and inside SecureLayer, the result before the words, Load
+  registry snapshot's result), Kit.swift's OneWayConfirm (Skip's, Match found's and Cannot check's confirms),
+  Screens.swift's Protected wrapper and PrivacyGate (Screens.kt's; the SeedBook rules for D5's words),
+  `DrawingMath.swift` and `Drawing.swift` (QrLayout, QrKind, the seal card's palette, braille cells, and the
+  views that draw core's QrMatrix, the seal card and a row of cells), Texts.swift's CheckTexts and GateTexts
+  and the lines (snapshotLine, proofLine, scanLine, freshnessWarning, clearText, codeShown,
+  snapshotRefusalText), `DocumentPicker.swift` (ScreenPickers, the open picker's flag; PickedURLFile: stat's
+  size, one read through a FileHandle of at most limit + 1 bytes into a Secret, the Data wiped, the security
+  scope held only for the read), Screens.swift's fileImporter (any data file, its answer or its cancellation
+  to the model's snapshotPicked), and Home's Load registry snapshot enabled. The scan screen is D4b's.
+  Tests: DrawingTests (5, DrawingTest.kt's but the three refusals that end the app here, and QrKind's names),
+  CheckLinesTests (4: the registry lines and the result, the code's groups, the scan line for every state,
+  core's text for every snapshot refusal), ScreenTextsTests' pins grown by every new fixed text (CheckScreens.kt,
+  Drawing.kt and WordsScreens.kt bundled too) and the lines' Kotlin templates.
+  Proof (M6 commit D4a, partial: local; CI at the next push): the macOS stand-in "Executed 106 tests, with 0
+  failures" over the host's release archive and the same over its test-registry archive (conditions from
+  Xcode's settings); with "Destroy this seed" and the proof line reworded and the QR's offset halved wrongly (a
+  copy), ScreenTextsTests, CheckLinesTests and DrawingTests fail (restored). Local builds: all three schemes
+  built for testing and the Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps
+  (Info.plist unchanged); the hooks marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the
+  gate clean (494 files; its first run refused InputStream's `.open()`, SwOpenURL's, and two comments naming a
+  catch: a FileHandle reads instead, and the comments say rule 3), `cargo fmt --all --check` clean.
+  As built (M6 commit D4b, the scan): `GoAheadScanner.swift` (Seams.swift's QrScanner, Android's seam):
+  AVCaptureDevice's authorization asked as a scan starts (the prompt only then, NSCameraUsageDescription as C2
+  wrote it), a capture session with the default camera and an AVCaptureMetadataOutput for QR codes, no preview
+  layer, its delegate on the main queue handing the first QR text (4,296 characters at most) to found once and
+  stopping; a refused or restricted camera is ScanStop.refused, no camera .missing, a session that cannot take
+  the input or output or offers no QR type, or reports a runtime error, .failed; a scan stopped before a
+  prompt's answer drops it (a generation count). The input's creation throws, so it ends in `Ceremony.halt(.camera)`
+  (Ceremony.End gains .camera, plan (2)). CheckScreens.swift's ScanScreen (Android's: the guide, the scan line,
+  "Type go-ahead code" and Back; the scanner started while the screen shows uncovered and unstopped, stopped
+  otherwise and as it leaves) with the iPhone's "Open Settings" after a refusal (`OpenSettings.swift`, the gate's
+  allowed call). TestHooks: HookedScanner (with KC_HOOK_SCAN_TEXT in the launch environment it holds the scan
+  screen's callbacks and the panel's Scan hook hands that text to found; without it, the camera's scanner) and
+  the Scan hook; the TestHooks configuration now links the test-registry archive and sets KC_WITH_TEST_REGISTRY
+  beside KC_TEST_HOOKS, in the app's and the UI tests' configurations (plan (6)), and the UI-test bundle carries
+  kcr.json. ScanUITests (TestHooks): dice-50-words12's 50 rolls on the dice pad, Check now, the seal card's Seal
+  ID against kcr.json's, the check QR, the scan screen, the Scan hook with collision-dice-50's go-ahead QR text:
+  the collision result with its proof line.
+  Proof (M6 commit D4b, partial: local; CI at the next push, where the simulator runs ScanUITests): the macOS
+  stand-in "Executed 106 tests, with 0 failures" both ways (the scanner and the hooks are UIKit and AVFoundation
+  code, build-only here). Local builds: all three schemes built for testing and the Shipping device build, no
+  Swift warning; `--ios-app` clean on the three shipped apps (AVFoundation linked, no denied framework; Info.plist
+  unchanged); the hooks marker 1 line in TestHooks, 0 elsewhere; the registry marker now on 1 line of the
+  TestHooks binary (it links the test-registry core); `--selftest-ios-app` 33 passed; the gate clean (497 files),
+  `cargo fmt --all --check` clean; on the final tree (a worktree at D4b): `--selftest` 4 x "486 passed, 0 failed",
+  `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all
+  102 checks ran" (668 s).
+  For the lead: CLAUDE.md's Commands still describe the TestHooks configuration as linking shipping's library
+  (line 246); the plan's (6) changes that, and CLAUDE.md is not this agent's to edit.
+  CI proof (2026-11-17): Entropy iPhone run 44116499465 at 4fb888dd green: "Executed 108 tests, with 0 failures" in
+  Shipping and WithTestRegistry on macos-15 (Xcode 16.4, iPhone 16 iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17
+  iOS 26.5); in TestHooks, ScanUITests testAGoAheadQrFromTheTestRegistryRevealsItsResult passed on both (77 s and
+  74 s: the dice-50-words12 seed rolled on the pad, the collision-dice-50 go-ahead text through the camera's path, the
+  collision result); the jobs took 1365 s and 1272 s, inside the 29-minute budget (1365 s x 1.25 = 1706 s, still 29).
+  Entropy CI 44116499411 (14 jobs), Entropy Android 44116500229 (the dependency review passed: 924 artifacts; the
+  earlier 429 was transient, its rerun at e30192c2 passed the review too) and Entropy Pi image green. Lead decisions
+  M6-7 to M6-9 record D4's choices for the gate.
+- [x] D5. The words: the privacy gate ("I'm alone, show words"), insert view (the word, its SeedBook number, five braille
+  faces, blank faces and mirror pairs flagged) drawn inside SecureLayer, the overview, the device swap, the read-back
+  entry, its mismatch and its end, the wallet summary.
+  As built (plan, 2026-11-17): WordsScreens.kt's screens, words, order and identifiers, the fixed texts pinned to
+  the Kotlin sources as D3's and D4's. (1) Every secret of the Protected screens is drawn inside SecureLayer: the
+  insert's word, its SeedBook number and its five faces; the overview's four lines; the letters typed and the
+  matched word on the read-back entry; the mismatch's verdicts. The headers ("Insert 01 · device 1 of 1", the
+  read-back's and the mismatch's), face 6's engraved number and the fixed notes stay outside it, as Android
+  leaves them unmarked; the privacy gate (D4's PrivacyGate) carries the SeedBook rules before the words.
+  SecureLayer gains sizeThatFits (the hosted content's own size at the width offered), so wrapping text sizes
+  it. (2) The words: each body reads the WordPage, PadEntry or Mismatch the model holds as it draws, into a
+  String used for that drawing only (wordText wipes the word's own copy at once); no view keeps a secret in
+  @State, an observable of its own or a cache. What cannot be guaranteed: Swift's Strings and the text SwiftUI
+  draws and keeps for its rendering are not wiped (MA:17's iPhone residual), and the content hosted inside the
+  secure field is reachable by VoiceOver or not as UIKit decides (D8 settles it; labels are left as Android
+  has them, the words unlabelled beyond their text). (3) Braille: each face's letter, dots, lighter flag and
+  mirror partner are core's (WordPage), and the tests hold them to vectors/braille.json; no table of the app's.
+  The labels under the faces are Drawing.kt's ("leave blank", "mirror"). (4) The read-back types on D3's
+  letter pad. (5) A TestHooks UI test walks dice-50-words12 through Skip, the gate, insert 1 to 12 and the
+  first read-back (about 50 s of presses on top of D4's 75 s; the iPhone job then sits near 24 of its 29
+  minutes).
+  As built (M6 commit D5a, the words' screens): `WordsScreens.swift` (WordsInsertScreen, WordsOverviewScreen,
+  DeviceSwapScreen, ReadbackEntryScreen, ReadbackMismatchScreen, ReadbackDoneScreen, WalletSummaryScreen),
+  Drawing.swift's BrailleFaceView (the letter, the six dots with their numbers, the label, face 5 lighter),
+  DrawingMath.swift's faceLabel, Texts.swift's WordsTexts and the lines (insertHeader, overviewHeader,
+  readbackHeader, mismatchHeader, seedbookText, faceSixText, fingerprintHex, typedFaces, verdictLine, wordText,
+  overviewLine, digits), SecureLayer's sizeThatFits, and the screens wired in Screens.swift.
+  Tests: CeremonyWordsTests (4: every insert of dice-99-words24 against braille.json face by face with its label,
+  the headers and device 2 of 2 from word 13; CLAUDE.md's SeedBook cross-checks and every word's mirror
+  partners e/i, d/f, h/j, r/w in braille.json; the read-back's lines and the fingerprint; the summary's
+  fingerprint after a 12-word read-back), ScreenTextsTests' pins grown by WordsTexts, the face labels and the
+  headers' Kotlin forms.
+  Proof (M6 commit D5a, partial: local; CI at the next push): the macOS stand-in "Executed 110 tests, with 0
+  failures" over the host's release archive and the same over its test-registry archive; with the mirror label
+  dropped and the insert header's number widened (a copy), CeremonyWordsTests fails 40 times (restored). Local
+  builds: all three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean
+  on the three shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed;
+  the gate clean (499 files), `cargo fmt --all --check` clean.
+  As built (M6 commit D5b, the words' UI test): WordsUITests (TestHooks): dice-50-words12's 50 rolls on the dice
+  pad, Skip and its confirm, Show words, the privacy gate (its SeedBook rules shown, no insert header behind it),
+  insert 1's header and face 6, Next to insert 12, the read-back started, insert 1's first four letters pressed on
+  the letter pad (its keys found by their labels, as Android's sensitive keys carry no tag), the match, and Next
+  to insert 2's entry. The secure layer's content is read by no UI test.
+  Proof (M6 commit D5b, partial: local build only; CI at the next push runs it on both simulators): the TestHooks
+  scheme built for testing with the test compiled, all three schemes and the device build, no Swift warning;
+  `--ios-app` clean on the three shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere; the gate
+  clean (500 files); on the final tree (a worktree at D5b): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1477 s, on a loaded Mac).
+  CI proof (2026-11-17): Entropy iPhone run 44131627368 at 0f58a71d: WordsUITests passed in TestHooks on both legs
+  (75 s on macos-26), the words' screens and SecureLayer's sizing drawn; its one failure, CoreDiscardTests on
+  macos-26 WithTestRegistry, was the test's timing (the discard returned in 0 ms after the long call had ended: a
+  slow single baseline put the cut past it), fixed at 9e34caee (the fastest of three baselines; each try judged by
+  the call's reply, an inconclusive one retried sooner) and tightened after D6 (every cut, landed or not, under half
+  the baseline, so a cut that waits for the main lock fails by name; the stand-in's planted wait showed the need).
+  Run 44138018119 at 9e34caee green: "Executed 112 tests, with 0 failures" in Shipping and WithTestRegistry on
+  macos-15 (Xcode 16.4, iPhone 16 iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17 iOS 26.5), CoreDiscardTests passing
+  in all four, every UI test (StartUp, Capture, Offline, Scan, Words) passing on both; the jobs took 1225 s and
+  1442 s, so the budget is 31 minutes (d5f39cb1). Entropy CI 44138018147 (14 jobs) and Entropy Android 44138018043
+  green.
+- [x] D6. The exports: the backup's passphrase, confirm and save (`.fileExporter` in DocumentPicker.swift, the file read
+  back and verified, "Backup verified"), the watch-only offer, the BIP39 question and entry, the summary, the account
+  and descriptor QRs, the registration offer and QR, Reveal D, the checklist and Finish.
+  As built (plan, 2026-11-17): the views over D2's model, in Android's BackupScreens.kt and ExportScreens.kt
+  words, order and tags (the checklist in WordsScreens.swift, as Android's); no change to the model's flow.
+  (1) Secrets: the backup passphrase's page, the confirm's choices, the letters typed, the BIP39 passphrase
+  typed and D are drawn inside SecureLayer, where Android marks each node secret; the account, descriptor and
+  registration QRs, which Android draws unmarked on Protected screens, go inside SecureLayer as D4's collision
+  report QR does. The summaries' fingerprint and address are Public, as Android's. Each is read from the state's
+  Secret, matrix or the pad's PadEntry as its body draws; no view keeps one in @State. Swift Strings and the text
+  SwiftUI draws are not wiped (MA:17's residual, as D5).
+  (2) The save: `.fileExporter` with an in-memory FileDocument (docs/mobile-apps.md, Saving step 3), the iOS 17
+  overload (iOS 27's WritableDocument, which writes to the destination itself, needs iOS 27). Its document holds
+  the model's own Secret and copies it into one Data only when the exporter asks to write. The seam's create
+  takes the bytes with the name (`create(name:bytes:)`): Android's picker gives a place before the write, the
+  exporter writes as it opens. Its answer is backupPlaced: the place it saved to (write says whether it wrote
+  the model's bytes, by identity; readBack reads the file there once, as a picked file is read), a failure
+  (write fails: "writing the file failed"), or none (cancel: the save screen stays). The Data the exporter gets,
+  and any file SwiftUI stages before the system's picker moves or copies it, are the system's: ciphertext alone
+  (age v1, scrypt log2 N = 18), which the app neither names nor can wipe, and the gate refuses the app's
+  directories outright, so it cannot clean a staged copy either. SwiftUI does stage one: the iOS 27.0
+  simulator runtime's SwiftUI names FileExportOperation's writeToTemporaryLocation and writeTemporaryFilesIfNecessary (its
+  symbols, read from the runtime's shared cache); when it removes the file is not shown. A lead decision; I2 looks at the app's
+  container (tmp) after a save and after a cancel, and confirms the name keeps its .age and the read-back of the
+  exported URL works (a failed read-back shows "reading the file back failed", never "Backup verified").
+  (3) The BIP39 entry uses the ASCII pad, three pages, as Android's (the task's "letter pad" is the confirm's).
+  (4) Tests: CeremonyExportsTests reads each QR back in-process with Core Image's QR detector (Android's Checker
+  reads with ZXing) and holds it to the vectors: the account QR a crypto-account UR whose CBOR is BCR-2020-015's
+  for the descriptors' xpub and the summary's fingerprint, the descriptors' BIP-380 checksums (the decoders first
+  held to watchonly.json's UR, CRC-32, account and BIP-380 vectors), the registration QR kcr.json's register text
+  for dice-50-words12's seal code, D's SHA-256 under "KCE/v1/commit" against C (CommonCrypto, in the tests only)
+  and its text as verify.py's parse_hex32 reads it, and the saved backup against backup.json's age format, limits
+  and file names, opened by core to the summary's fingerprint. BackupScreens.kt's refusal table case for case,
+  and every fixed text pinned in ScreenTextsTests (ExportScreens.kt and watchonly.json bundled for the tests).
+  (5) No UI test through Save: the exporter's sheet is the system's document browser, which this Mac cannot
+  run (no simulator), and whether XCUITest can drive it on CI's simulators is unproven; the iPhone job took
+  1442 s of its 31 minutes at 9e34caee (run 44138018119). Save's journey is left to Stage U and I2.
+  As built (M6 commit D6a, the backup's and the exports' screens): `BackupScreens.swift` (BackupOfferScreen,
+  BackupPassphraseScreen, BackupConfirmScreen, LetterEntry for the confirm and D7's entry, BackupSaveScreen,
+  BackupVerifiedScreen), `ExportScreens.swift` (WatchOfferScreen, Bip39AskScreen, Bip39EntryScreen,
+  WatchSummaryScreen, WatchAccountQrScreen, WatchDescriptorQrScreen, RegisterOfferScreen, RegisterQrScreen,
+  RevealDOfferScreen, RevealDScreen), WordsScreens.swift's ChecklistScreen, Texts.swift's BackupTexts,
+  ExportTexts, ChecklistTexts and the lines (passphraseLines, passphraseText, choiceText, passphrasePageText,
+  confirmQuestionText, whichWordText, backupRefusalText, saveFailureText, keysPageText, bip39Shown,
+  deviceLegText), DocumentPicker.swift's BackupDocument, BackupExporter, ExportedPlace and FailedExport (the
+  read-back shared with the picked file's read), the seam's `create(name:bytes:)`, and the screens and the
+  exporter wired in Screens.swift.
+  Tests: CeremonyExportsTests (8: the decoders against watchonly.json; no passphrase, the QRs core's and the
+  vectors' formats, paging and the wipe; TREZOR on the ASCII pad, its wallet's export; the registration QR's
+  register text; D against C and verify.py's reading; Save's name and bytes through the seam to "Backup
+  verified"; the saved file's age format, opened by core; the passphrase pages and the save-failure lines),
+  ScreenTextsTests' pins grown by the D6 texts and forms, and BackupScreens.kt's refusal table case for case.
+  Proof (M6 commit D6a, partial: local; CI at the next push): the macOS stand-in "Executed 119 tests, with 0
+  failures" over the host's release archive (conditions: none) and the same over its test-registry archive
+  (KC_WITH_TEST_REGISTRY); with four lines mutated in a copy (a refusal's text, the BIP39 dot, the passphrase's
+  numbering, the keys' page), CeremonyExportsTests and ScreenTextsTests fail 7 times. Local builds: all three
+  schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean on the three
+  shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate
+  clean (503 files), `cargo fmt --all --check` clean.
+  As built (M6 commit D6b, the note's record): the iPhone job's measured budget (1442 s of 31 minutes, the lead's
+  d5f39cb1) and SwiftUI's staging symbols in point (2); no code.
+  Proof (M6 commit D6b, on the final tree, a worktree at D6a): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1011 s in all); the gate clean (503 files). The lead's CoreDiscardTests at 9e34caee on the
+  stand-in: "Executed 1 test, with 0 failures" over each archive (2.7 s, 2.4 s); with callAside planted to take
+  the main lock first (a copy), it fails over each, "a discard: no try landed inside the long call (baseline
+  333 ms)" and the same for a wipe.
+  CI proof (2026-11-18): Entropy iPhone run 44148124454 at fed382ff green: "Executed 121 tests, with 0 failures" in
+  Shipping and WithTestRegistry on macos-15 (Xcode 16.4, iPhone 16 iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17
+  iOS 26.5); CeremonyExportsTests' five tests (the decoders against watchonly.json, the registration QR, D and
+  verify.py, the save's name and bytes, the passphrase pages) and CoreDiscardTests (tightened) passing in all four;
+  every UI test passing on both. The jobs took 1513 s and 1622 s, so the budget is 34 minutes (1622 s x 1.25 = 2028
+  s). Entropy CI 44148124349 green (14 jobs). The exporter itself is not driven in CI (the system's document
+  browser): a real save and its read-back are I2's.
+- [x] D7. Check a backup (the `.age` file through the picker, the passphrase on the letter pad, the result, the words only
+  if asked, the re-check), About, Working and the stop screen.
+  As built (plan, 2026-11-18): the views over D2's model (its backupPicked, entryTyped, showBackupWords,
+  showRecheck, closeBackup and about are unchanged), in Android's BackupScreens.kt and HomeScreens.kt words,
+  order and tags. (1) The file: Check a backup and Load registry snapshot share D4's one fileImporter
+  (ScreenPickers' importerUp and opening; two importers on one view are not reliably both presented), its file
+  read once by readAtMost on the model's worker; the model refuses a name not ending in .age in any letter
+  case, and a size past Core.backupMaxBytes, before any byte is read. (2) The entry on D6's LetterEntry (Delete
+  on an empty pad reopens the word before); the letters typed inside SecureLayer; the result and the re-check
+  QR Public, as Android's (the re-check QR drawn as the check QR is, no SecureLayer); the words on D5's screens,
+  through the gate, their last insert's Done back to the result. (3) Home's Check a backup and About enabled;
+  About in StartScreens.swift beside Home. (4) Working and the stop screen are D3's, unchanged: the stop screen
+  shows one fixed line per HaltReason, as Android's stopLine (pinned since D3). Android has no line for an End:
+  its crash handler ends the process with no screen, and Ceremony.halt's ends (closed, bridge and D4's camera)
+  do the same (exit, no message), so no stop line is added for them. (5) The UI test: the system's document
+  browser is not the app's to drive, so the TestHooks build's Backup file hook (TestHooks.swift, under the
+  hooks marker) answers Check a backup's picker with the launch environment's file through the model's
+  backupPicked, the importer's own path in (HookedPickers, HookedFile; readAtMost is the one step it skips).
+  As built (M6 commit D7a): BackupScreens.swift's BackupCheckEntryScreen, BackupCheckResultScreen and
+  BackupRecheckScreen; StartScreens.swift's AboutScreen and Home's two buttons enabled; Texts.swift's
+  CheckBackupTexts, AboutTexts, entryWordText, versionText, securityText and flavourText; DocumentPicker.swift's
+  shared importer (Opening); Screens.swift's routing (every screen now drawn; the placeholder case gone) and its
+  documents seam; the hook (TestHooks.swift's Backup file hook, HookedPickers, HookedFile; KeepCryptApp's
+  wiring). Tests: CeremonyCheckBackupTests (4: every age file of backup.json through Check a backup, the eight
+  KeepCrypt backups opened to their plaintexts' fingerprints with their words only through the gate (zoo-24's
+  on two devices), another file's passphrase refused WrongPassphrase, the C2SP files and the 4096-byte chunk
+  refused with BackupScreens.kt's texts; a wrong name and an oversized size refused unread; the abandon
+  backup's re-check QR kcr.json's check text for vector-1's T and its Seal ID vector-1's; the lines),
+  ScreenTextsTests' pins grown by the D7 texts and forms, the QR reader moved to CeremonySupport.swift.
+  CheckBackupUITests (TestHooks): backup.json's abandon-12 through the hook, the gate, the 8 words' first fours
+  on the letter pad, Backup OK with its fingerprint and Seal ID, Show the words, the gate (nothing of the words
+  behind it), insert 1; about 40-60 s on a simulator by WordsUITests' measure (75 s for 50 rolls and 12 pages),
+  so the job's 1442 s goes to about 1500 s of 1860.
+  Proof (M6 commit D7a, partial: local; CI at the next push): the macOS stand-in "Executed 123 tests, with 0
+  failures" over the host's release archive (conditions: none) and over its test-registry archive
+  (KC_WITH_TEST_REGISTRY); with three lines mutated in a copy (the entry's word number, the shipping flavour
+  line, the .age match made case-sensitive), CeremonyCheckBackupTests and ScreenTextsTests fail 6 times. Local
+  builds: all three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app`
+  clean on the three shipped apps; the hooks marker 1 line in TestHooks, 0 elsewhere, and KC_HOOK_BACKUP in the
+  TestHooks app alone; `--selftest-ios-app` 33 passed; the gate clean (505 files), `cargo fmt --all --check`
+  clean.
+  Proof (M6 commit D7b, on the final tree, a worktree at D7a): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1013 s in all).
+  CI proof (2026-11-18): Entropy iPhone run 44153504614 at 3a13ac60 green: "Executed 125 tests, with 0 failures" in
+  Shipping and WithTestRegistry on macos-15 (Xcode 16.4, iPhone 16 iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17
+  iOS 26.5); CeremonyCheckBackupTests' four tests (every backup.json file through Check a backup, a wrong name or
+  size refused before any byte, the re-check QR, the entry's line) passing in all four; CheckBackupUITests passing
+  in TestHooks on both legs (59 s and 55 s), every other UI test too. The jobs took 1364 s and 1620 s, inside the
+  34-minute budget (1620 s x 1.25 = 2025 s). Entropy CI 44153503873 (14 jobs) and Entropy Pi image 44153504767 green.
+- [x] D8. VoiceOver: each screen's title read as it opens, headings, live lines, every QR named by its kind and never its
+  data, each Protected pad key reading its letter; reading counts as input for the idle rule (Q80 (b)'s answer on
+  Android). iOS has no accessibility-data-sensitive mark, so VoiceOver reads the words as any screen reader would:
+  named as an iPhone residual for the owner's I5 check.
+  As built (plan, 2026-11-18): Android's semantics (Kit.kt, Pads.kt, Drawing.kt, Screens.kt), kind by kind, as
+  one table the views apply (VoiceOver.swift's spokenSemantics; Kit.swift's spoken(_:)), held to the Kotlin
+  sources by VoiceOverTests. (1) Titles: D3 already posts each state's pane title as it opens (Screens.swift,
+  paneTitle(of:): the screen's, the privacy gate's, the cover's and the idle warning's; the stop screen and
+  Working are screens of their own), held by ScreenTitlesTests; the capture and app-switcher covers, which
+  replace the whole scene (CaptureShield), now tell VoiceOver the screen changed as they come and go. (2)
+  Headings and the title: the header trait (Android's heading()), Working's too. (3) Live lines: Android's
+  polite live regions, tag for tag (liveLineIds: the scan line, the code's refusal, the wrong confirm, the
+  save's failure, the entry's refusal, the keys' page, the file's refusal, the dice's count, minimum and cap,
+  More below; and the notice), plus the iPhone's own offline line (network_state, D3's), each announced as it
+  appears or changes with UIAccessibility's queued (polite) announcement and marked updates-frequently; only
+  fixed or public text is such a line. Android has no device-entropy progress line and its airplane-mode and
+  Wi-Fi lines are not live; nothing is added for them. (4) QR codes: an image named by its kind (QrKind.spoken,
+  Drawing.kt's), the check, collision report, re-check, account, descriptor and registration QRs; D4's and
+  D6's QRs inside SecureLayer gain the image trait they lacked. (5) Pad keys: a button named by its label, its
+  letter or "space" (Pads.kt's), a Protected key with no identifier. (6) Reading is input (Q80 (b)):
+  UIAccessibility.elementFocusedNotification, posted when VoiceOver's cursor (or a braille display's, or Switch
+  Control's) lands on an element, goes to the model's reading(), as Android's onAccessibilityReading does: the
+  idle time starts again and the idle warning goes. Whether VoiceOver posts it for every element read in a
+  continuous read is I5's to see. Android uses no stateDescription.
+  The iPhone residual (I5): iOS has no accessibility-data-sensitive mark (Android's isSensitiveData, Q79), so
+  VoiceOver, and any assistive technology, reads the words, the passphrases, D and a Protected key's letter as
+  any element, aloud or on a braille display; every gate's headphones line (Q83) stands as on Android.
+  SecureLayer and VoiceOver: the secure field and its view are not accessibility elements, so what SecureLayer
+  hosts is offered in their place; WordsUITests checks that the insert's SeedBook line, drawn inside it, is in
+  the accessibility tree XCUITest and VoiceOver read. Reachable, a screen-reader user hears the words as on
+  Android, and the layer hides them from captures only (the residual above stands); if CI finds it unreachable,
+  a VoiceOver user could not read the words at all, a gap Android does not have, and the lead decides.
+  (7) Tests: VoiceOverTests (the table against Kotlin's heading(), LiveRegionMode.Polite, Role.Image with
+  contentDescription, Role.Button with its text, the overlays' clickable; the live lines tag for tag; the QR
+  names and the key labels; no stateDescription; Pads.kt bundled for it). The UI checks join existing classes:
+  ScanUITests (the check QR is an image labelled "Check QR code"), WordsUITests (the SeedBook line inside
+  SecureLayer is reachable; the letter pad's 26 keys are buttons labelled with their letters), about 2 s in
+  all. XCUITest has no public way to read a trait, so the header trait is the table's and I5's.
+  As built (M6 commit D8a): VoiceOver.swift (Spoken, SpokenSemantics, spokenSemantics, liveLineIds,
+  androidLiveLineIds); Kit.swift's spoken(_:), LiveLine and announcePolitely, KitText's live taken from its id
+  (the call sites' live arguments gone), the notice a live line; the heading, title, Working, QR (QrCodeView,
+  the collision report's, ExportQr), key and overlay traits from the table; CaptureShield's reading and its
+  covers' screen change. Tests: VoiceOverTests (3), the two UI checks above.
+  Proof (M6 commit D8a, partial: local; CI at the next push): the macOS stand-in "Executed 126 tests, with 0
+  failures" over the host's release archive (conditions: none) and over its test-registry archive
+  (KC_WITH_TEST_REGISTRY); with the heading's header, the dice count's live line and the QR's image trait
+  dropped in a copy, VoiceOverTests fails 4 times. Local builds: all three schemes built for testing and the
+  Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps; the hooks marker 1 line
+  in TestHooks, 0 elsewhere; `--selftest-ios-app` 33 passed; the gate clean (507 files), `cargo fmt --all
+  --check` clean.
+  Proof (M6 commit D8b, on the final tree, a worktree at D8a): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1014 s in all).
+
+  CI proof (2026-11-18): Entropy iPhone run 44159274507 at 61b24aec green: "Executed 128 tests, with 0 failures" in
+  Shipping and WithTestRegistry on macos-15 (Xcode 16.4, iPhone 16 iOS 18.6) and macos-26 (Xcode 26.6, iPhone 17
+  iOS 26.5); VoiceOverTests' three tests in all four; ScanUITests (the check QR an image labelled "Check QR code")
+  and WordsUITests (insert 1's SeedBook line, drawn inside SecureLayer, in the accessibility tree; the 26 letter keys
+  buttons labelled by their letters) passing on both legs, every other UI test too. So M6-16 is settled: what
+  SecureLayer hosts is offered to VoiceOver in the field's place, and a screen-reader user reads the words as on
+  Android; the residual (no accessibility-data-sensitive mark on iOS) stands for I5. The jobs took 1264 s and 1836 s
+  (macos-26 near its 34 minutes: U5 splits the job). Entropy CI 44159274470, Entropy Android 44159274518 (all nine
+  jobs, both API 34 jobs included) and Entropy Pi image 44159274514 green.
+### Stage U: the end-to-end pass (M6 commits U1-U5, after Stage D; refined 2026-11-18)
+- [x] U5. CI room for the journeys, first: entropy-ios.yml's one job per leg (about 27 of its 34 minutes at 3a13ac60)
+  cannot hold U1-U2's UI-alone journeys. Each leg becomes jobs of its own on the same two images, as Entropy Android's
+  legs are: the unit, capture and scan jobs (the three schemes' builds, scans and today's UI tests) and journeys jobs
+  (TestHooks UI tests by group), the Rust library built once per job from the same pinned toolchain (or cached by
+  actions/cache keyed on Cargo.lock and the toolchain, never by an artifact a later job trusts unchecked). Each job's
+  budget is its measured time plus 25% (M5-30); the hardening (read-only token, pinned actions, no secrets) and
+  `--workflows` hold; Entropy CI's 14 required checks are unchanged and entropy-ios.yml stays non-required (Q38 (b)).
+  As built (plan, 2026-11-18): entropy-ios.yml's one job per leg becomes two kinds of job on each leg. (a) unit
+  (one a leg): both libraries, --selftest-ios-app, the Shipping and WithTestRegistry schemes built and tested with
+  their scans, the TestHooks scheme built and its UI tests run but the journeys (-skip-testing for each class of
+  the workflow's KC_JOURNEYS), the hooks marker, the device build and its scan; and a check that the journeys
+  matrix's groups are KC_JOURNEYS, each class once a leg and a KeepCryptUITests file, each row with its budget,
+  so a class runs in exactly one job of each leg (a class the list leaves out runs in unit, never nowhere).
+  (b) journeys (one a group a leg): the test-registry library alone (the TestHooks app's, M6-7), the TestHooks
+  scheme built and its group's classes tested (-only-testing), the marker; journeys-1 is ScanUITests,
+  WordsUITests and CheckBackupUITests, and U1-U2's journeys come as more groups, each a matrix row with its
+  own measured budget (timeout-minutes from the row, as entropy-android.yml's emulators rows). The Rust
+  library is built in each job from its own checkout with the pinned toolchain (scripts/ios-rust.sh, 86 s
+  for one configuration on macos-26 at 3a13ac60), never passed between jobs; the crate registry stays the one
+  cache (downloaded sources, keyed on rust-toolchain.toml and Cargo.lock, which Cargo verifies by checksum on
+  every build, so a hit is correct by construction). A cache of the built library is not used: its key would
+  have to cover every crate source, the manifests, the script, the toolchain and the runner's Xcode and SDK
+  (secp256k1-sys's C build), and a miss would cost what building costs anyway. First budgets from run
+  44153504614's step times (no push from here to measure): unit 1620 s less the three journeys' 212 s is
+  1408 s on macos-26, x 1.25 is 30 minutes; journeys-1 estimated at 786 s (setup 40 s, the library 86 s, the
+  simulator 164 s, a fresh build for testing as Shipping's 227 s, the tests 212 s and xcodebuild's 57 s
+  around them), x 1.25 is 17 minutes. The lead re-measures both from the first green run. The hardening
+  (read-only token, the two pinned actions, no secret, no fork-trusting trigger, no expression in a run step)
+  and `--workflows` hold. CLAUDE.md's iPhone CI lines are the lead's to update (text in the U5 report).
+  As built (M6 commit U5a): .github/workflows/entropy-ios.yml's unit and journeys jobs, KC_JOURNEYS, the UI test
+  groups check, its header and budgets.
+  Proof (M6 commit U5a, partial: local; CI at the next push): `--workflows ../.github/workflows` clean (4
+  workflows); the file parses as YAML (Ruby's Psych: jobs unit and journeys, two journeys rows); the UI test
+  groups check, run locally from the workflow's text, passes on it and fails on KC_JOURNEYS short a class, on
+  a row short a class and on a class with no file; the gate clean.
+  Proof (M6 commit U5b, on the final tree, a worktree at U5a): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (its workflow canaries among them: workflow-hardening, workflow-bootstrap and
+  workflow-review-before-gradle failed as intended, workflow-bootstrap-exception-empty passed; 1016 s in all).
+  CI proof (2026-11-18): Entropy iPhone run 44167434703 at 427e0dc1, the first of this layout, green: iphone unit
+  1139 s (macos-26) and 1279 s (macos-15), "Executed 128 tests, with 0 failures" in Shipping and WithTestRegistry on
+  both, the capture, offline and start-up UI tests passing; the UI test groups check passing ("2 journeys rows;
+  ScanUITests WordsUITests CheckBackupUITests run in the journeys jobs"); iphone journeys journeys-1 780 s and 589 s,
+  the three classes passing on both legs (the fixed part about 570 s, as estimated). The unit job's budget is
+  re-measured to 27 minutes (1279 s x 1.25 = 1599 s); journeys-1's is U1's to set. Lead decision M6-19 (U5's
+  report): each job builds its own Rust library from the pinned toolchain (about 86 s), nothing built is cached or
+  passed between jobs, the crate registry cache alone (sources, checked against Cargo.lock); one KC_JOURNEYS list and
+  the groups check over the matrix. Entropy CI 44167435061 and Entropy Pi image 44167434907 green.
+- [x] U1. User journeys through the UI alone, one XCUITest per journey from First launch to Finish on both simulators,
+  as M5's U1: mixed and dice-only, 12 and 24 words (24 with the device swap); the check by a typed code, a scanned
+  proof (the Scan hook, M6-7, the camera's own path), a loaded snapshot and Skip; Match found and a scanned collision
+  to Add fresh entropy at 99; Cannot check to Start again; the words, the read-back and the summary; the backup saved
+  and checked; watch-only; register; Reveal D; About; the stop screen. The system's document browser is not the app's
+  to drive: the save and the snapshot's open go through TestHooks hooks at the model's own entries (as M6-13's Backup
+  file hook), the save's bytes kept in memory and read back through the same verify path, so the TestHooks app
+  writes no file (rule 8). Each journey's pass line names its path.
+  As built (plan, 2026-11-18; U5's report, no code yet): two more TestHooks hooks, as M6-13's Backup file hook,
+  each in TestHooks.swift under the hooks marker and at the model's own entry. (1) The Save hook: with
+  KC_HOOK_SAVE in the launch environment, HookedPickers.create(name:bytes:) records the name and the model's
+  own Secret instead of presenting the exporter, and the panel's Save button (hook_save) answers through the
+  model's backupPlaced with a HookedPlace: its write says whether it was handed that same Secret (ExportedPlace's
+  identity test) and copies the bytes into memory, its readBack gives a Secret copy of at most limit + 1 of them,
+  so core's verify runs on the read-back as with a real file, and nothing is written (rule 8). KC_HOOK_SAVE's
+  values give U2 a failed write, a failed read-back and a changed byte (the verify's refusal). The copy is
+  wiped once read back for Check a backup, at wipeAll and at the process's end. (2) Check a backup of the saved
+  file: KC_HOOK_BACKUP_FROM_SAVE has the Backup file hook offer that in-memory copy under core's suggested
+  name, instead of KC_HOOK_BACKUP_HEX, so the journey checks the very file it saved; its passphrase is read by
+  the UI test from the passphrase's page (inside SecureLayer, so this rests on M6-16's reach holding) and never
+  from a hook. (3) The Snapshot file hook: KC_HOOK_SNAPSHOT_NAME and KC_HOOK_SNAPSHOT_HEX (kcr.json's snapshots
+  are 248 bytes at most) answer Load registry snapshot's picker, waiting as the Backup file hook does, through
+  the model's snapshotPicked with a HookedFile. Each hook's strings are in the TestHooks app alone (the
+  --ios-app scans and the marker count), and the UI tests drive the panel's buttons, outside the press guard.
+  As built (M6 commit U1a, 2026-11-18): the hooks as planned, in TestHooks.swift under the marker: the Save hook
+  (KC_HOOK_SAVE: HookedPickers.create holds the model's Secret, hook_save answers backupPlaced with a HookedPlace
+  that checks it was handed that Secret, copies it to memory and reads it back; fail-write, fail-read and
+  corrupt, a middle byte flipped, for U2), the saved copy offered to Check a backup (KC_HOOK_BACKUP_FROM_SAVE,
+  zeroed once handed over), the Snapshot file hook (KC_HOOK_SNAPSHOT_NAME and KC_HOOK_SNAPSHOT_HEX,
+  hook_snapshot_file, through snapshotPicked) and a Halt hook (hook_halt: the shell's own halt of the slot,
+  reason internal, which the model's next call finds, as a real halt is found). No file is written. Three
+  secret texts the journeys read gain identifiers that name no secret (insert_word, passphrase_text,
+  device_leg_text; Android's tests read them in-process, XCUITest cannot); their labels are unchanged.
+  The journeys (KeepCryptUITests, each from First launch to Finish, its pass lines naming its path and the
+  seconds each part took; JourneySupport.swift holds the shared steps, as Android's Journeys.kt):
+  - MatchFoundJourneyUITests: dice-only 12 (dice-50-words12), Match found and its confirm, the collision and its
+    report QR behind the gate, Add fresh entropy at 0 / 99; dice-99-words12's 99 rolls, a scanned proof
+    (clear-empty-bucket, the Scan hook) passed; the words (the vector's), the read-back, the summary; Skip of
+    the backup and watch-only; the registration QR; Finish.
+  - TwentyFourWordJourneyUITests: dice-only 24 (dice-99-words24), Skip and its confirm; 24 words on two devices
+    with the device swap and its gate; all read back; every export skipped; the checklist's two devices; Finish.
+  - MixedJourneyUITests: mixed 12: Device entropy, C read from the commitment screen, 50 rolls; a scanned proof
+    of another seal refused, Back, the go-ahead code built from the drawn check QR (read back from its picture
+    with Core Image, T and nonce, then CLAUDE.md's go-ahead formula, held first to its vector) typed: passed;
+    the words read from the screen and read back; the backup made, its passphrase read from its pages and
+    confirmed, saved by the Save hook and verified; watch-only with TREZOR on the ASCII pad, the account and
+    descriptor QRs; the registration QR; Reveal D committing to C; Finish; then Check a backup of the saved copy
+    (Backup OK, its words the ceremony's) and About.
+  - CannotCheckJourneyUITests: dice-only 12, Cannot check, its confirm's Back, then Start again: dice at 0 / 50;
+    a scanned collision (collision-dice-50) and its report, Add fresh entropy at 0 / 99; dice-99-words12, the
+    typed code passed; the words, the read-back, the summary; every export skipped; Finish.
+  - SnapshotJourneyUITests: About; Load registry snapshot (kcr.json's small, the Snapshot file hook), its line
+    on Home; dice-only 12 checked against the snapshot on its own; the words, the read-back, the summary;
+    every export skipped; Finish; then the Halt hook, New seed: the stop screen naming its reason, Close app
+    ending the process.
+  U1's list against them: mixed (Mixed) and dice-only (the rest), 12 (MatchFound, Mixed, CannotCheck, Snapshot)
+  and 24 with the device swap (TwentyFourWord); the check by a typed code (Mixed, CannotCheck), a scanned proof
+  (MatchFound; ScanUITests' scanned collision), a loaded snapshot (Snapshot) and Skip (TwentyFourWord); Match
+  found to Add fresh entropy at 99 (MatchFound) and a scanned collision to it (CannotCheck); Cannot check to
+  Start again (CannotCheck); the words, read-back and summary (every journey); the backup saved and checked,
+  watch-only, Reveal D (Mixed); register (MatchFound, Mixed); About (Mixed, Snapshot); the stop screen
+  (Snapshot). The scan, the pickers, the save, the offline path and the halt are the hooks'; every other step is
+  a press on the screen.
+  Rows (KC_JOURNEYS, three a leg; budgets from 3a13ac60's measured classes and a fixed part of 574 s a job, U1's
+  classes estimated at 0.6 s a press, 1 s a screen and 12 s to Go offline, plus 25%): journeys-1 ScanUITests,
+  WordsUITests, CheckBackupUITests and MatchFoundJourneyUITests (212 s measured + 300 s, 23 minutes);
+  journeys-2 TwentyFourWordJourneyUITests and MixedJourneyUITests (295 s + 290 s, 25 minutes); journeys-3
+  CannotCheckJourneyUITests and SnapshotJourneyUITests (385 s + 190 s, 24 minutes).
+  Proof (M6 commit U1a, partial: local build only; no simulator here, so no journey has run; CI at the next
+  push runs them): all three schemes built for testing (the journeys compiled in TestHooks alone) and the
+  Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps; the hooks marker 1 line
+  and a KC_HOOK_ string in the TestHooks app alone, none in the three shipped apps; `--selftest-ios-app` 33
+  passed; the macOS stand-in "Executed 126 tests, with 0 failures" both ways; the groups check run locally on
+  the workflow; `--workflows` and the gate clean (513 files), `cargo fmt --all --check` clean.
+  Proof (M6 commit U1b, on the final tree, a worktree at U1a): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1025 s in all).
+  As built (M6 commit U1c, lead decision M6-20): one way to name a secret node, Kit.swift's
+  `.secretIdentifier(SecretNode)`, which applies an accessibility identifier under KC_TEST_HOOKS alone and
+  nothing otherwise; the names live in TestHooks.swift (compiled into the TestHooks app alone), each kc_secret_
+  and the node's name, 16 bytes or more (Swift keeps a string of 15 or fewer inside its code, out of a byte
+  scan's sight; and core's Rust symbols spell passphrase_text, which a shorter name would have hit), listed in
+  mobile/ios/expected/secret-identifiers.txt. Used on every node whose text is a secret: the insert's word (the
+  insert view and the read-back's match), its SeedBook number and each braille face; each overview line; the
+  letters typed (the read-back's entry, and LetterEntry: the confirm and Check a backup); each mismatch
+  verdict; the backup passphrase's page and each confirm choice; the BIP39 passphrase typed; D; and the dice
+  pick (a roll of R). The audit of every `.accessibilityIdentifier(` and KitText/KitButton/KitScreen id in the
+  app: the three U1a added (insert_word, passphrase_text, device_leg_text) and D3's dice_pick named a secret
+  node and are now secret identifiers; every other one is a public node's and stays in all configurations
+  (screens' roots, the gate, covers and overlays, buttons, the Public pads' keys, the headers and lines of
+  positions, devices, counts, pages and refusals, C, the seal card and Seal ID, the check QR, the go-ahead code,
+  the fingerprints and first addresses, the backup's name, About's lines). Shipping's and WithTestRegistry's
+  UI test (StartUpUITests) uses public identifiers alone. The check: --ios-app's new IosSecretId rule refuses
+  each listed name's bytes in a shipped app's binary and exits 2 on a listed name under 16 bytes; the workflow's
+  TestHooks steps (unit and journeys) require every listed name in the TestHooks binary. The journeys read
+  kc_secret_insert_word, kc_secret_passphrase_text and kc_secret_device_leg_text.
+  Proof (M6 commit U1c, local; CI at the next push): the three schemes built for testing and the device build,
+  no Swift warning; `--ios-app` clean on the three shipped apps; the 11 names in the TestHooks binary, 0 in
+  each of the three shipped binaries; the hooks marker 1 line in TestHooks alone; with one name planted in
+  Shipping's build (a copy of the modifier applying kc_secret_insert_word outside the hooks, restored),
+  `--ios-app` gives "IosSecretId: ...KeepCrypt: kc_secret_insert_word: a secret node's identifier"; 
+  `--selftest-ios-app` "36 passed, 0 failed" (33 and three new: a planted name refused, a clean app, a name under
+  16 bytes refused with exit 2); the stand-in "Executed 126 tests, with 0 failures" both ways; `--workflows`
+  clean (its first draft's `grep -F -e` read as Gradle's -F and hit; the check greps without -F); the gate
+  clean (514 files), `cargo fmt --all --check` clean.
+  On the final tree (a worktree at U1c before this line): `--selftest` 4 x "486 passed, 0 failed" (--selftest-ios-app
+  is a mode of its own, above), `sh scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed",
+  `scripts/canaries.sh` "PASS: all 102 checks ran" (1037 s in all).
+  As built (M6 commit U1d, from run 44173357483 at 4c2d9859: 13 of 14 journeys jobs green, SnapshotJourneyUITests
+  on macos-26 stopped on the dice screen after its 50th Confirm with Confirm and Done disabled, so a face or a
+  Confirm press had not taken). The cause, as far as that log can say: every tap was sent and the app idled
+  between them; the press guard cannot refuse a press within the dice screen (its view, screen, gate and
+  overlay, stays the same from roll to roll, and only a new view closes it), so the press was lost either
+  before the app's window (the simulator under a loaded runner, or a system interruption that made the scene
+  inactive for a moment, when the privacy cover replaces the screens) or on a control not yet redrawn; the
+  journeys pressed blind, so the log cannot tell which. U1d makes the next run tell: the TestHooks panel counts
+  the touches the screens' touch guard sees and those its press guard refuses (hook_touches_seen,
+  hook_touches_refused, public counts), and JourneySupport's pressUntil presses each pad key and Confirm once,
+  then awaits its effect on the screen (the face picked, then the count at that roll; each letter, ASCII key
+  and code symbol in its entry's line), as Android's Ui waits on the model. A press that did nothing is
+  classified by the counts: refused by the guard (the app as designed) or never seen by the app (outside it):
+  pressed again, the screen settled by then, each named in a probe line with its roll or position; seen,
+  admitted and without effect: the app's defect, and the test fails there, naming the press (U4 would then fix
+  it at its root). Done buttons are pressed once enabled. Every pad of the journeys and of ScanUITests,
+  WordsUITests and CheckBackupUITests goes through it. No sleep is added; each wait is for the screen.
+  Budgets from that run (M5-30, the slower leg plus 25%): unit 1538 s on macos-26, 33 minutes; journeys in four
+  rows a leg (the five long classes in four rows put two together; the effect checks estimated at 0.12 s a press,
+  Snapshot on macos-26 at 1.3 times macos-15's 221 s): journeys-1 CannotCheck and Scan 25 minutes (570 s + 585
+  s), journeys-2 MatchFound and Words 24 (570 s + 561 s), journeys-3 Mixed and CheckBackup 24 (570 s + 562 s),
+  journeys-4 TwentyFourWord and Snapshot 27 (570 s + 703 s), each figure in the workflow's comment.
+  Proof (M6 commit U1d, local; CI at the next push runs the journeys): the three schemes built for testing and the
+  device build, no Swift warning; `--ios-app` clean on the three shipped apps (the touch counts' names and the
+  11 secret names in the TestHooks binary alone); `--selftest-ios-app` 36 passed; the stand-in "Executed 126
+  tests, with 0 failures" both ways; the groups check passes on the four rows a leg; `--workflows` and the gate
+  clean (514 files), `cargo fmt --all --check` clean.
+  Proof (M6 commit U1e, on the final tree, a worktree at U1d): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1025 s in all).
+  As built (M6 commit U1f, from run 44185394720 at 8112f0d5: every journey green but WordsUITests on macos-26,
+  where every Confirm from roll 32 on "reached the app and was admitted, and did nothing", the count staying at
+  31; and the unit job on macos-26, whose simulator had not booted). The dead Confirms, as far as the code
+  shows: the model's confirm path cannot stay dead while its face keys work. confirmRoll and padKey pass the
+  same pressOn(.dice) (screen, overlay, gate, no long call); a pick the face check saw (its label is drawn from
+  the pick only while it holds one face) is the pick Confirm reads; a core refusal or halt of pushRoll ends on
+  the stop screen, never on the dice; the press guard closes only on a new view, and the probe saw none refused;
+  the timers act on the dice screen only after 60 s away or 10 minutes idle. So either confirmRoll returned
+  early for a reason the code above does not show, or the Confirm button never ran its action (disabled, or the
+  touch landed off it). The face check cannot pass with no face picked. U1f makes CI say which: the TestHooks
+  panel's facts line (hook_facts; Android's appFacts), by fixed names, counts and yes or no alone (the screen,
+  gate, overlay, working, a long call, the notice, the dice's rolls, minimum and cap, whether a face is picked,
+  the refusals held, the halt, held, foreground, a picker up, the timers' idle and away seconds and picker
+  rule, the scene's activity, and what the last pad key or Confirm did: typed, not taken and why, pushed with
+  the count, or core's refusal), printed in every probe line and failure with the pressed button's enabled,
+  hittable and frame. A last press that is not a Confirm's means the button never ran its action. All of it is
+  compiled in under KC_TEST_HOOKS alone (the shipped binaries hold none of its strings). The fix waits for
+  that line, as the lead asked; if it shows a model defect, U4's failing unit test comes first.
+  The boot check: both jobs' Simulator steps fail by name when simctl boot or bootstatus exits non-zero, or when
+  simctl's list gives the device another state than Booted (run 44185394720's bootstatus printed
+  Status=4294967295 and exited 0). Not a retry.
+  Proof (M6 commit U1f, local; CI at the next push): the three schemes built for testing and the device build,
+  no Swift warning; `--ios-app` clean on the three shipped apps, the facts' strings in the TestHooks binary
+  alone; `--selftest-ios-app` 36 passed; the stand-in "Executed 126 tests, with 0 failures" both ways; the
+  Simulator step's state reader, run locally on a list, gives Booted, Shutdown and missing as they are;
+  `--workflows` and the gate clean (514 files), `cargo fmt --all --check` clean.
+  Proof (M6 commit U1g, on the final tree, a worktree at U1f): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1037 s in all).
+  CI proof (2026-11-18): Entropy iPhone run 44197752716 at c52342ef, all ten jobs green: both unit jobs (128 tests
+  per scheme, the capture, offline and start-up UI tests) and the four journeys rows on each leg, every journey
+  passing on macos-26 (Xcode 26.6, iPhone 17 iOS 26.5) and macos-15 (Xcode 16.4, iPhone 16 iOS 18.6), seconds
+  macos-26 / macos-15: MatchFoundJourneyUITests 503 / 479, TwentyFourWordJourneyUITests 475 / 440,
+  MixedJourneyUITests 507 / 432, CannotCheckJourneyUITests 554 / 529, SnapshotJourneyUITests 320 / 291 (to the stop
+  screen and Close app), ScanUITests, WordsUITests and CheckBackupUITests; no press needed a second press (no
+  probe line). The secret identifiers (M6-20) are in the TestHooks binary alone and --ios-app's IosSecretId is clean
+  on the shipped apps; the Simulator step reads the device as Booted. Budgets re-measured from this run and
+  44185394720 (M5-30, the slower of two runs): unit 35, journeys 31, 29, 30 and 31 minutes. Entropy CI green at
+  each push. Two runs before it failed and were diagnosed, not rerun to green: 44173357483 (one dice roll lost, 49
+  of 50) and 44185394720 (every Confirm from roll 32 admitted with no effect; and a simulator whose boot failed
+  while its step passed, now failing closed): the dead Confirm is the open item below, with the facts line to name
+  its cause on a repeat.
+- [x] U2. Edge cases where the phone matters (the JVM-ported unit tests of D2 hold the model's): Back and a double tap
+  on every screen; leaving the app at every stage (Public: 59 s kept, 61 s wiped; Protected and Working: at once) by
+  XCUIDevice's home and a re-activation; the app killed at every stage, back at First launch with an empty slot; going
+  online at every stage (the offline hook); the idle warning and wipe once in the UI; the camera refused and absent
+  (Open Settings after a refusal, M6-9); every read-back misread (each mirror pair, a wrong insert); a wrong backup
+  passphrase, a damaged .age and a file that is not one; a stale, future, wrong-key and damaged snapshot; a go-ahead
+  text too long, of another type, in mixed case or from another check; the 99-roll minimum through every restart path;
+  Dynamic Type at its largest accessibility size and the narrowest iPhone the simulators offer (actions scroll, nothing
+  cut, as MA's 360 dp rule).
+  As built (plan, 2026-11-18): the model's own edges stay with D2's ported tests (every screen, every vector);
+  the phone adds what only the phone shows, in journeys-5 (LifecycleUITests, CheckEdgesUITests, DynamicTypeUITests)
+  and two more unit tests. Each edge case and its tests:
+  - Back and a double tap: CeremonyBackTests (Back's table on every screen), PressGuardTests (the guard's rule);
+    LifecycleUITests' double taps (a screen-changing button: Length, never the dice; a dice face and Confirm: one
+    face and one roll; the privacy gate's pass: nothing typed behind it). iOS has no back gesture here: the app has
+    no navigation stack, and the edge swipe moves nothing (LifecycleUITests).
+  - Leaving: CeremonyLeavingTests (every screen; Public covered, Protected and Working discarded; 59.999 s kept, 60
+    s wiped); LifecycleUITests: a trip home (XCUIDevice's home and re-activation) from the Public dice kept at 50 s
+    and wiped at 61 s, by the Away hooks, which move the model's clock (a TestHooks HookedClock) as the app comes
+    back, never a real wait; a Protected gate discarded at once. 50 s, not 59, because the trip itself takes some
+    real seconds; the exact boundary is the unit test's.
+  - Killed: CeremonyModelTests (a fresh model starts at First launch with no call); LifecycleUITests: killed
+    at Home with a snapshot loaded, on the dice with rolls and on a Protected gate (XCUIApplication terminate and
+    launch), each back at First launch with nothing kept (no snapshot, the dice at 0, no notice).
+  - Online: CeremonyConfigurationAndOnlineTests (every screen); LifecycleUITests on the dice (the offline hook).
+  - Idle: CeremonyIdleTests (every screen); LifecycleUITests: the warning at 9 minutes, its tap, the wipe at 10,
+    by the Idle hooks (the clock moved on).
+  - The camera: CeremonyScanStopTests (new: refused, absent and failed each say why, keep the check and offer the
+    code; Open Settings after a refusal alone); CheckEdgesUITests: the simulator's absent camera on the phone. A
+    refused or failed camera needs a device (I2).
+  - Read-back misreads: CeremonyRefusalTablesTests (every mirror pair, a wrong insert); CheckEdgesUITests: a mirror
+    misread and a wrong insert on the letter pad, each read again.
+  - Backups: CeremonyRefusalTablesTests and CeremonyCheckBackupTests (every damaged and wrongly opened file),
+    CeremonySaveFailureTests (new: a failed write, a failed read-back, a changed byte, then Save again);
+    CheckEdgesUITests (the Save hook's corrupt mode on the phone), LifecycleUITests (a wrong passphrase through the
+    Backup file hook). A file that is not one: the unit tests' name and size refusals (D7).
+  - Snapshots: CeremonyRefusalTablesTests (every kcr.json snapshot: stale, future, wrong key, damaged);
+    LifecycleUITests (bad-magic through the Snapshot file hook), SnapshotJourneyUITests (a stale one loaded).
+  - Go-ahead texts: CeremonyRefusalTablesTests (every kcr.json text: too long, other type, mixed case, another
+    check); MixedJourneyUITests (another seal's proof refused through the Scan hook). Every refusal reads the same
+    line on the phone (scanLine), so no more UI runs.
+  - 99 rolls: CeremonyIdleTests' testThe99RollMinimumAfterACollisionOutlivesEveryRestartPath; the journeys'
+    Match found and scanned collision (MatchFound, CannotCheck).
+  - Text size and width: DynamicTypeUITests at UICTContentSizeCategoryAccessibilityXXXL. The kit's sizes were fixed
+    points, so iOS's text size changed nothing (a defect against Q78's full range, which Android follows to 2.0):
+    U2b scales KitType with Dynamic Type at most twice; the test fails before it (the text does not grow) and checks
+    every control of six screens reachable after. The narrowest iPhone CI runs is iPhone 16 / 17 (393 and 402
+    points); a narrower one (iPhone SE, 375 points) needs a simulator device the runners may not have created: a
+    proposal for the lead, not added.
+  As built (M6 commit U2a): TestHooks' HookedClock (the model's clock in the TestHooks build, moved on by the Away
+  hooks as the app comes back, CaptureShield calling returning() before the model's return, and by the Idle
+  hooks at once), the panel's Away 50 s, Away 61 s, Idle 9 min and Idle 1 min; JourneySupport's toDice,
+  waitNotice and backupMadeAndSaved(verified:); LifecycleUITests (6 tests), CheckEdgesUITests (1),
+  DynamicTypeUITests (1, failing here by design: the fix is U2b); CeremonyScanStopTests and
+  CeremonySaveFailureTests; journeys-5 on each leg in entropy-ios.yml with KC_JOURNEYS grown, 25 minutes from the
+  estimate in its comment (LifecycleUITests 325 s, CheckEdgesUITests 230 s, DynamicTypeUITests 60 s, the fixed
+  part 570 s: 1185 s x 1.25 is 1481 s).
+  Proof (M6 commit U2a, local; the UI tests run on CI): the three schemes built for testing and the device build,
+  no Swift warning; `--ios-app` clean on the three shipped apps; the hooks marker in TestHooks alone;
+  `--selftest-ios-app` 36 passed; the stand-in "Executed 128 tests, with 0 failures" both ways (the two new
+  unit tests among them); the groups check passes on five rows a leg; `--workflows` and the gate clean (519
+  files), `cargo fmt --all --check` clean.
+  As built (M6 commit U2b, U4's fix for the defect U2a's DynamicTypeUITests finds): KitType's sizes scale with
+  the user's text size (UIFontMetrics' body scaling) at most twice, Android's 2.0 (Q78), computed at each draw,
+  KitStyle's styles with them, and KitScreen reads the dynamic type size so a change of it draws the screen
+  again. At the default size every size is as before (scale 1), so the other UI tests are unchanged; the pads'
+  keys, the braille faces and the QR codes keep their fixed sizes, as Android's dp-sized ones do. For the gate
+  report's U4 list: "iOS's text size changed nothing: the kit's sizes were fixed points" (found by
+  DynamicTypeUITests at U2a, fixed at U2b).
+  Proof (M6 commit U2b, local; DynamicTypeUITests runs on CI): the three schemes built for testing and the device
+  build, no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` 36 passed; the gate
+  clean (519 files).
+  Proof (M6 commit U2c, on the final tree, a worktree at U2b): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1250 s in all, on a loaded Mac).
+  As built (M6 commit U2d, from run 44212919474 at f5a1e15a: journeys-1 to 4 and the unit jobs green; journeys-5
+  failed on macos-15 and ran past its 25 minutes on macos-26). The causes, from the logs, and the fixes:
+  - CheckEdgesUITests ("the scan screen" never shown): with no Scan hook text the app's own scanner asks iOS for the
+    camera before it looks for one (as Android's asks before it chooses one), and the simulator, which has no
+    camera, shows iOS's camera prompt from SpringBoard. The prompt made the scene inactive, so the privacy cover
+    replaced the screens, and it stayed up for the tests after it. The test assumed a screen the simulator never
+    shows: a test defect, not the app's (every iPhone has a camera, and the order is Android's). The test now
+    answers the prompt Don't Allow, as a person may, and checks the refused line, Open Settings (M6-9) and the code
+    offered; the absent and failed cameras stay CeremonyScanStopTests' and I2's.
+  - DynamicTypeUITests ("First launch" not found, the text 852 to 852 points): the prompt left by CheckEdgesUITests
+    covered the app, and the 852-point "KeepCrypt" it measured was the privacy cover's line, not First launch's
+    title. Whether U2b's scaling works is still unproven: CI's next run says. The test now measures First launch's
+    own title (scoped to the first_launch screen), and KitType reads the app's content size category explicitly
+    (UIFontMetrics with the traits of UIApplication's preferredContentSizeCategory, which the launch argument sets).
+  - LifecycleUITests' trip home ("no button check_backup"): after the 61 s wipe the app came back to Home behind the
+    privacy cover the trip home put up (the model's show keeps the cover until a tap while the app is not yet in
+    the foreground, as Android's does); the test now taps the cover, as a person does, before Home's buttons.
+  - The rows: journeys-5 (LifecycleUITests and CheckEdgesUITests, 24 minutes) and journeys-6 (DynamicTypeUITests, 21
+    minutes), one row more than U2's allowance, with the lead's word; each figure in the workflow's comment.
+  - The narrow iPhone: journeys-6 logs the image's device types and makes a second simulator from the narrowest it
+    has that runs the leg's runtime (iPhone SE (3rd generation), else (2nd generation), else iPhone 16e), booted and
+    checked as the first, and runs DynamicTypeUITests on it too; none for the runtime is logged and the narrow run
+    skipped by name. Nothing is installed or downloaded.
+  Proof (M6 commit U2d, local; the UI tests run on CI): the three schemes built for testing and the device build,
+  no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` 36 passed; the stand-in
+  "Executed 128 tests, with 0 failures" both ways; the groups check passes on six rows a leg; the narrow step's
+  device-type reader and runtime name run locally on a sample; `--workflows` and the gate clean (519 files),
+  `cargo fmt --all --check` clean.
+  Proof (M6 commit U2e, on the final tree, a worktree at U2d): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1519 s in all, on a loaded Mac).
+  As built (M6 commit U2f, from run 44225340107 at 9aec942b, the lead's reading of its logs):
+  - DynamicTypeUITests: the text grew (U2b's scaling proven), but every control read as cut: the TestHooks panel's
+    own text followed the text size, and at the largest its rows covered most of the scene, so the swipes landed
+    on the panel. The panel's type is pinned (.dynamicTypeSize(.large), TestHooks only; nothing shipped changes),
+    and the test waits past the press guard after the offline hook, as toHome does.
+  - LifecycleUITests' Protected discard: a U4 defect, lead decision M6-22 (the picker rule outliving the picker on
+    iOS). CeremonyModelTests' testAPickersAnswerEndsItsExemptionSoAProtectedScreenIsDiscardedOnLeaving failed
+    before the fix ("backupCheckEntry" is not "home", no left notice, still held) and passes after it, with its
+    converse, testALeavingWhileThePickerIsUpDiscardsNothing. For the gate report's U4 list: "after a file was
+    picked, leaving a Protected screen did not discard it" (found by LifecycleUITests at U2d, fixed at U2f).
+  - The dead Confirm repeated (CannotCheckJourneyUITests, macos-26, roll 31): the touch reached the window and was
+    admitted (touches 65 to 66, none refused), the button enabled and hittable, the model's last press a face
+    key's, so Confirm's action never ran; roll 32's Confirm worked. No cause is proven in the code: one candidate is
+    KitScreen moving its actions between the column and the fixed place (a view identity change under the touch),
+    unproven. The TestHooks panel's facts now carry a probe, nothing secret and no behaviour change: the last
+    touch down's window place and uptime, the last KitButton action run by id and uptime, and KitScreen's layout
+    changes (actions into or out of the column, "More below" shown or gone) with the last one's uptime. Never a
+    touch's place: on a pad a place names the key, a roll or a letter (the lead's review); KitButton ids are
+    navigation names, and the pads' keys are plain Buttons in PadViews.swift, no KitButtons. Every
+    journey and edge class stops at its first failure (continueAfterFailure false), so one lost press gives one
+    failure, not one a roll after it. No re-press for an admitted press (M6-21 stands).
+  Proof (M6 commit U2f, local; the UI tests run on CI): the new model test failed before the fix (3 assertions:
+  the entry stayed, no left notice, still held) and both pass after it; the stand-in "Executed 130 tests, with 0
+  failures" both ways; the three schemes built for testing and the device build, no Swift warning; `--ios-app`
+  clean on the three shipped apps, the probe's strings in the TestHooks binary alone; `--selftest-ios-app` 36
+  passed; `--workflows` and the gate clean (519 files), `cargo fmt --all --check` clean. On the final tree (a
+  worktree at U2f, the touch's place dropped): `--selftest` 4 x "486 passed, 0 failed", `sh
+  scripts/banned-api-faults.sh` "708 runs (3 ways): 708 passed, 0 failed", `scripts/canaries.sh` "PASS: all 102
+  checks ran" (1029 s in all).
+  As built (M6 commit U2g, from run 44237883463 at 63bb375c, the lead's reading of its logs):
+  - Every journey press whose effect is a new screen now reports the facts line when the screen never comes: on()
+    fails with "never came", the touch counts and facts() (U2f's probe). DynamicTypeUITests presses each screen's
+    button through pressTo (pressUntil's classification: refused by the press guard or never reached the app,
+    pressed again with a probe line; reached and admitted with no effect, failed there, no re-press, M6-21), and
+    LifecycleUITests' double tap on the gate's pass, when no entry comes, fails naming which: neither touch reached
+    the app, the guard refused every touch, or touches admitted that did nothing, with the touch counts, the
+    button's place and the facts line. pressUntil's line also names the scroll view that holds the button.
+  - The deterministic lost press (DynamicTypeUITests at its Length step on iPhone 16 and the narrow SE, Home again
+    after About; it passes on iPhone 17). The oscillation the lead asked about is not possible in KitScreen's code:
+    `scrolling` is actionsHeight > screenHeight / 2 alone; screenHeight is the whole screen's height whatever the
+    actions' place; actionsHeight is the same in either place (the actions get the same width, 24 pt margins
+    either way, and every KitButton's text is fixedSize vertically, so a short fixed place cannot shrink them);
+    so a reappearing Home makes one change, 0 to measured, in its first frames, inside the press guard's 300 ms,
+    and none after. "More below" cannot flip back and forth either: shown, it shortens the column, which keeps its
+    content below; gone (scrolled to the end), the column grows and its content still ends inside it. And the run
+    shows the app idle: XCTest's wait for the app to idle took under 0.05 s before the tap's event, which a layout loop
+    would hold. No layout defect is proven, so no layout change and no lead decision. The leading account is the
+    test's: reach() took "hittable" as "reached". At the largest size on a 375 to 393 pt wide phone Home's
+    actions scroll with the column, and Dice-only seed, the second of five, lies at its bottom edge on Home's first
+    view (no swipe found it unhittable either time; its press was never tried on the first Home); a tap at a cut
+    control's hit point can land past the scroll view's edge, on "More below" under it, which has nothing to press.
+    reach() now also drags the control (slowly, from the column's empty left margin, no glide) until the scroll
+    view holding it shows all of it, logging "probe: <id> hittable but cut by its scroll view (place)" each
+    time, as a person scrolls a half-shown button into view; and the probe after Home shows again logs the facts
+    (layout changes and the last one's uptime) at once and 2 s on, with Dice-only seed's place against its scroll
+    view. The next run proves or refutes it: a cut logged there and the press passing after the drag confirms it;
+    no cut and a failed press gives pressUntil's classification with the layout count, for a root cause in the app.
+  - Budgets: journeys-5 34 minutes and journeys-6 30, PROVISIONAL (the lead's figures, a full run's estimate plus
+    25%; run 44237883463 cancelled macos-15's journeys-5 at 24 with LifecycleUITests unfinished, macos-26's
+    journeys-6 at 21), until two green runs give M5-30's measurements; the workflow's comment says so.
+  As built (M6 commit U2h, from run 44306763928 at 0973bfab, the lead's reading of its logs; two test defects, no
+  app defect):
+  - The lost press is the TestHooks panel's, a test-only cause (Shipping has no panel). DynamicTypeUITests on the
+    narrow iPhone (macos-15): Dice-only seed's press to Length "never reached the app" three times, the touches
+    seen staying at 7 while the last touch down read "at 0 ms": the touch guard ran with no touch in its area.
+    The touch guard's view is the screens' background, so it ends at the panel's top (the panel is a bottom
+    safe-area inset), while the screen's scroll view runs on under the panel (0,57 375x609); after U2g's drag
+    the button sat at 23,579 329x82, inside the scroll view but under the panel, still hittable to XCUITest, and
+    the tap landed on the panel. U2g's account (a tap past the scroll view's edge) was near: the edge that cuts is
+    the panel's top. The panel is now one container, hook_panel (each hook keeps its own id). JourneySupport's
+    shownRegion is the region the screens show (a control's scroll view, or the app, cut at the panel's top);
+    bringIntoView drags a control into it (slowly, held, from the column's left margin inside the region), and
+    DynamicTypeUITests' reach() asserts the control wholly inside it. pressUntil, before every press, looks at
+    two frames (the control's and the panel's) and, when the control is not wholly above the panel, drags it
+    in first with a probe line, instead of a press counted as never reached. place() gives the panel's frame too.
+    Places are given only for public controls (pressTo's, placed: true): a pad's key (a face, a letter, a
+    symbol) gets no place in any line, its place naming the key (U2g's pressUntil gave every button's).
+  - The gate's double tap (LifecycleUITests, macos-26): no entry came, the app was back on Home, and the
+    classifier asked the gone pass_gate its frame, which failed the test before the facts line printed. place()
+    now reads "gone" for a missing control (and a missing panel) and asks it nothing; every classifier builds the
+    facts line first, then the place, and pressUntil asks a gone button nothing. What took the app home is not
+    known yet (the facts will give the last KitButton action and the press guard's view); no app change before
+    they show it.
+  - Budgets unchanged (the lead: run 44306763928's cancellations were the runners' slowness, not hangs; M5-30
+    re-measures from two green runs).
+  Proof (M6 commit U2h, local; the UI tests run on CI): the three schemes built for testing and the Shipping
+  device build, no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` exit 0, "36
+  passed, 0 failed"; the gate exit 0 and `--workflows ../.github/workflows` exit 0; `cargo fmt --all --check`
+  exit 0.
+  As built (M6 commit U2i, from run 44326338905 at 29368ce7, the lead's reading of its logs; iOS 18.6's leg all
+  green, the narrow iPhone included):
+  - LifecycleUITests' double tap on the gate's pass (macos-26): touches (3, 0) to (5, 1), the last down at
+    1303474 ms, the last action Back at 1303722 ms, the app on Home. The first touch passed the gate; the second
+    went down on the passphrase's entry and was refused, and the entry's Back ran 248 ms later: a U4 defect, lead
+    decision M6-23 (a press must not skip a screen, a privacy gate included: docs/pi-firmware.md, "Buttons"). The
+    press guard now also decides at the action: the touch guard records each down's verdict (PressGuard's
+    noteDown: refused when any of its touches was), and the press gate (Kit.swift's PressGate, an environment value
+    Screens sets; unset it runs nothing) runs an action only if PressGuard's permits holds. Routed through it:
+    KitButton (every screen's buttons, the privacy gate's pass, Back, Close app and Open Settings among them), the
+    pads' keys (PadViews.swift's KeyGrid: dice, letters, the go-ahead code's symbols, ASCII), and the overlay's
+    tap and its VoiceOver action (Screens.swift's OverlayScreen). The screens have no other Button or tap
+    gesture (the TestHooks panel's buttons are the panel's, outside the screens' area). PressGuardTests' new
+    tests failed first (four of five) against the old behaviour (every action runs: "the second touch ... refused", "its
+    action, 248 ms on, does nothing", "an action after an admitted down and a refused one", "the touch went down
+    before the words were shown", "an action within 300 ms of a new view, no touch: refused too") and pass now,
+    with the admitted case. The facts line adds "refused yes/no" to the last touch down and "presses dropped" (a
+    count). Not covered: a second finger that goes down while the first is still down after the recognizer failed
+    on the first (a failed recognizer sees no new touch until every finger lifts), whose action meets the 300 ms
+    rule alone; and an action no touch made (VoiceOver's) after a refused touch on the same view is dropped until
+    the next touch or another view.
+  - journeys-6 PROVISIONAL at 45 minutes (the lead's word; macos-26's narrow iPhone waited 922 s and then 14
+    minutes in test-without-building before "Running tests" on a freshly made simulator, runs 44306763928 and
+    44326338905); M5-30 re-measures from two green runs. The narrow iPhone is not booted early: its wait came after
+    its boot had finished (bootstatus returned), inside xcodebuild, so an earlier boot would not overlap it, and a
+    second booting simulator during the TestHooks step would load the runner the journeys run on.
+  Proof (M6 commit U2i, local; the UI tests run on CI): PressGuardTests on the Mac (a macOS XCTest bundle over
+  Screen.swift, PressGuard.swift and a UiState stub): with the old behaviour stubbed in (every action runs), "Executed
+  13 tests, with 6 failures" (four of the five new tests: 6 assertions; the admitted case passes), and with the
+  fix "Executed 13 tests, with 0 failures"; the three schemes built for testing (the unit and UI test targets with
+  them) and the Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps, the probe's
+  new strings in the TestHooks binary alone; `--selftest-ios-app` exit 0, "36 passed, 0 failed"; the gate exit 0
+  (519 files) and `--workflows ../.github/workflows` exit 0; `cargo fmt --all --check` exit 0.
+  As built (M6 commit U2j, from run 44348225943 at 6f269a58, the lead's reading of its logs; M6-23 proven on iOS 26:
+  "the privacy gate's pass reaches nothing behind it" passed on macos-26; 12 of 14 jobs green, journeys-6 on both
+  legs; the two failures with presses dropped 0):
+  - MixedJourneyUITests (macos-15), "Home never came" in toHome: Go offline, the last action First launch's
+    Continue, and Start (enabled only while the model has the phone offline) tapped before the No path hook's
+    report reached the model, a plain tap never pressed again. A test race: toHome and every Start after the path
+    hook now wait up to 30 s for Start enabled (waitEnabled, failing with the facts), then press it through pressTo
+    (pressUntil's classification). Converted: JourneySupport's toHome (its new offlineToHome), WordsUITests,
+    CheckBackupUITests and ScanUITests (each their own No path, wait, Start, Home), OfflineUITests' Start once
+    enabled, and DynamicTypeUITests' wait before its reach. No other plain tap waits on a hook's state: every
+    other button with an enabled: rule (Undo, Confirm, Done, Delete, Previous, Next, the code's and the keys'
+    pages) follows the presses, and the helpers press those through pressUntil or pressEnabled already. The facts
+    line says "offline yes/no".
+  - CheckEdgesUITests (macos-26), roll 14's face "reached the app and was admitted, and did nothing": the model
+    and the gate's dropped count unmoved, the panel redrawn for the touch count alone. Not yet explained; a probe,
+    no fix: "last fired" in the facts line, set first thing in a press's closure, before the press gate (KitButton
+    with its id, as noteAction; a pad's key by its uptime alone, no key and no count, a count of letters giving a
+    word's length; the overlay's tap and VoiceOver action as "overlay"). pressUntil's admitted-and-nothing failure
+    now says which: "the button never fired" (last fired older than the touch down), "fired, the gate dropped it"
+    (presses dropped grew over the press), or "fired and ran, the model took nothing". It still fails there
+    (M6-21). Neither the recognizer nor the press path changed.
+  Proof (M6 commit U2j, local; the UI tests run on CI): the three schemes built for testing and the Shipping device
+  build, no Swift warning; `--ios-app` clean on the three shipped apps, the hooks marker in the TestHooks binary
+  alone; `--selftest-ios-app` exit 0, "36 passed, 0 failed"; the gate exit 0 and `--workflows ../.github/workflows`
+  exit 0; `cargo fmt --all --check` exit 0.
+  U2 proof on CI (2026-11-19, at 2e454c87): Entropy iOS run 44370503835, all 14 jobs success on both legs (macos-26
+  Xcode 26.6 iPhone 17 iOS 26.5; macos-15 Xcode 16.4 iPhone 16 iOS 18.6, the narrow iPhone in journeys-6 on each);
+  the log's test cases 596 passed, 0 failed; no press needed a second try (the probe lines are 10 "not wholly shown
+  above the hooks panel; dragged into view" and the facts snapshots alone). Entropy CI run 44370503978, all 14 jobs
+  success. M6-23 proven on iOS 26 by U2i's run 44348225943 ("the privacy gate's pass reaches nothing behind it"),
+  again here. The roll-14 face press (U2j's probe) did not recur; if it does, its line names which of the three it
+  was. The budgets stay provisional (M5-30): one green run of this head; the next green run sets them, measured plus
+  25% from the slower. Left for the next commit: DynamicTypeUITests' reach() places the dice pad's keys in its probe
+  line (key ids and frames, from the test's own public source, no session's secret), against U2h's rule that a pad
+  key is never placed.
+- [x] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
+  do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
+  docs is fixed with a test; a change the docs do not allow becomes a question for the owner.
+  As built (M6 commit U3a, U2's left-over): no line places or names a pad's key, whatever its caller asks.
+  JourneySupport's isPadKey is the one check (a key_ id, the dice's faces and the go-ahead code's symbols, or a
+  key found by its one-character label, the letters and ASCII, which carry no identifier); place() answers "a pad
+  key, not placed" for one, and DynamicTypeUITests' reach() names one "a pad key" (lineName) and drags it with
+  placed false. Run 44370503835 logged "probe: key_4: not wholly shown above the hooks panel (at 24,704 ...)"; the
+  next run logs "probe: a pad key: not wholly shown above the hooks panel; dragged into view". No source check
+  added: place() itself refuses, so no caller can place a key.
+  Proof (M6 commit U3a, local): the three schemes built for testing and the Shipping device build, no Swift
+  warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  Audit (M6 commit U3b, 2026-11-19): every screen of Screen.swift against docs/mobile-apps.md (MA), the parts of
+  pi-firmware.md (PF) and seal-watchonly-braille.md it cites, and the Android screens (AS = mobile/android/screens/src/
+  commonMain/kotlin/com/keepcrypt/entropy/screens). Wording is already pinned (ScreenTextsTests: every iPhone text is
+  an Android literal; ScreenTableTests; VoiceOverTests), so the audit covered what is shown when and in what order,
+  every button's and Back's effect and enabled rule, VoiceOver, and the layout at the largest text size on a 375 pt
+  iPhone (from the code and U2's DynamicType and narrow-iPhone runs; no simulator here). Read on both sides and found
+  the same: every screen's texts, their order and conditions; every button's model call, destination and enabled
+  rule (backTo, previousPage/nextPage, padKey/padDelete, the backup and export steps, the gate rule, the live
+  lines); the overlays, the gate and the notice bar. Findings (class: (a) an iPhone defect within the docs, fixed
+  with a test that fails first; (b) the iPhone differs from Android, the docs allow both; (c) a question for the
+  owner; "answered" an owner decision already covers it):
+  Proof: the audit table above, every row closed by U3a-U3p or an owner answer (Q93-Q99); both apps' Q97 changes
+  green at 68ff6e73 (iPhone 44865641576 with journeys-6's DynamicType on a narrow iPhone on both legs; Android
+  44865641612).
+
+  | Screen | What differs | Source | Class |
+  | --- | --- | --- | --- |
+  | check_qr | No Back on the iPhone: its note says "compare the seal it draws with the seal card (Back)", the model's backTo goes to the seal card with the same check, Android's system Back reaches it (MainActivity.kt:89-93), the iPhone has no system Back and drew none. Fixed in U3b (Back below the four answers), CannotCheckJourneyUITests' new step | Texts.swift:171-172; PF:113 (QR pages: previous page); MA:178 "the same prompt and seal card as the Pi" | (a) |
+  | go_offline, home, length | No Back on the iPhone: Android's system Back goes Go offline to First launch, Home to Go offline, Length to Home (backTo, the same on both); the iPhone's backTo has the routes, nothing calls them. On Length a wrong mode can only go forward | Ceremony.swift:1948-1952; AS Screens.kt:43, MainActivity.kt:89-93; PF:109 "Menus, offers: KEY1 back, only where nothing is lost" | (b), Android's behaviour intended: Back buttons proposed, for the lead's word |
+  | every screen with a Back or Previous | No VoiceOver escape (the two-finger scrub) for Back; TalkBack's back gesture reaches model.back on Android | no accessibilityPerformEscape in KeepCrypt/*.swift; AS MainActivity.kt:89-93 | (b), proposed with the row above |
+  | notice bar, TEST REGISTRY strip, cover and idle-warning lines, pad keys, braille face letters and dot numbers | Fixed point sizes (16, 18, 20, 18, 24, 14 and 12) that do not follow the text size; Android's are sp and follow it (Q78: the full range on every screen) | Kit.swift:350, :366; Screens.swift:371, :377; PadViews.swift:88; Drawing.swift:109, :130, :144; AS Kit.kt:233, :247, Screens.kt:438, Pads.kt:266, Drawing.kt:229, :238 | (b), Android intended (Q78): scaling proposed, for the lead's word |
+  | code_entry, readback_entry, backup_confirm, backup_check_entry, seal_card, collision | The typed code and letters (48) and the Seal ID (36) are fixed; Android's KitType.large and 36.sp follow the text size. At 2x the 9-character code would wrap on both apps' widths | CheckScreens.swift:150; WordsScreens.swift:179; BackupScreens.swift:144; Drawing.swift:57; AS CheckScreens.kt:323, BackupScreens.kt:292, Drawing.kt:144 | (b), with Q97's question |
+  | Protected screens while recorded | The placeholder sits top-left in body text on the iPhone, centred at button size on Android | Screens.swift:267-270; AS Screens.kt:389-401 | (b) |
+  | go_offline | No "Open airplane-mode settings" button, and the network-path line is live (announced on change); the iPhone's own offline check (NWPathMonitor) | StartScreens.swift:50, :61; VoiceOver.swift:44; AS StartScreens.kt:87, :94-95; MA:125 | (b), known |
+  | dice | The picked face carries its identifier in the TestHooks build alone (a secret node); Android tags it in every build. The dice line is announced as the screen opens on the iPhone | StartScreens.swift:216; Kit.swift:425; AS StartScreens.kt:223, Kit.kt:180 | (b) |
+  | pads | Keys at least 44 pt high (Apple's minimum) against 48 dp | Pads.swift:152; AS Pads.kt:210 | (b) |
+  | backup_passphrase, readback_mismatch, words | Small spacing differences: passphrase lines 10 pt apart (Android's 36 sp line height grows), verdict lines padded 6 pt (4 dp), a braille face 2 pt wider (under 1 pt over a fifth of a 375 pt row, unseen in U2's runs) | BackupScreens.swift:64; WordsScreens.swift:217; Drawing.swift:111; AS BackupScreens.kt:222, WordsScreens.kt:411 | (b) |
+  | scan, every press | Open Settings after a camera refusal (M6-9), the screenshot notice, the press gate (M6-23) | M6-9, M6-23 | (b), known |
+  | home, device_entropy | Neither app offers "Verify another device's ceremony", Snake or Tetris, or the camera extra | MA:173, :175, :131; AS StartScreens.kt:104 | answered: Q61 (M5b; the camera extra M8) |
+  | Protected screens while recorded | Both apps say "Hidden while the screen is recorded. Stop the recording to go on."; MA's iPhone sample says "Hidden while the screen is shared or recorded" | Texts.swift:83; AS Screens.kt:396; MA:98 | (c) Q93 |
+  | every Protected screen | VoiceOver reads the secrets (by design, MA:31); Android also marks them accessibility-data sensitive, the iPhone has no such mark; MA:17's iPhone residuals do not name it | VoiceOver.swift:9-11; AS Kit.kt:194, Pads.kt:257; MA:17, :31 | (c) Q94 |
+  | backup_save | Both apps show the cloud-folder line always, before any place is picked; MA says the line comes "if the user picks a cloud folder" (neither app can tell) | BackupScreens.swift:180; AS BackupScreens.kt:332; MA:158 | (c) Q95 |
+  | backup_save after a failure | Both apps ask the user to delete a partial file; the Pi deletes it | Texts.swift saveAgainNote; AS BackupScreens.kt:60; PF:160 | (c) Q96 |
+  | words, words_overview, code_entry, reveal_d, two-up buttons (both apps) | At the largest text size words break mid-word: an insert's word at 96 pt (a long word on 327 pt), the code, two-up button labels; overview lines and C/D's hex rows wrap out of their columns. Nothing is cut | WordsScreens.swift:19-21, :109; Kit.swift:42; AS WordsScreens.kt:225-228; Q78 | (c) Q97 |
+  | backup_check_result | "Backup OK" is Public and the words open on the words screens through the gate; MA says the words come "on the same protected screen" | BackupScreens.swift:241-262; AS BackupScreens.kt:402-419; MA:162 | (c) Q98 |
+  | first_launch | Both apps show the Pi pointer before what no phone app can stop; MA:170 lists them the other way round | StartScreens.swift:23-26; AS FirstLaunch.kt:33-42; MA:170 | (c) Q99 |
+
+  Counts: (a) 1, fixed (U3b); (b) 10, of which three rows are proposals for the lead (Back on Go offline, Home and
+  Length; VoiceOver's escape; scaling the fixed small sizes) and two are the iPhone's known own (its offline check;
+  Open Settings, the screenshot notice and the press gate); (c) 7, Q93-Q99 below; answered 1 (Q61).
+  Questions for the owner (Q93-Q99, drafted from U3's audit and answered 2026-11-19: "approve Q93-Q99 as
+  recommended"; the doc edits below, U3c):
+  93. **The recording placeholder's text** (MA:98; Texts.swift:83; Screens.kt:396)
+      Recommended: keep both apps' "Hidden while the screen is recorded. Stop the recording to go on." and make MA:98's
+      sample say it (a doc edit), since the sample is illustrative and the line tells the user what to do.
+      Otherwise: both apps say MA:98's "Hidden while the screen is shared or recorded".
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended" (a doc edit, MA:98).
+  94. **VoiceOver and the secrets on an iPhone** (MA:17, :31; VoiceOver.swift:9-11; Kit.kt:194)
+      Recommended: name it in MA:17's iPhone residuals: VoiceOver reads the words, passphrases and D aloud or to a
+      braille display, as TalkBack does, and iOS has no accessibility-data-sensitive mark to keep other assistive
+      services from them; the owner's I5 check covers it on hardware.
+      Otherwise: leave MA as it is (the residual lives in the code's comment alone).
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended" (a doc edit, MA:17).
+  95. **When the cloud-folder line shows** (MA:158; BackupScreens.swift:180; BackupScreens.kt:332)
+      Recommended: keep it always shown before the save (neither platform says where the user saved) and reword MA:158
+      to "the save screen says, in one line, that a cloud folder is allowed and what that means".
+      Otherwise: drop the line, or show it after every save.
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended" (a doc edit, MA:158).
+  96. **A partial backup file after a failed save** (PF:160; Texts.swift's saveAgainNote; BackupScreens.kt:60)
+      Recommended: keep the phones' line asking the user to delete it (an app given a document by the system picker
+      cannot always delete it) and say so in MA's "Encrypted backup only".
+      Otherwise: each app tries to delete the file it wrote, and says when it could not.
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended" (a doc edit, MA:157).
+  97. **The largest text size and words broken mid-word** (Q78; WordsScreens.swift:19-21; WordsScreens.kt:225-228)
+      Recommended: no line breaks inside a seed word, the code or a hex group: the insert's word, the typed code and
+      letters, the Seal ID and C/D's groups shrink to fit their line (a minimum scale) instead of wrapping, and two-up
+      buttons stack one per row when a label does not fit; on both apps, tested at 2.0 on a 360 dp and a 375 pt
+      screen.
+      Otherwise: leave the reflow as it is (nothing is cut; a word can wrap).
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended": both apps (U3g iPhone, U3h Android).
+  98. **Where Check a backup's words show** (MA:162; BackupScreens.swift:241-262; BackupScreens.kt:402-419)
+      Recommended: keep "Backup OK" Public with Show words opening the words screens through the gate (one Protected
+      flow for words everywhere), and reword MA:162.
+      Otherwise: show the words on the result screen itself, which then becomes Protected.
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended" (a doc edit, MA:162).
+  99. **First launch's order** (MA:170; FirstLaunch.kt:33-42; StartScreens.swift:23-26)
+      Recommended: keep both apps' order (what the app does, the Pi for life savings, what no app can stop); MA:170's
+      list names the contents, not an order.
+      Otherwise: put "what no phone app can protect against" before the Pi pointer on both.
+      - Answered 2026-11-19: "approve Q93-Q99 as recommended": no change.
+  Q93-Q99's doc edits (U3c, docs/mobile-apps.md, each the exact old text, then the new; nothing else in docs/):
+  - Q94, MA:17: old "On the iPhone three residuals, also accepted for the M7 audit, limit it: ... ; and a screenshot
+    cannot be blocked, only answered by a discard." new "On the iPhone four residuals, also accepted for the M7
+    audit, limit it: ... ; a screenshot cannot be blocked, only answered by a discard; and VoiceOver reads the
+    words, passphrases and D aloud or to a braille display, as TalkBack does, while iOS has no
+    accessibility-data-sensitive mark to keep other assistive services from them." (the elided middle unchanged)
+  - Q93, MA:98: old `RedactedCover(text: "Hidden while the screen is shared or recorded")` new
+    `RedactedCover(text: "Hidden while the screen is recorded. Stop the recording to go on.")`
+  - Q96, MA:157: old "4. The app reads the saved file back, decrypts it in memory and compares the fingerprint
+    before showing "Backup verified."" new the same, then "If the write or the read-back fails, it says so and asks
+    the user to delete the partial file, since an app cannot always delete a document the system picker gave it."
+  - Q95, MA:158: old "5. If the user picks a cloud folder, the app allows it with one line: the passphrase is what
+    protects the file, so keep it on paper, away from the file." new "5. The save screen says, in one line, that a
+    cloud folder is allowed and what that means: the passphrase is what protects the file, so keep it on paper,
+    away from the file."
+  - Q98, MA:162: old "... and the app shows the fingerprint and "Backup OK." Words appear only if the user asks, on
+    the same protected screen." new "... and the app shows the fingerprint and "Backup OK." on a Public screen.
+    Words appear only if the user asks: Show words opens the words screens through the privacy gate."
+  Proof (M6 commit U3b, local; the UI test runs on CI): the check QR's Back is drawn and calls model.back (backTo:
+  the seal card, the same check); CannotCheckJourneyUITests presses it through pressTo and checks the same Seal ID,
+  then Show check QR again: before U3b that step fails ("no button back"), on CI. The three schemes built for testing
+  and the Shipping device build, no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app`
+  exit 0, "36 passed, 0 failed".
+  As built (M6 commit U3-ci, the lead's brief; CI, not the app): Entropy Android's required build failed twice in
+  scripts/android-deps-review.sh on Maven Central's rate limit, "HTTP 429 for .../juniversalchardet-1.0.3.jar.asc"
+  after curl's three retries (runs 44370503703 at 2e454c87 and 44237883585 at 63bb375c). A transfer answered 429,
+  500, 502, 503 or 504 is now deferred: its .part removed, no .404 mark, so the next round lists it again; a round
+  with any prints "round N: K file(s) deferred (HTTP codes), the next round in P s" and sleeps P = 15 s times the
+  round, at most 120 s. Everything else still fails closed (a curl failure, any other code, files left after 12
+  rounds). At most 8 transfers at once (16 before). The script has no selftest or canary of its own (canaries.sh
+  checks only the workflow's step lines), so none was added; proven by reading and once by hand, not committed: a
+  copy of the script beside a stub review script, with a stub curl on PATH answering 429 once for one file, fetched
+  it in round 2 after the 15 s pause and exited 0; the same stub answering 403 failed at once, exit 2. The other two
+  recent Android failures (runs 44212919436 and 44225340054, "adb: device offline" mid-CaptureTest on the API 34
+  emulator) are the runners' infrastructure; nothing in our scripts was found to cause them.
+  As built (M6 commit U3d, lead decision M6-24): Back, a KitButton (so through the press gate) calling the model's
+  back, last among the actions of Go offline (to First launch), Home (to Go offline) and Length (to Home), the
+  routes backTo already held, Android's system Back's. LifecycleUITests' new testBackOnGoOfflineHomeAndLength walks
+  Length, Home, Go offline back to First launch through pressTo and on to Home again; before U3d its first Back
+  fails ("no button back"), on CI. Proof (local): the three schemes built for testing and the Shipping device build,
+  no Swift warning; `--ios-app` clean on the three shipped apps; `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  As built (M6 commit U3e, lead decision M6-25): VoiceOver's escape (the two-finger scrub) is the iPhone's system
+  Back. CeremonyModel.hasBack(screen) says whether back() goes anywhere from a screen (a backTo route, now static,
+  or the paged screens' previous page); Screens wraps the screen in accessibilityAction(.escape) there alone,
+  calling the model's back through the same press gate as every press (Screens.gated), so a screen with no route
+  has no escape action and VoiceOver's escape goes unanswered (UIKit's false). The branch follows the screen only,
+  whose change replaces the view anyway, so no screen's state is reset by it. On a paged screen's first page the
+  escape is answered and does nothing, as Back there. The facts' last fired names "escape". CeremonyBackTests'
+  testVoiceOversEscapeIsOfferedExactlyWhereBackGoesSomewhere holds hasBack to the class's landing table and the
+  paged screens, screen by screen (CI's unit job; no host run here). XCUITest has no way to perform VoiceOver's
+  escape, so the gesture's wiring is proven by reading: the action on the screen's root view, the model's back
+  behind the press gate; the owner's I5 VoiceOver check on hardware covers it. No fail-first run: hasBack is new.
+  Proof (local): the three schemes built for testing (the unit test compiles) and the Shipping device build, no
+  Swift warning; `--ios-app` clean; `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  As built (M6 commit U3f, lead decision M6-26): the kit's fixed sizes Android draws in sp follow the user's text
+  size by KitType.scaled (UIFontMetrics, capped at 2x, as U2b's KitType): the notice bar (16), the TEST REGISTRY
+  strip (18 bold), the cover and idle-warning lines (20), the pads' key labels (18; a key stays at least 44 pt
+  high, keyPoints, the label's frame growing past it only when the type does) and a braille face's letter (24)
+  and label (14). Each view reads the dynamicTypeSize environment, as KitScreen does, so a change of the size draws
+  it again. Not scaled, as on Android: the faces' dot numbers (12), sized from the 40 x 60 cell as the dots are
+  (Drawing.kt's DotNumbers: numbers that grew with the font clipped dots 4-6 at 1.15), against the brief's list,
+  which named them; and the large display texts (the typed code and letters 48, the Seal ID 36), which Q97's
+  shrink-to-fit takes (U3g). DynamicTypeUITests measures the notice bar too: a screenshot (the hook) on First launch
+  at the default size and at AccessibilityXXXL, its height to grow over 1.5 times; before U3f the bar's 16 was
+  fixed and that assertion fails (on CI, the leg's device and the narrow iPhone). Proof (local): the three schemes
+  built for testing and the Shipping device build, no Swift warning; `--ios-app` clean; `--selftest-ios-app` exit
+  0, "36 passed, 0 failed".
+  As built (M6 commit U3g, Q97 on the iPhone): no line break inside a seed word, the code or a hex group. Whole-
+  line texts (wholeLines: lineLimit plus minimumScaleFactor) shrink instead of wrapping: the insert's word, the
+  typed go-ahead code, the typed letters (read-back, the backup confirm's and Check a backup's entries), the
+  backup confirm's choices (seed words two to a row), the Seal ID (one line each), and C's and D's four rows of
+  four groups (four lines). The fixed 48 and 36 of the code, the letters and the Seal ID now follow the text size
+  too, as Android's KitType.large and 36 sp, shrinking to fit. The minimum scale is one half (KitType.fitScale): at
+  the largest scale (2x) such a text is never drawn smaller than at the default size, and at the default size the
+  longest seed word (8 letters at 48), the code (9 characters at 48 monospaced) and C's rows (19 characters at 22
+  monospaced) fit a 375 pt iPhone's 327 pt column whole, so nothing shrinks below what everyone reads today. Two-up
+  buttons go through KitPair (a Layout, Android's KitPair): side by side when both labels fit their half on one
+  line, else one per row at the row's width; the twelve pairs (Undo/Confirm, Delete/Done on four pads, Previous/
+  Next on three screens, the keys' pages, Scan/Type and Match found/Cannot check, Previous/Done). DynamicTypeUITests
+  asserts, at the largest size on the dice, that Undo and Confirm are each one line high (as Done): before U3g they
+  shared the row and "Confirm" broke inside the word, two lines high (fails on CI's devices and the narrow
+  iPhone). Proof (local): the three schemes built for testing and the Shipping device build, no Swift warning;
+  `--ios-app` clean; `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  As built (M6 commit U3h, Q97 on Android, with the overview on both): Kit.kt's WholeLines (BasicText with maxLines
+  and Compose foundation's step-based TextAutoSize, from the style's size down to WHOLE_SCALE, one half, in sp, so
+  at font scale 2.0 the smallest is the 1.0 size; no new dependency) on the insert's word, the typed code and
+  letters (three pads), the backup confirm's choices, the Seal ID, C (KitText's whole = 4) and D (four lines); and
+  KitPair, a Layout putting two buttons side by side when both max intrinsic widths fit half the row less a 12 dp
+  gap, else one per row, on the same twelve pairs as the iPhone's. The words' overview lines are whole on both
+  apps too (the iPhone's KitText whole: 1): at 2.0 they wrapped out of their columns, and each holds a seed word.
+  The test, CaptureTest's layout walk (every screen at its window, and at font scale 2.0 on API 36, CI's 360 dp
+  leg's): Layout.Node now carries Q97's facts, each a yes or no computed in-process from the node's text layout,
+  its text never kept: brokenWord (a line ending between two letters or digits), wrapped (more lines than its own),
+  monospace and large (36 sp or more); assertLaidOut fails a button or a large secret text (the insert's word) with
+  a broken word, and the code, C or a monospaced secret text (the letters, D, the overview, the choices) that
+  wraps. Before U3h, at 2.0, "Confirm" in the Undo/Confirm row broke inside the word, the insert's word broke, and
+  the code and C wrapped, so the walk fails there (on CI's emulator; not run locally: the walk is the API 36
+  emulator's). Proof (local, the owner's Mac): scripts/android-rust.sh shipping and withTestRegistry exit 0;
+  scripts/android-gradle.sh --dependency-verification strict with CI's build step's tasks (the five APKs, the
+  androidTest APKs, so CaptureTest and Layout.kt compile, :core-ffi and :screens' host tests, and test) "BUILD
+  SUCCESSFUL", exit 0; the JVM test results 210 tests in :screens' host tests (DocsTextsTest's new
+  theRecordingPlaceholderIsTheDocs among them, U3c), 34 in :core-ffi's, 11 and 11 in :app's two flavours, 5 in
+  :secure-ui's, none failed; the gate clean (519 files). Android CI has no lint step, and lint was not run here
+  (its tools are not in the verified dependencies); the APK check (--apk, signed APKs) was left to CI. iOS: the
+  three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean;
+  `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  As built (M6 commit U3i, U3h's regression): Entropy Android run 44398792258 at 78c6e338 failed CheckTest on API
+  34 and 36 at font scale 1.0, "the check QR ... is not wholly inside its column's viewport": U3h's KitPair stacked
+  a pair whenever a whole label did not fit its half on one line (its max intrinsic width), so the check QR's four
+  answers stood one per row, the fixed actions grew and the column's viewport fell below the 480 px QR. Q97 asks
+  for no break inside a word; a label may wrap between words. KitPair now stacks only when one word of either
+  label is wider than a half's text width: Android by the labels' min intrinsic width (the widest word, with the
+  button's padding), the iPhone by its labels' words measured in the button's face at the user's size
+  (KitType.buttonFont), the labels now passed to KitPair(first, second). Measured in SF Bold (the Mac's, local):
+  at 20 pt the widest words are "go-ahead" 90.9 (the hyphenated word kept whole), "Previous" 81.7, "Confirm" 76.2,
+  "Cannot" 68.3, all under a half's text width of 125.5 pt on a 375 pt iPhone (327 pt column) and 118 dp on a
+  360 dp screen (312 dp column); whole labels "Type go-ahead code" 192.7, "Scan go-ahead QR" 175.0, "Cannot check"
+  129.5 and "Previous keys" 129.4 were over it, which is why U3h stacked. At 40 pt (2x) "Confirm" 150.0, "Previous"
+  160.2 and "go-ahead" 180.4 are over it (their pairs stack, no word broken) and "Delete" 120.4, "Done" 97.6
+  under it (Delete/Done stays two-up on the iPhone). The twelve pairs at the default size on a 375 pt / 360 dp
+  screen, all two-up again as before U3h: Undo/Confirm (dice), Delete/Done on the code entry, the read-back entry,
+  the backup confirm and Check a backup's entry, and the BIP39 entry, Previous keys/Next keys (BIP39 entry),
+  Previous/Next on the words, the overview and the backup passphrase, Scan/Type and Match found/Cannot check (the
+  check QR), Previous/Done (the descriptor QR). The Protected and scannable screens among them (the words, the
+  overview, the backup passphrase, the BIP39 entry, the descriptor QR, the check QR) so keep their actions as
+  compact as before U3h at 1.0; at 2.0 only pairs with a word too wide stack, as U3h's run asked. Tests: the
+  iPhone's CannotCheckJourneyUITests now asserts at the check QR, at the default size, that the four answers stand
+  two to a row (each pair's tops equal) and that the check QR is wholly shown above the TestHooks panel
+  (wholeInView; scrollViewHolding now finds any element's scroll view, not only a button's); on 78c6e338's KitPair
+  the answers stacked, so the first fails (on CI). Android's CheckTest already asserts the QR wholly in its
+  viewport and failed on 78c6e338. U3g's DynamicTypeUITests assertion (Undo and Confirm one line high at the
+  largest size) stands: each is one word, so one line is no word broken; U3h's walk asserts no broken word. Proof
+  (local): Android, scripts/android-gradle.sh --dependency-verification strict with CI's build step's tasks "BUILD
+  SUCCESSFUL", exit 0, :screens' host tests 210, :core-ffi's 34, :app's 11 and 11, :secure-ui's 5, none failed;
+  iOS, the three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean;
+  `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  As built (M6 commit U3j, iPhone run 44398792169 at 78c6e338, journeys-6 on both legs):
+  - macos-15's narrow iPhone, "dice_only_seed cut: not reachable at the largest text size": a test defect, not the
+    app's. reach() swiped the column up until the control was hittable, and an XCUITest swipe glides. U3d's Back
+    lengthened Home's column (six actions, scrolling with the column at the largest size); New seed's drag left
+    Dice-only seed under the TestHooks panel (the scroll view at 0,79 375x588 runs on under the panel at 0,559),
+    and each swipe carried it past the column's top, six times over, so it was never hittable. No action is cut:
+    the scroll view's content scrolls clear of the bottom inset (the panel is a safe-area inset), and New seed was
+    dragged above it; in Shipping there is no panel, and a person scrolls to what they see. reach() now, for a
+    control in a scroll view, drags it slowly up or down by what is cut until it is wholly shown above the panel
+    (bringIntoView, at most ten drags of half the shown region, hittable or not), then asserts it whole and
+    hittable; a fixed action must be hittable as it stands. Each failure gives the facts line and where the control,
+    its scroll view and the panel lie (a pad key unplaced, U3a).
+  - macos-26's iPhone 17, "the screenshot's notice" at the largest size: a slow runner (automation set up from
+    33.9 s to 87.6 s, First launch at 154 s); the notice's wait was 10 s. The waits are now 60 s for First launch and
+    30 s for the title and the notice, each failure with the facts line ("notice ..." says whether the model holds
+    one), and a notice drawn with no height fails as such. U3f's notice bar has nothing that could draw it at zero
+    height: a Text with its vertical size fixed (fixedSize vertical), its font KitType.scaled(16), padded 8 above and
+    below, in the screens' VStack above the screen.
+  Proof (local): the three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app`
+  clean; `--selftest-ios-app` exit 0, "36 passed, 0 failed". The runs themselves are CI's.
+  As built (M6 commit U3k-1, a U4 defect U3i's KitPair brought; the run at e32fd98a): on iOS 18.6 every macos-15
+  journey hung as a screen with a pair opened (the dice after words_12, the words after pass_gate), XCUITest
+  reporting the app not running. KitPair's sizeThatFits answered proposal.replacingUnspecifiedDimensions().width:
+  the placeholder 10 for an ideal-size query (a nil width), which stacked, and an infinite width for an unbounded
+  one, side by side with infinite halves. It now answers the ideal size for a nil or infinite width (the two side
+  by side at their ideal widths, the spacing between, the taller's height) and never an infinite or placeholder
+  width; placeSubviews places by the same rule on the finite width it is given, the stacked rows touching as the
+  actions' column puts buttons (each KitButton pads itself 6 above and below), as before U3h. KitType and KitPair
+  move to KitLayout.swift, a member of the unit tests too. KitType.scaled reads UIApplication's content size
+  category, on the main thread, where SwiftUI lays out. KitPairTests (new) lays a pair out through a hosting
+  controller's sizeThatFits: an infinite width gives a finite size, the two side by side (200 plus the spacing);
+  an ideal (fixedSize) one the same, not 10; a finite one the row's width. At e32fd98a the infinite case answered
+  an infinite width, so it fails there (CI's unit job). Proof (local): the three schemes built for testing (the
+  unit test compiles) and the Shipping device build, no Swift warning; `--ios-app` clean; `--selftest-ios-app` exit
+  0, "36 passed, 0 failed".
+  As built (M6 commit U3k-2, Android): CaptureTest at font scale 2.0, "check_qr: 2 of its texts break a word or a
+  group across lines (Q97): scan_qr, type_code": Compose's min intrinsic width breaks "go-ahead" at its hyphen, so
+  U3i's KitPair saw "go-" and "ahead" and kept the pair two-up while the label broke. KitPair(first, second) now
+  measures each whitespace-separated token of its labels whole (TextMeasurer at KitType.button and the
+  composition's font scale, one line, no wrap), the iPhone's rule, plus the button's 32 dp padding, against a
+  half. CaptureTest's walk at 2.0 is the failing-first test (CI). Proof (local): scripts/android-gradle.sh
+  --dependency-verification strict with CI's build step's tasks "BUILD SUCCESSFUL", exit 0; :screens' host tests
+  210, :core-ffi's 34, :app's 11 and 11, :secure-ui's 5, none failed.
+  As built (M6 commit U3k-3, lead decision M6-27): TouchGuardRecognizer is observe-only (cancelsTouchesInView
+  false, state .failed at once on every down, its own delegate answering true to simultaneous recognition,
+  shouldBeRequiredToFail and canPrevent false); it records each down exactly as before (input, touched, noteDown,
+  the TestHooks touch counts with "refused yes/no"), and every probe stays. A refused touch now reaches the
+  control, whose closure fires ("last fired") and whose action the press gate drops ("presses dropped"); the
+  journeys' classification reads that as refused, as before. PressGuard.swift's comment and Screens.swift's say
+  the cancel is gone and why. Covered by the existing tests: LifecycleUITests' double taps (the refused second
+  touch on the next screen does nothing: the gate drops it) and every journey's presses (CI). Proof (local): the
+  three schemes built for testing and the Shipping device build, no Swift warning; `--ios-app` clean;
+  `--selftest-ios-app` exit 0, "36 passed, 0 failed".
+  U3l (2026-11-21, the lead's): every iOS 18.6 journey lost the app on entering a screen at e32fd98a and again at
+  82c4f7a8 (U3k-1's KitPair fix did not change it; KitPairTests passed on iOS 18.6, so a pair alone lays out there).
+  The one change in what the tests ask between the green 78c6e338 and e32fd98a: U3i's scrollViewHolding queried
+  `scrollViews.containing(.any, identifier:)`, asked before every press, which snapshots the whole tree each time.
+  Fix (test-only): a button is looked for as a button, as before U3i; `.any` only for an element that is no button
+  (the check QR). With it, entropy-ios.yml's journeys print the simulator's KeepCrypt crash and hang reports on a
+  failure, so a lost app is never again read from "not running" alone. Proof: CI at the head that carries it.
+  U3m (2026-11-21, the lead's): U3l's suspicion was wrong; its run at 156422fb lost the app on iOS 18.6 again, and
+  the new step printed the crash reports: SIGABRT on com.apple.SwiftUI.AsyncRenderer, KitPair.placeSubviews ->
+  widestWord -> KitType.scaled (UIApplication.shared.preferredContentSizeCategory) ->
+  __ASSERT_API_MUST_BE_CALLED_FROM_MAIN_THREAD_FAILED__. SwiftUI lays a custom Layout out off the main thread on
+  iOS 18.6; U3i's KitPair measured its words there. Fix (an app defect, U4): the widest word is measured once in
+  KitPair's init, in the view's body on the main thread, and the layout methods read only the stored width.
+  KitPair is the app's one custom Layout; every other KitType.scaled call is in a view body. U3l's button-first
+  query stays (cheaper); its comment now says what was found. Proof: the iOS 18.6 journeys at the head carrying it,
+  whose crash-report step reads "no KeepCrypt crash or hang report" or does not run.
+  Confirmed: every iOS 18.6 journey green at b167f155 and after, no crash report.
+  U3n (2026-11-21, the lead's): journeys-6's narrow-iPhone DynamicType step samples the app (`sample`, every 20 s)
+  and prints the call graphs on a failure, for the iOS 26 hang at the largest size after Continue (seen once, never
+  sampled). U3o (953746d2, lead decision M6-28): a press that went down and never fired is pressed again, named;
+  First launch's Continue goes through pressUntil. Run 44857826728 at 953746d2: all 12 journey jobs green on both
+  legs, journeys-6 included (no hang sampled), but both unit jobs failed to build: launchedToGoOffline, compiled
+  in Shipping, now called pressUntil, which is TestHooks-only. U3p: launchedToGoOffline is under `#if KC_TEST_HOOKS`
+  with pressUntil, as all its callers are (lessons.md, 2026-11-21). Proof (local): the three schemes built for
+  testing; CI at the head carrying it.
+- [x] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
+  them. Proof: CI at each stage's head; local runs reported as local.
+  Proof: the gate report's defect list (nine, each with its failing-first test or the CI run that failed first:
+  U2b/M6-26, M6-22, M6-23, M6-27, U3b, M6-24/25, Q97's U3g-U3k, U3m, U3-ci); all fixed, CI green at 68ff6e73
+  (iPhone 44865641576, Android 44865641612). Open, named, cause unproven: M6-28's dead press (once in that run,
+  journeys-4 iOS 26.5, roll 80's Confirm, pressed again and passed); no crash or hang report in any job.
+
+### Verification (each maps to a gate item; refined with the plan)
+- [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest
+  with the capture hook on both simulators); I1 on the owner's iPhone (a Control Center recording, AirPlay mirroring,
+  iPhone Mirroring).
+- [ ] A screenshot discards the session: the notification wipes it and explains why (XCTest and XCUITest); I1's
+  hardware screenshot on each sensitive screen.
+- [ ] App Privacy Report shows no network use: the app's scan (no networking code or SDK); I5's report after I2-I4.
+- [ ] Snapshot import works: kcr.json's `small` through the Snapshot file hook, a dice-50-words12 seed checked against
+  it, the stale line in the unit tests (simulator); the document picker on the iPhone (I4).
+- [ ] Sparrow watch-only import works: I3 (Sparrow and Bitcoin Core, the same first address).
+- [ ] A go-ahead QR from the test registry reveals the words, and a Stop wipes them: the decoder on canned frames in
+  CI; I4 by the iPhone's camera.
+- [x] The 14 required checks green with names unchanged; `entropy-ios.yml` green at the final head.
+  Proof: at 68ff6e73, Entropy CI run 44865641590, all 14 required checks success, names unchanged; Entropy iPhone
+  run 44865641576, 14 of 14 jobs success (unit and journeys-1..6 on iOS 26.5 iPhone 17 and iOS 18.6 iPhone 16).
+  Also green there: Entropy Android 44865641612 (9 of 9), Entropy Pi image 44865641588 (a = b).
 
 ## Review
 _Added after completion, with pasted proof for every ticked item._
@@ -21093,6 +23449,9 @@ in the test-registry APK (U3n).
 6. **The back swipe**: U2k's tick covers the Back key alone; no CI image attaches a gestural bar, so the swipe branch
    ran nowhere.
 
+Items 1 and 5's fixes merged 2026-11-21 on the owner's "merge PR #11 approve" (PR bitwilll/keepcrypt#11, merge
+commit d5a34f94; every required check green, Vercel's failure ignored as agreed); main merged into m6-iphone after.
+
 ### M5: for the owner's approval
 1. The new tap (e60e5444) and the budgets it allowed (62396383): every emulator job now budgeted at its measured
    time plus 25% from two runs; one slow runner can stop a job, and the lead then re-measures (M5-30).
@@ -21159,3 +23518,36 @@ registry reveals the words and a Stop wipes them". Each part on CI (Entropy Andr
   report names"; armeabi-v7a on no emulator; U3's TalkBack check not reported (P1's optional item).
 - Approved 2026-11-17 ("approve M5 gate, merge it"); this commit records it, and PR bitwilll/keepcrypt#9 is merged
   after the required checks pass on it. M6 starts only when the owner asks.
+
+### M6: CI at the final head
+The final head's code is 68ff6e73 (the commit after it changes tasks/todo.md alone, M4's lead decision 25):
+- **Entropy CI 44865641590** at 68ff6e73: all 14 required checks green, names unchanged (test 5 min 23 s, gates
+  3 min 39 s, supply-chain 9 min 9 s, coverage 2 min 27 s, lint 2 min 44 s, the six cross legs 2 min 10 s to
+  3 min 33 s, aarch64-apple-ios and -sim among them).
+- **Entropy iPhone 44865641576** at 68ff6e73: 14 of 14 jobs green. macos-26 (Xcode 26.6, iPhone 17, iOS 26.5): unit
+  1393 s, journeys-1 1048 s, -2 1351 s, -3 1221 s, -4 1626 s, -5 1457 s, -6 1118 s. macos-15 (Xcode 16.4, iPhone 16,
+  iOS 18.6): unit 1301 s, journeys-1 1608 s, -2 1262 s, -3 1090 s, -4 1066 s, -5 1143 s, -6 1267 s. Each unit job
+  built and tested Shipping and WithTestRegistry, scanned both apps (`--ios-app` clean) and ran the TestHooks UI
+  tests; journeys-6 ran DynamicType at the largest size on a narrow iPhone on both legs. No crash or hang report in
+  any job. One M6-28 retry: journeys-4 on iOS 26.5, "roll 80's Confirm: press 1 went down and the button never
+  fired", pressed again and passed.
+- **Entropy Android 44865641612** at 68ff6e73: 9 of 9 green (the Q97 changes). **Entropy Pi image 44865641588**:
+  green, a = b.
+- After it: at 491b3cdf (the approval commit and main's PR #11 merged in) Entropy CI 44887514300, Android
+  44887514377 and the Pi image 44887514374 green; Entropy iPhone 44887514334 red on journeys-5 (iOS 26.5) alone, the
+  lost Don't Allow tap above (M6-28's extension), fixed in the commit after, not rerun to green.
+- Before it: run 44857826728 at 953746d2, every journey green on both legs and both unit jobs red at build (U3p;
+  lessons.md 2026-11-21). No iPhone or emulator job was rerun to green at any M6 head.
+
+### M6 gate status: CI MET at 68ff6e73 (2026-11-21), approved by the owner and merged (PR bitwilll/keepcrypt#10)
+- Simulator and CI proof for each gate item: the Verification list above and the gate report on PR
+  bitwilll/keepcrypt#10. The items that need a real iPhone (capture by Control Center, AirPlay and iPhone Mirroring;
+  a hardware screenshot; App Privacy Report; Sparrow and Bitcoin Core; the camera scan) wait for I0-I5.
+- Named, not blocking: M6-28's dead simulator press (cause unproven); iOS 17 on no CI simulator; the journeys-5 and
+  -6 budgets on few green runs (M5-30); Q89's iPhone model and iOS version.
+- Approved 2026-11-21 ("approve M6 gate, merge it"), before I0-I5 were run: the gate items that need a real iPhone
+  (capture by Control Center, AirPlay and iPhone Mirroring; a hardware screenshot; App Privacy Report; Sparrow and
+  Bitcoin Core; the camera scan) stand on simulator and CI proof alone, and their Verification items stay unticked
+  until the owner reports I0-I5. Q89's iPhone model and iOS version stay open with them. This commit records the
+  approval; PR bitwilll/keepcrypt#10 is merged after the required checks pass on it. M7 starts only when the owner
+  asks.

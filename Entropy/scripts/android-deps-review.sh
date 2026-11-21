@@ -14,8 +14,12 @@
 # is not fetched again, and every file is checked again on every review). GRADLE_FILES: Gradle's
 # files-2.1 cache, whose copies are used when their SHA-256 is the metadata's. REVIEW-OPTION:
 # passed to the review (--skip-pgp, only where gpg cannot run).
+# A transfer answered 429, 500, 502, 503 or 504 after curl's own retries (Maven Central's rate limit,
+# twice in CI) is deferred, not failed: its file stays unfetched, so the next round lists it again,
+# after a pause that grows with the round (15 s a round, at most 120 s); the 12 rounds still bound it.
 # Needs curl and python3 (3.9+). Exit: the review's status (0 pass, 1 a check failed, 3 passed
-# without signatures); 2 when a file cannot be fetched (any status but 200 or 404) or usage.
+# without signatures); 2 when a file cannot be fetched (a curl failure, any other status than 200,
+# 404 or a deferred one, or files still deferred after 12 rounds) or usage.
 set -u
 
 fail() {
@@ -77,19 +81,37 @@ while :; do
         case $url$path in *'"'* | *'\'*) fail "a quote or backslash in $url" ;; esac
         printf 'url = "%s"\noutput = "%s/%s.part"\n' "$url" "$mirror" "$path" >>"$work/curl.cfg"
     done <"$work/list"
-    curl --parallel --parallel-max 16 --silent --show-error --location --proto '=https' --proto-redir '=https' \
-        --retry 3 --create-dirs --connect-timeout 30 --max-time 600 \
-        --write-out '%{http_code} %{filename_effective}\n' --config "$work/curl.cfg" >"$work/codes"
-    # curl's own status is non-zero on a failed transfer; each transfer's code is judged below.
-    while read -r code part; do
+    # At most 8 transfers at once (16 before U3-ci), softening the burst a rate limit answers.
+    curl --parallel --parallel-max 8 --silent --show-error --location --proto '=https' --proto-redir '=https' \
+        --retry 3 --retry-all-errors --create-dirs --connect-timeout 30 --max-time 600 \
+        --write-out '%{exitcode} %{http_code} %{filename_effective}\n' --config "$work/curl.cfg" >"$work/codes"
+    # curl's own status is non-zero on a failed transfer; each transfer is judged below by its own exit
+    # code first (a connection reset after a 200 header leaves a short file or none), then its HTTP code.
+    # A retried transfer is reported once, by its last try; whatever is kept is still checked by the review.
+    # A server's "later" (429, 500, 502, 503, 504) leaves the file unfetched and unmarked for the next round.
+    deferred=0
+    deferredCodes=
+    while read -r status code part; do
         file=${part%.part}
+        [ "$status" = 0 ] || fail "transfer of $file failed (curl exit $status, HTTP $code)"
         case $code in
             200) mv "$part" "$file" || fail "cannot move $part" ;;
             404) rm -f "$part" && : >"$file.404" || fail "cannot mark $file as 404" ;;
+            429 | 500 | 502 | 503 | 504)
+                rm -f "$part" || fail "cannot remove $part"
+                deferred=$((deferred + 1))
+                case " $deferredCodes " in *" $code "*) ;; *) deferredCodes="$deferredCodes $code" ;; esac
+                ;;
             *) fail "HTTP $code for $file" ;;
         esac
     done <"$work/codes"
     [ "$(wc -l <"$work/codes")" -eq "$(wc -l <"$work/list")" ] || fail "curl reported fewer transfers than asked"
+    if [ "$deferred" -gt 0 ]; then
+        pause=$((15 * round))
+        [ "$pause" -le 120 ] || pause=120
+        echo "android-deps-review: round $round: $deferred file(s) deferred (HTTP$deferredCodes), the next round in $pause s"
+        sleep "$pause"
+    fi
 done
 if [ "$mode" = write-keys ]; then
     py write-keys "$mirror"

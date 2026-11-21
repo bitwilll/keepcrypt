@@ -5,5 +5,5 @@ let again = try Data(contentsOf: url)
 let picked = try Data(contentsOf: URL(fileURLWithPath: path))
 let chosen = try Data(contentsOf: pickedURL)
 let snapshot = try Data(contentsOf: URL(filePath: kcrPath))
-// Opening the app's own Settings page (camera permission) is not a remote URL.
-let settings = URL(string: UIApplication.openSettingsURLString)
+// A URL built from a string that is no literal, and never fetched, passes Network.
+let settings = URL(string: localName)

@@ -139,9 +139,10 @@ fun SealCardImage(card: SealCard) {
             }
         }
         Spacer(Modifier.height(12.dp))
-        BasicText(
+        WholeLines(
             card.sealId,
-            style = TextStyle(color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
+            Modifier,
+            TextStyle(color = Color.White, fontSize = 36.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.Monospace),
         )
         Spacer(Modifier.height(8.dp))
         BrailleCells(brailleCells(card.sealIdBraille), 18.dp)

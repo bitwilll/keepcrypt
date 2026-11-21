@@ -1,0 +1,1 @@
+let page = UIApplication.openSettingsURLString

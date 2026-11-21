@@ -1,0 +1,4 @@
+module KeepCryptCore {
+    umbrella "Headers"
+    export *
+}

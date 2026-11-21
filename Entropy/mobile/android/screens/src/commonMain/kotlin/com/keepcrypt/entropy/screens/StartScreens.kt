@@ -187,7 +187,7 @@ fun Commitment(state: UiState, testRegistry: Boolean, onContinue: () -> Unit) {
         actions = { KitButton("Continue", "continue", onClick = onContinue) },
     ) {
         Heading("Commitment C")
-        KitText(state.commitment ?: "", KitType.hex, tag = "commitment_hex")
+        KitText(state.commitment ?: "", KitType.hex, tag = "commitment_hex", whole = 4)
         KitText("Only verification runs need to write it down.", KitType.small)
     }
 }
@@ -225,13 +225,12 @@ fun Dice(
                 )
             }
             DicePad(enabled = open, onKey = onKey)
-            Row {
-                KitButton("Undo", "undo", enabled = dice.rolls > 0, modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onUndo)
+            KitPair("Undo", "Confirm") {
+                KitButton("Undo", "undo", enabled = dice.rolls > 0, onClick = onUndo)
                 KitButton(
                     "Confirm",
                     "confirm",
                     enabled = open && pick.length == 1,
-                    modifier = Modifier.weight(1f).padding(start = 6.dp),
                     onClick = onConfirm,
                 )
             }
