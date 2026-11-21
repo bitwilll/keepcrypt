@@ -20832,6 +20832,10 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       warning only, so nothing changes; getrandom still blocks until the CRNG is ready (drivers/char/random.c:1401
       in 2569533d). The arm64 leg failed in 38 s, in the container build: apt under emulation rejected all three
       snapshot InRelease files ("No good signature"), which the native legs verified (M7-8).
+      CI at 856683b6 (run 44955420441, 2026-11-21): legs a and b passed, the scan included. The arm64 leg's pinned
+      qemu 10.0.13 registered (`enabled`, flags OPF), the preflight's sqv verified the Release (the three Debian
+      signing-key fingerprints), and apt in the container verified the snapshot. Then, at 353 s, rustup's
+      `rustc --version` segfaulted under qemu (exit 139) after the toolchain installed (M7-9).
 - M7-8 (2026-11-22): the arm64 leg's QEMU. Ubuntu noble's qemu-user-static 8.2.2 ran apt under emulation on
   GitHub's arm64 runner and every snapshot signature failed. Locally (an arm64 Ubuntu 24.04 container on Apple
   silicon) trixie's own sqv, run directly under that same 8.2.2 and under Debian's 10.0.13, verified the snapshot's
@@ -20843,6 +20847,18 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   own sqv and keyring; it fails closed and prints sqv's reason. Locally that check verifies the genuine Release
   and refuses a one-byte change ("Message has been manipulated"). The same tool as C2's answer (QEMU), now
   pinned; reported at the gate.
+- M7-9 (2026-11-22): the arm64 leg's address layout. Reproduced locally (an arm64 trixie container, the pinned qemu
+  10.0.13, the build image's own x86_64 rustc 1.98.1): `rustc --version` segfaults every time; cargo and rustup
+  run. qemu -strace: the guest's mmaps return 48-bit addresses (0x0000ffff91600000), and the fault address is the
+  same pointer sign-extended from bit 47 (0xffffffff91617c00). x86_64 Linux never gives a process addresses
+  above 47 bits unless asked, and rustc's jemalloc assumes it; qemu 10.0 does not cap a 64-bit guest
+  (include/user/guest-host.h, GUEST_ADDR_MAX is ~0 without -R), and -R cannot be used for x86_64 because the
+  vsyscall page sits at the top ("Cannot allocate vsyscall page"). The arm64 kernel's legacy bottom-up layout
+  starts mappings near 2^46: under `setarch -L` the same rustc runs three times out of three, its mappings at
+  0x00004000..., and compiles a test program through codegen. Lead decision: the emulation step sets
+  `vm.legacy_va_layout=1` on the arm64 runner (a global sysctl, so BuildKit's processes get it; the runner is
+  discarded after) and fails closed unless it reads back 1. Address layout is not an input to the image, which
+  a = b = arm64 checks. Reported at the gate.
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.

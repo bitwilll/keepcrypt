@@ -115,7 +115,10 @@ jobs:
       # the owner's answer of 2026-11-22, and M7-8). QEMU is Debian trixie's qemu-user (static, no
       # dependencies) from the build container's own snapshot, by SHA-256, and only its x86_64
       # handler is registered with binfmt_misc, by the deb's own line (flags OPF: F opens the
-      # interpreter now, so it serves inside containers too).
+      # interpreter now, so it serves inside containers too). qemu-user leaves a 64-bit guest's
+      # addresses uncapped, and arm64's default top-down layout hands out 48-bit ones that x86_64
+      # Linux never does: rustc's jemalloc sign-extends them and segfaults (M7-9). The legacy
+      # bottom-up layout starts near 2^46, below x86_64's 47 bits; this runner is discarded after.
       - name: x86_64 emulation (arm64 leg)
         if: env.LEG == 'arm64'
         run: |
@@ -137,6 +140,8 @@ jobs:
           cat /proc/sys/fs/binfmt_misc/qemu-x86_64
           grep -q -x enabled /proc/sys/fs/binfmt_misc/qemu-x86_64 || fail "the x86_64 handler is not enabled"
           /usr/bin/qemu-x86_64 --version
+          sudo sysctl -w vm.legacy_va_layout=1
+          [ "$(cat /proc/sys/vm/legacy_va_layout)" = 1 ] || fail "vm.legacy_va_layout is not 1"
       # Emulation must check signatures as the native legs do: the pinned base image, run under
       # it with no network, verifies the snapshot's Release with its own sqv and keyring, as apt
       # does in the container build. A failure here prints sqv's own reason.
