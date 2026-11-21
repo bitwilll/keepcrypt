@@ -611,9 +611,32 @@ jobs:
             echo "narrow iPhone: none for this runtime (the step before says why); not run"
             exit 0
           fi
+          # U3n: the app's main thread sampled every 20 s while the test runs (an unresponsive app leaves no crash
+          # report; run 44836559071 at b167f155 timed out its UI queries on iOS 26.5 at the largest text size).
+          # Function names of the TestHooks app on test values; printed only if the step fails.
+          mkdir -p "$RUNNER_TEMP/samples"
+          (
+            while :; do
+              pid=$(pgrep -x KeepCrypt | head -n 1)
+              if [ -n "$pid" ]; then
+                sample "$pid" 2 -mayDie -file "$RUNNER_TEMP/samples/$(date +%s).txt" > /dev/null 2>&1 || true
+              fi
+              sleep 20
+            done
+          ) &
+          sampler=$!
+          status=0
           xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
             -destination "id=$KC_NARROW" -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO \
-            -only-testing:KeepCryptUITests/DynamicTypeUITests test-without-building
+            -only-testing:KeepCryptUITests/DynamicTypeUITests test-without-building || status=$?
+          kill "$sampler" 2> /dev/null || true
+          if [ "$status" -ne 0 ]; then
+            for f in $(ls "$RUNNER_TEMP/samples" | tail -n 4); do
+              echo "== sample $f (the main thread's heaviest frames)"
+              sed -n '/^Call graph:/,/^Total number in stack/p' "$RUNNER_TEMP/samples/$f" | head -n 120
+            done
+          fi
+          exit "$status"
       # On a failure, the simulators' crash and hang reports for the app (U3l: an app lost on iOS 18.6 left
       # nothing but "not running"). Thread backtraces of the TestHooks app on test values; no artifact.
       - name: The app's crash reports (on a failure)
