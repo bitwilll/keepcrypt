@@ -20165,7 +20165,7 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   25% from the slower. Left for the next commit: DynamicTypeUITests' reach() places the dice pad's keys in its probe
   line (key ids and frames, from the test's own public source, no session's secret), against U2h's rule that a pad
   key is never placed.
-- [ ] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
+- [x] U3. A UX audit of every screen against the docs and the Android app: wording, order, what each button and Back
   do, what VoiceOver reads on Public screens, the layout on a small and a large iPhone, text sizes. A defect within the
   docs is fixed with a test; a change the docs do not allow becomes a question for the owner.
   As built (M6 commit U3a, U2's left-over): no line places or names a pad's key, whatever its caller asks.
@@ -20188,6 +20188,9 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   lines); the overlays, the gate and the notice bar. Findings (class: (a) an iPhone defect within the docs, fixed
   with a test that fails first; (b) the iPhone differs from Android, the docs allow both; (c) a question for the
   owner; "answered" an owner decision already covers it):
+  Proof: the audit table above, every row closed by U3a-U3p or an owner answer (Q93-Q99); both apps' Q97 changes
+  green at 68ff6e73 (iPhone 44865641576 with journeys-6's DynamicType on a narrow iPhone on both legs; Android
+  44865641612).
 
   | Screen | What differs | Source | Class |
   | --- | --- | --- | --- |
@@ -20468,8 +20471,12 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   in Shipping, now called pressUntil, which is TestHooks-only. U3p: launchedToGoOffline is under `#if KC_TEST_HOOKS`
   with pressUntil, as all its callers are (lessons.md, 2026-11-21). Proof (local): the three schemes built for
   testing; CI at the head carrying it.
-- [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
+- [x] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
+  Proof: the gate report's defect list (nine, each with its failing-first test or the CI run that failed first:
+  U2b/M6-26, M6-22, M6-23, M6-27, U3b, M6-24/25, Q97's U3g-U3k, U3m, U3-ci); all fixed, CI green at 68ff6e73
+  (iPhone 44865641576, Android 44865641612). Open, named, cause unproven: M6-28's dead press (once in that run,
+  journeys-4 iOS 26.5, roll 80's Confirm, pressed again and passed); no crash or hang report in any job.
 
 ### Verification (each maps to a gate item; refined with the plan)
 - [ ] Words hide during recording and mirroring: the cover replaces every Protected screen while captured (XCUITest
@@ -20482,7 +20489,10 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
 - [ ] Sparrow watch-only import works: I3 (Sparrow and Bitcoin Core, the same first address).
 - [ ] A go-ahead QR from the test registry reveals the words, and a Stop wipes them: the decoder on canned frames in
   CI; I4 by the iPhone's camera.
-- [ ] The 14 required checks green with names unchanged; `entropy-ios.yml` green at the final head.
+- [x] The 14 required checks green with names unchanged; `entropy-ios.yml` green at the final head.
+  Proof: at 68ff6e73, Entropy CI run 44865641590, all 14 required checks success, names unchanged; Entropy iPhone
+  run 44865641576, 14 of 14 jobs success (unit and journeys-1..6 on iOS 26.5 iPhone 17 and iOS 18.6 iPhone 16).
+  Also green there: Entropy Android 44865641612 (9 of 9), Entropy Pi image 44865641588 (a = b).
 
 ## Review
 _Added after completion, with pasted proof for every ticked item._
@@ -23435,3 +23445,27 @@ registry reveals the words and a Stop wipes them". Each part on CI (Entropy Andr
   report names"; armeabi-v7a on no emulator; U3's TalkBack check not reported (P1's optional item).
 - Approved 2026-11-17 ("approve M5 gate, merge it"); this commit records it, and PR bitwilll/keepcrypt#9 is merged
   after the required checks pass on it. M6 starts only when the owner asks.
+
+### M6: CI at the final head
+The final head's code is 68ff6e73 (the commit after it changes tasks/todo.md alone, M4's lead decision 25):
+- **Entropy CI 44865641590** at 68ff6e73: all 14 required checks green, names unchanged (test 5 min 23 s, gates
+  3 min 39 s, supply-chain 9 min 9 s, coverage 2 min 27 s, lint 2 min 44 s, the six cross legs 2 min 10 s to
+  3 min 33 s, aarch64-apple-ios and -sim among them).
+- **Entropy iPhone 44865641576** at 68ff6e73: 14 of 14 jobs green. macos-26 (Xcode 26.6, iPhone 17, iOS 26.5): unit
+  1393 s, journeys-1 1048 s, -2 1351 s, -3 1221 s, -4 1626 s, -5 1457 s, -6 1118 s. macos-15 (Xcode 16.4, iPhone 16,
+  iOS 18.6): unit 1301 s, journeys-1 1608 s, -2 1262 s, -3 1090 s, -4 1066 s, -5 1143 s, -6 1267 s. Each unit job
+  built and tested Shipping and WithTestRegistry, scanned both apps (`--ios-app` clean) and ran the TestHooks UI
+  tests; journeys-6 ran DynamicType at the largest size on a narrow iPhone on both legs. No crash or hang report in
+  any job. One M6-28 retry: journeys-4 on iOS 26.5, "roll 80's Confirm: press 1 went down and the button never
+  fired", pressed again and passed.
+- **Entropy Android 44865641612** at 68ff6e73: 9 of 9 green (the Q97 changes). **Entropy Pi image 44865641588**:
+  green, a = b.
+- Before it: run 44857826728 at 953746d2, every journey green on both legs and both unit jobs red at build (U3p;
+  lessons.md 2026-11-21). No iPhone or emulator job was rerun to green at any M6 head.
+
+### M6 gate status: CI MET at 68ff6e73 (2026-11-21); I0-I5 on the owner's iPhone and the owner's approval pending
+- Simulator and CI proof for each gate item: the Verification list above and the gate report on PR
+  bitwilll/keepcrypt#10. The items that need a real iPhone (capture by Control Center, AirPlay and iPhone Mirroring;
+  a hardware screenshot; App Privacy Report; Sparrow and Bitcoin Core; the camera scan) wait for I0-I5.
+- Named, not blocking: M6-28's dead simulator press (cause unproven); iOS 17 on no CI simulator; the journeys-5 and
+  -6 budgets on few green runs (M5-30); Q89's iPhone model and iOS version.
