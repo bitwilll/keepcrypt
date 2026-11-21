@@ -20822,6 +20822,27 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       stopped by the lead, by mistake, with a `docker kill` of every container. So expected/linux.config and the
       image lists come from CI's native legs: the commit carrying C1-C4 fails the scan on 6.12.115 as expected, and
       the next commit records the printed lists after review.
+      CI at d0fd4a16 (run 44946045508, 2026-11-21): legs a and b, two fresh containers on two runners, built one
+      image: 4a2ee371d51083303d699bce82a0d7c6183718c06b63f28f789facccc0bf4456 (partition 2 749f22f7..., prefix
+      749f-22f7-52c1-f35d, keepcrypt-pi b6647b24...). The scan's only hit was the expected Kconfig diff; the
+      boot, root and imports lists, the deny list and kconfig-required/forbidden matched unchanged. Review of the
+      diff, now in pi/os/expected/linux.config: the banner (6.12.61 → 6.12.115); `CONFIG_CC_OPT_INLINE_MEMSET`
+      added (a compiler-option symbol 6.12.115 defines); `# CONFIG_WARN_ALL_UNSEEDED_RANDOM is not set` gone,
+      because 6.12.115 no longer has the option at all (no Kconfig in the tree names it). It was off, a debug
+      warning only, so nothing changes; getrandom still blocks until the CRNG is ready (drivers/char/random.c:1401
+      in 2569533d). The arm64 leg failed in 38 s, in the container build: apt under emulation rejected all three
+      snapshot InRelease files ("No good signature"), which the native legs verified (M7-8).
+- M7-8 (2026-11-22): the arm64 leg's QEMU. Ubuntu noble's qemu-user-static 8.2.2 ran apt under emulation on
+  GitHub's arm64 runner and every snapshot signature failed. Locally (an arm64 Ubuntu 24.04 container on Apple
+  silicon) trixie's own sqv, run directly under that same 8.2.2 and under Debian's 10.0.13, verified the snapshot's
+  Release both times, so the failure depends on the runner and was not reproduced. The leg also took whatever
+  qemu-user-static noble shipped that day, an unpinned input. Lead decision: QEMU comes from the build container's
+  own snapshot, Debian trixie's qemu-user 1:10.0.13+ds-0+deb13u1 (static, no dependencies) by SHA-256
+  c73711af...158d, and only its x86_64 handler is registered (the deb's line, flags OPF). A new step before the
+  build makes the pinned base image, under emulation and with no network, verify the snapshot's Release with its
+  own sqv and keyring; it fails closed and prints sqv's reason. Locally that check verifies the genuine Release
+  and refuses a one-byte change ("Message has been manipulated"). The same tool as C2's answer (QEMU), now
+  pinned; reported at the gate.
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.

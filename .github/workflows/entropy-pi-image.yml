@@ -110,17 +110,50 @@ jobs:
           if [ -e "$KC_WORK" ]; then echo "FAIL: $KC_WORK exists on a fresh runner" >&2; exit 1; fi
           sudo install -d -o "$(id -u)" -g "$(id -g)" "$KC_WORK"
           ls -ld "$KC_WORK"
-      # The arm64 leg runs the linux/amd64 build container under emulation (Ubuntu's
-      # qemu-user-static registers QEMU with binfmt_misc): the cross toolchain, Bootlin's
-      # armv6-eabihf, runs on x86_64 hosts only (pi/os/pins.txt; tasks/todo.md, M7 C2, the owner's
-      # answer of 2026-11-22).
+      # The arm64 leg runs the linux/amd64 build container under emulation: the cross toolchain,
+      # Bootlin's armv6-eabihf, runs on x86_64 hosts only (pi/os/pins.txt; tasks/todo.md, M7 C2,
+      # the owner's answer of 2026-11-22, and M7-8). QEMU is Debian trixie's qemu-user (static, no
+      # dependencies) from the build container's own snapshot, by SHA-256, and only its x86_64
+      # handler is registered with binfmt_misc, by the deb's own line (flags OPF: F opens the
+      # interpreter now, so it serves inside containers too).
       - name: x86_64 emulation (arm64 leg)
         if: env.LEG == 'arm64'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-user-static
-          dpkg-query -W -f '${Package} ${Version}\n' qemu-user-static
-          uname -m
+          fail() { echo "FAIL: x86_64 emulation: $1" >&2; exit 1; }
+          uname -a
+          lscpu | sed -n 's/^\(Model name\|Vendor ID\|Flags\):/&/p'
+          snap=$(sed -n "s/^ *'deb \[check-valid-until=no\] \(http:\/\/snapshot\.debian\.org\/archive\/debian\/[0-9TZ]*\) trixie main' \\\\\$/\1/p" pi/os/container/Dockerfile)
+          [ "$(printf '%s\n' "$snap" | wc -l)" -eq 1 ] && [ -n "$snap" ] || fail "no one debian snapshot in pi/os/container/Dockerfile"
+          deb=qemu-user_10.0.13+ds-0+deb13u1_arm64.deb
+          dir=$RUNNER_TEMP/qemu
+          mkdir "$dir"
+          curl -fsSL --retry 5 -o "$dir/$deb" "$snap/pool/main/q/qemu/$deb"
+          echo "c73711af02b97cd5e2667e735d9c06890c57165517110ca4e646c95a7083158d  $dir/$deb" | sha256sum -c - || fail "$deb has another SHA-256"
+          [ ! -e /proc/sys/fs/binfmt_misc/qemu-x86_64 ] || fail "an x86_64 handler is already registered"
+          sudo dpkg -i "$dir/$deb"
+          conf=/usr/share/qemu/binfmt.d/qemu-x86_64.conf
+          grep -q -x ':qemu-x86_64:M::.*:/usr/libexec/qemu-binfmt/x86_64-binfmt-P:OPF' "$conf" || fail "$conf is not the line reviewed"
+          sudo sh -c "cat $conf > /proc/sys/fs/binfmt_misc/register"
+          cat /proc/sys/fs/binfmt_misc/qemu-x86_64
+          grep -q -x enabled /proc/sys/fs/binfmt_misc/qemu-x86_64 || fail "the x86_64 handler is not enabled"
+          /usr/bin/qemu-x86_64 --version
+      # Emulation must check signatures as the native legs do: the pinned base image, run under
+      # it with no network, verifies the snapshot's Release with its own sqv and keyring, as apt
+      # does in the container build. A failure here prints sqv's own reason.
+      - name: Emulation verifies the snapshot's signature (arm64 leg)
+        if: env.LEG == 'arm64'
+        run: |
+          fail() { echo "FAIL: emulated signature check: $1" >&2; exit 1; }
+          from=$(sed -n 's/^FROM \(debian@sha256:[0-9a-f]\{64\}\)$/\1/p' pi/os/container/Dockerfile)
+          snap=$(sed -n "s/^ *'deb \[check-valid-until=no\] \(http:\/\/snapshot\.debian\.org\/archive\/debian\/[0-9TZ]*\) trixie main' \\\\\$/\1/p" pi/os/container/Dockerfile)
+          [ -n "$from" ] && [ -n "$snap" ] || fail "no FROM digest or snapshot in pi/os/container/Dockerfile"
+          rel=$RUNNER_TEMP/release
+          mkdir "$rel"
+          curl -fsSL --retry 5 -o "$rel/Release" "$snap/dists/trixie/Release"
+          curl -fsSL --retry 5 -o "$rel/Release.gpg" "$snap/dists/trixie/Release.gpg"
+          docker run --rm --platform linux/amd64 --network none -v "$rel:/rel:ro" "$from" \
+            sh -c 'uname -m && sqv --version && sqv --keyring /usr/share/keyrings/debian-archive-keyring.pgp /rel/Release.gpg /rel/Release' \
+            || fail "sqv under emulation did not verify $snap/dists/trixie/Release"
       # The pinned build host (tasks/todo.md, M7 C1; pi/os/container/Dockerfile): Debian trixie by
       # digest, its packages from snapshot.debian.org at one fixed time, rustup-init by SHA-256 and
       # rust-toolchain.toml's toolchain, with Buildroot's host packages. Every pi/os command below
