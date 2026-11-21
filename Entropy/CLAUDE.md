@@ -16,6 +16,7 @@ The specification lives in `docs/`. Read all of it before starting any milestone
 | `docs/mobile-apps.md` | Android and iPhone apps, capture protection, offline rules |
 | `docs/seal-watchonly-braille.md` | Collision seal and registry, watch-only export, braille backup |
 | `docs/release.md` | The owner's release procedure: tag, second build, offline signing, publishing |
+| `docs/audit.md` | The external audit's packet: scope, threat-model review, findings, residuals, auditor questions |
 | `docs/KeepCrypt-SeedBook_Braille.pdf` | The owner's braille reference: insert format and the full word list |
 
 If the docs and this file disagree, stop and ask the owner. Do not guess.

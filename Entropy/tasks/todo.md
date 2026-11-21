@@ -20891,6 +20891,20 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       tests that answer it, and what is left; findings fixed or listed. One finding per line, for the owner's review.
 - [ ] G2 `docs/audit.md`: the scope (Q102), the build and reproduce steps, the full residual and trust-on-first-use list
       collected above, and the questions for the auditor (dm-verity, the watchdog, the kernel's FAT/USB paths).
+      Done (2026-11-22): docs/audit.md, listed in CLAUDE.md's docs table. G1's review is its "Threat-model review"
+      (each of DS:60-64's five threats and P1-P7: what answers it, the tests, what is left), drafted by a reviewer
+      agent and checked line by line against the cited code by the lead. G2: the scope (Q102), build and reproduce
+      pointers, the residual and trust-on-first-use list, 16 questions for the auditor. Findings for the owner's
+      review (one per line in docs/audit.md, "All findings"): 7, high 0, medium 1, low 6.
+      1. (new, medium) device-chosen plaintext random fields (backup salt, nonce and name; the check nonce) are an
+         exfiltration channel no one can verify; DS:61 names only signature nonces. For the owner and auditor.
+      2. (new, low) the boot integrity prefix covers the root (partition 2) only, not the FAT boot partition.
+      3. (new, low) DS:224's wipe-and-restore check is replaced by read-back and a prompt; DS not updated.
+      4. (known, low) BP:350's audit scope lacked tools/verify: fixed in this commit (BP:350 now matches Q102).
+      5. (known, low) the birthday test's description (DS:198/:278) vs BP:320: H2.
+      6. (known, low) HWRNG_BITS_PER_BYTE = 4 lacks its test data (DS:167): M8.
+      7. (known, low) no committed release public key yet (PF:181): the owner's key, Q100.
+      Ticked at the gate with the owner's review of the findings.
 
 ### Stage H: docs and CI
 - [ ] H1 The user guide shared by all platforms (MA:168); owner item 13's figure from a committed script (Q108 (b)).

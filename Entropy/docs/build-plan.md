@@ -347,6 +347,6 @@ A release is a set of artifacts anyone can rebuild bit for bit and check against
 
 **Registry operations:** the snapshot signing key is kept offline and its public half is pinned in every app. The registry deploys from the same repository with reproducible server builds, and mirrors republish every signed snapshot and tree head.
 
-**Before 1.0:** an independent security audit of `core/`, `ffi/`, the Pi image build and both apps' capture and backup code; fixes published with the report.
+**Before 1.0:** an independent security audit of `core/`, `ffi/`, the offline verifier (`tools/verify/`), the Pi image build and both apps' capture and backup code; fixes published with the report (scope and packet: `docs/audit.md`).
 
 **After 1.0:** a public bug bounty, a `SECURITY.md` with a disclosure address, and a pre-written advisory template. If an entropy bug is ever found, the advisory lists affected versions, how to tell whether a seed is affected, and migration steps, the way Coinkite had to on day one.
