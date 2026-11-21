@@ -81,7 +81,7 @@ final class ScreenTextsTests: XCTestCase {
         // Built from parts there: the version, and the two file names' suffixes.
         XCTAssertTrue(source.contains("const val APP_VERSION = \"" + appVersion + "\""))
         XCTAssertTrue(source.contains("\"$APP_VERSION development build: do not use for real funds.\""))
-        XCTAssertEqual(developmentBuild, "0.0.0 development build: do not use for real funds.")
+        XCTAssertEqual(developmentBuild, "0.1.0 development build: do not use for real funds.")
         XCTAssertEqual(fileRefusalText(.notAge), "That file was not opened: a KeepCrypt backup's name ends in .age.")
         XCTAssertTrue(source.contains("\"That file was not opened: a KeepCrypt backup's name ends in \" + Core.BACKUP_SUFFIX + \".\""))
         XCTAssertEqual(fileRefusalText(.notKcr), "That file was not opened: a registry snapshot's name ends in .kcr.")

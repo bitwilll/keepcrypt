@@ -6,8 +6,8 @@
 // words, D6's backup passphrase, BIP39 passphrase and D) make a String only for the text drawn (Q58), and
 // no fixed text is built from one.
 
-/// The app's version: every M6 build is a development build, as every M5 APK is.
-let appVersion = "0.0.0"
+/// The app's version, the workspace's (scripts/check-version.sh); a development build until 1.0.0 (Q101).
+let appVersion = "0.1.0"
 
 /// First launch's line for every build (Android's DEVELOPMENT_BUILD).
 let developmentBuild = appVersion + " development build: do not use for real funds."
@@ -640,7 +640,7 @@ enum AboutTexts {
     static let securityAddress = "admin@keepcrypt.com"
 }
 
-/// About's version line: "Version 0.0.0".
+/// About's version line: "Version " and the app's version.
 func versionText() -> String {
     "Version " + appVersion
 }

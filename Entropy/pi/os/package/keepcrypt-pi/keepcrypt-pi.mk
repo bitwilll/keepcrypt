@@ -14,7 +14,7 @@
 # from the crates `make source` fetched into $(KC_WORK)/cargo with `cargo fetch --locked`. Both
 # image builds run at the same KC_WORK paths, so no path remapping is needed. The binary keeps its
 # symbol table (BR2_STRIP_EXCLUDE_FILES) for the scans.
-KEEPCRYPT_PI_VERSION = 0.0.0
+KEEPCRYPT_PI_VERSION = 0.1.0
 KEEPCRYPT_PI_SITE = $(abspath $(BR2_EXTERNAL_KEEPCRYPT_PATH)/../..)
 KEEPCRYPT_PI_SITE_METHOD = local
 KEEPCRYPT_PI_OVERRIDE_SRCDIR_RSYNC_EXCLUSIONS = --exclude /target

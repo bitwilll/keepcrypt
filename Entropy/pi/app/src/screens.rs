@@ -1024,7 +1024,7 @@ mod tests {
 
     #[test]
     fn boot_and_about_fit_the_version_and_a_root_filesystem_prefix() {
-        // Version 0.0.0, the crate's until M7 sets release numbering (Q43 (b)), and a prefix as
+        // The crate version (one for the workspace, scripts/check-version.sh), and a prefix as
         // the device shows it: 16 hex characters in four dash-separated groups (Q39 (g)).
         let prefix = "0123-4567-89ab-cdef";
         assert_eq!(prefix.len(), 19);
@@ -1033,7 +1033,7 @@ mod tests {
         {
             let held = Held {
                 build: BuildInfo {
-                    version: "0.0.0",
+                    version: env!("CARGO_PKG_VERSION"),
                     rootfs: String::from(prefix),
                     simulator,
                 },
@@ -1067,7 +1067,8 @@ mod tests {
                         _ => None,
                     })
                     .collect();
-                assert!(texts.contains(&"Version 0.0.0"), "{name}");
+                let version = format!("Version {}", env!("CARGO_PKG_VERSION"));
+                assert!(texts.contains(&version.as_str()), "{name}");
                 let shown = format!("Root filesystem {prefix}");
                 assert!(texts.contains(&shown.as_str()), "{name}");
             }

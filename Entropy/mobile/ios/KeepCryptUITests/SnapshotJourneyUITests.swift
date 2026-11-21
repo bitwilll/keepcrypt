@@ -27,7 +27,7 @@ final class SnapshotJourneyUITests: XCTestCase {
         app.toHome()
         app.press("show_about")
         app.on("about", "About")
-        app.waitLabel("about_version", "Version 0.0.0")
+        app.waitLabel("about_version", "Version 0.1.0")
         app.press("back")
         app.on("home", "Home")
         app.press("load_snapshot")

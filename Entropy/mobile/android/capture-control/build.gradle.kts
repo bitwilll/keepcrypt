@@ -21,7 +21,7 @@ android {
         minSdk = libs.versions.android.min.sdk.get().toInt()
         targetSdk = libs.versions.android.target.sdk.get().toInt()
         versionCode = 1
-        versionName = "0.0.0"
+        versionName = "0.1.0"
         // Exactly MA:23's three ABIs (lead decision M5-10): a library's native code for any other
         // (graphics-path's x86 copy) stays out of the APK.
         ndk {

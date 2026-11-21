@@ -150,6 +150,8 @@ TRYBUILD=overwrite cargo test -p keepcrypt-core --locked --test typestate   # on
                                      # pinned .stderr files; review the diff
 cargo deny --locked check && cargo audit && cargo vet --locked   # plain `cargo vet` re-fetches imports
 scripts/check-path-deps.sh           # every non-workspace crate comes from crates.io (no path or git overrides)
+scripts/check-version.sh             # every crate, both apps and the Pi image name the workspace version (M7 B1)
+scripts/check-version.sh --selftest # 45 cases: each site changed or removed in a copy must fail
 python3 -I tools/verify/vectorgen.py --selftest   # 13 checks; also with /usr/bin/python3 -I (3.9, the floor)
 # Generated vectors are regenerated, never hand-edited, then checked by --selftest:
 python3 -I tools/verify/vectorgen.py --write-seal-vectors        # vectors/seal.json
@@ -220,9 +222,9 @@ make -C pi/os repro-check            # builds it twice in fresh output directori
 make -C pi/os scan                   # after make image: --image-lists on the built image, then --image against expected/
 # What CI's image legs run on their build, in this order (make scan runs the first and the last; the build's host
 # mcopy, mdir and unsquashfs first on PATH:
-# PATH="$KC_WORK/out/host/bin:$PATH"); IMG is $KC_WORK/out/images/keepcrypt-pi-0.0.0-st7789-240x240.img, KCONFIG the
+# PATH="$KC_WORK/out/host/bin:$PATH"); IMG is $KC_WORK/out/images/keepcrypt-pi-0.1.0-st7789-240x240.img, KCONFIG the
 # one $KC_WORK/out/build/linux-*/.config and BIN_SHA256 the SHA-256 of the keepcrypt-pi cargo built, in
-# $KC_WORK/out/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/ (so the packed binary is that file):
+# $KC_WORK/out/build/keepcrypt-pi-0.1.0/target/arm-unknown-linux-gnueabihf/release/ (so the packed binary is that file):
 scripts/banned-api-check.sh --image-lists IMG KCONFIG          # the listing pi/os/expected/ was reviewed from; not a scan
 scripts/banned-api-check.sh --selftest-image IMG KCONFIG       # the scan's positive controls, as mutations of the built image
 scripts/banned-api-check.sh --image IMG pi/os/expected KCONFIG BIN_SHA256   # the scan; a hit fails the leg before

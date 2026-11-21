@@ -1,5 +1,5 @@
 package com.keepcrypt.entropy
-versionName 0.0.0
+versionName 0.1.0
 minSdk 34
 targetSdk 36
 permission com.keepcrypt.entropy.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION

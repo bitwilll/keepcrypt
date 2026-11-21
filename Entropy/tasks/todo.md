@@ -20664,6 +20664,13 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   test it finished green; the runner was slow throughout (7 min 15 s from launch to "Running tests", CannotCheck
   1048 s against 494 s measured), about 1.6 times the job's measured 1185 s, outside the third M5-30 allows for.
   The timeout stays: one outlier; it changes only if the next runs repeat it.
+- M7-4 (2026-11-21): B1 found that iPhone backups say `created-by: keepcrypt-android 0.0.0`. The iPhone reaches the
+  ceremony through keepcrypt-capi, keepcrypt-guard and keepcrypt-ffi, whose created-by is fixed at Android (M5's
+  ceremony.rs; nothing in M6 changed it). design.md and the backup format name `keepcrypt-ios`. Fix: keepcrypt-ffi
+  picks the app by target, `ios` for target_os = "ios" and `android` otherwise (host builds serve Android's JVM
+  tests), with the version from the crate's. A unit test pins the line on every target, run on an iOS simulator
+  too. The image keeps the screen suffix Q47 gave it: `keepcrypt-pi-0.1.0-st7789-240x240.img`, Q101's
+  `keepcrypt-pi-0.1.0.img` read as the version part.
 
 ### Stage A: the birthday-collision job (BP:320; design.md:198)
 - [x] A1 `core/tests/birthday.rs` (ignored by default, so `cargo test` stays fast): with the dice fixed, each child
@@ -20692,6 +20699,25 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
 ### Stage B: the release form (BP:335-346)
 - [ ] B1 Version `0.1.0` (Q101) through every crate, both apps, the Pi image name and `created-by`; one script checks
       they agree.
+      Plan (2026-11-21): the workspace version is the one source; code reads it where it can, and a new
+      `scripts/check-version.sh` (in the gates job and CLAUDE.md's Commands) fails on any site that differs from it.
+      - Rust: Cargo.toml `0.1.0` (Cargo.lock's workspace entries follow); ffi's created-by from
+        CARGO_PKG_VERSION_* as pi/app's usb.rs does, and its app by target (M7-4); test fakes and their assertions
+        read `env!("CARGO_PKG_VERSION")` (pi/app's Fake and screens test, pi/sim's test, ffi's ceremony test).
+      - Android: both build.gradle.kts versionName, APP_VERSION, expected/manifest-*.txt; versionCode stays 1.
+      - iPhone: Info.plist CFBundleShortVersionString, Texts.swift appVersion, expected/*-Info.json, the tests that
+        name the string.
+      - Pi: keepcrypt-pi.mk's version, the image `keepcrypt-pi-0.1.0-st7789-240x240.img` (Q101's name with Q47's
+        screen suffix, M7-4), the Makefile, genimage.cfg, entropy-pi-image.yml and CLAUDE.md's build-path note.
+      - Left as they are: the fixtures under scripts/testdata (path-deps and workflow cases; the version is not
+        what they test) and core's tests, which name versions of their own on purpose.
+      Proof: check-version.sh clean, then failing on one changed site per kind (its self-test); the suite; CI.
+      Proof (2026-11-21, local; CI at the head carrying it): `scripts/check-version.sh` "every site names 0.1.0";
+      `--selftest` "45 passed, 0 failed"; fmt and clippy clean; `cargo test --workspace --locked` green; keepcrypt-ffi's
+      lib tests built for aarch64-apple-ios-sim and run on an iOS 27.0 simulator (`xcrun simctl spawn`): 17 passed,
+      created_by_names_this_target_and_the_crate_version among them (`ios` there, `android` on the host); the three
+      iOS schemes built for testing, KeepCryptTests on Shipping 141 tests 0 failures, `--ios-app` clean on the
+      Shipping and WithTestRegistry apps against the new expected Info files.
 - [ ] B2 SBOM: CycloneDX JSON for the Rust workspace, the Pi image (Buildroot's `legal-info` manifest folded in) and the
       Android APK. The generator is a build tool, not a shipped crate, but it is a new dependency: Q-item at Stage B's
       start with the candidates (cargo-cyclonedx, cargo-sbom, or a small committed script over `cargo metadata`, the

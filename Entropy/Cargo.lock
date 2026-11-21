@@ -459,14 +459,14 @@ checksum = "8eaf4bc02d17cbdd7ff4c7438cafcdf7fb9a4613313ad11b4f8fefe7d3fa0130"
 
 [[package]]
 name = "keepcrypt-capi"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "keepcrypt-guard",
 ]
 
 [[package]]
 name = "keepcrypt-core"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "base64ct",
  "bip39",
@@ -490,7 +490,7 @@ dependencies = [
 
 [[package]]
 name = "keepcrypt-ffi"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "keepcrypt-core",
  "qrcodegen-no-heap",
@@ -500,14 +500,14 @@ dependencies = [
 
 [[package]]
 name = "keepcrypt-guard"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "keepcrypt-ffi",
 ]
 
 [[package]]
 name = "keepcrypt-jni"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "jni-sys",
  "keepcrypt-guard",
@@ -515,7 +515,7 @@ dependencies = [
 
 [[package]]
 name = "keepcrypt-pi"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "embedded-graphics",
  "keepcrypt-core",
@@ -528,7 +528,7 @@ dependencies = [
 
 [[package]]
 name = "keepcrypt-pi-sim"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "keepcrypt-core",
  "keepcrypt-pi",

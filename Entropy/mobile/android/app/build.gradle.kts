@@ -5,8 +5,8 @@
 // the plan's test-registry APK (com.keepcrypt.entropy.testregistry, built only in CI and never
 // released; labelled "KeepCrypt TEST REGISTRY" with a strip on every screen). The Android Gradle
 // plugin refuses a flavour name that starts with "test", hence "with". The instrumented tests run
-// against the release build type too, so they test the bytes that ship. Every M5 APK is a 0.0.0
-// development build.
+// against the release build type too, so they test the bytes that ship. Every APK before the
+// audit's 1.0.0 is a development build (Q101).
 //
 // Reproducibility groundwork (M5 "Built into this plan"; the two-build comparison is M7): no
 // dependency or VCS block in the APK, no R8, no PNG crunching and no baseline profile. Android
@@ -27,7 +27,7 @@ android {
         minSdk = libs.versions.android.min.sdk.get().toInt()
         targetSdk = libs.versions.android.target.sdk.get().toInt()
         versionCode = 1
-        versionName = "0.0.0"
+        versionName = "0.1.0"
         // Exactly MA:23's three ABIs (lead decision M5-10): a library's native code for any other
         // (graphics-path's x86 copy) stays out of the APK.
         ndk {

@@ -8,8 +8,8 @@
 import SwiftUI
 
 /// The first screen, shown on every start before any core call (lead decision M5-50): what the app does,
-/// what no app can stop, that the Pi is the device for life savings, and that every build is a 0.0.0
-/// development build. Nothing records that it was read (rule 8), so it shows again on the next start. Its
+/// what no app can stop, that the Pi is the device for life savings, and that every build before 1.0.0
+/// is a development build (Q101). Nothing records that it was read (rule 8), so it shows again on the next start. Its
 /// Continue runs the start-up self-test, then Go offline.
 struct FirstLaunchScreen: View {
     let testRegistry: Bool

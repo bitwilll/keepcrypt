@@ -304,7 +304,7 @@ data class UiState(
  *   but before the worker's second look (lead decision M5-54's window) leaves it in the slot but not
  *   here: Check now then shows the seal card, so the check goes to the checker, which fails toward
  *   asking, never toward the words.
- * - About (Home's): the version (every M5 build is a 0.0.0 development build), this build's flavour and
+ * - About (Home's): the version (every build before 1.0.0 is a development build, Q101), this build's flavour and
  *   the source address, as plain text; Back returns Home.
  */
 class CeremonyModel(

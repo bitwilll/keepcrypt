@@ -336,7 +336,7 @@ mod tests {
         assert_eq!(
             hal.build_info(),
             BuildInfo {
-                version: "0.0.0",
+                version: env!("CARGO_PKG_VERSION"),
                 rootfs: String::from("sim"),
                 simulator: true,
             }

@@ -13,10 +13,10 @@ import com.keepcrypt.entropy.ffi.RegistryHeader
 // Public, and each hands its presses to the ceremony model, which ignores a press its screen no longer
 // shows.
 
-/** The app's version: every M5 APK is a development build (tasks/todo.md, M5 "Built into this plan"). */
-const val APP_VERSION = "0.0.0"
+/** The app's version, the workspace's (scripts/check-version.sh); a development build until 1.0.0 (Q101). */
+const val APP_VERSION = "0.1.0"
 
-/** First launch's and About's line for every M5 APK ("Built into this plan": a development build). */
+/** First launch's and About's line for every APK before the audit's 1.0.0 (Q101): a development build. */
 const val DEVELOPMENT_BUILD = "$APP_VERSION development build: do not use for real funds."
 
 /** Where the source is (docs/pi-firmware.md, "Build, flash and verify"), shown as plain text: no link opens anything. */

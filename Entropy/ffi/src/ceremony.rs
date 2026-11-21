@@ -55,8 +55,28 @@ use keepcrypt_core::{
 };
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
-/// This app in a backup's `created-by:` line: `keepcrypt-android 0.0.0` until M7 (Q62).
-const CREATED_BY: CreatedBy = CreatedBy::new(BackupApp::Android, 0, 0, 0);
+/// This app in a backup's `created-by:` line, `keepcrypt-<app> X.Y.Z` with the crate version (one
+/// workspace version for every crate and both apps, scripts/check-version.sh). The iPhone reaches
+/// this crate through keepcrypt-capi and writes `ios`; every other target is Android's, host builds
+/// included, which Android's JVM tests load (tasks/todo.md, M7-4).
+const CREATED_BY: CreatedBy = CreatedBy::new(
+    THIS_APP,
+    version_part(env!("CARGO_PKG_VERSION_MAJOR")),
+    version_part(env!("CARGO_PKG_VERSION_MINOR")),
+    version_part(env!("CARGO_PKG_VERSION_PATCH")),
+);
+#[cfg(target_os = "ios")]
+const THIS_APP: BackupApp = BackupApp::Ios;
+#[cfg(not(target_os = "ios"))]
+const THIS_APP: BackupApp = BackupApp::Android;
+
+/// One part of the crate version, at compile time: a version that is no `u16` fails the build.
+const fn version_part(part: &str) -> u16 {
+    match u16::from_str_radix(part, 10) {
+        Ok(number) => number,
+        Err(_) => panic!("a crate version part fits a u16"),
+    }
+}
 /// The backup passphrase's words per page: two pages of four (pi-firmware.md, USB step 1).
 const PASSPHRASE_PAGE_WORDS: usize = 4;
 /// The longest BIP39 word, for a page's exact capacity.
@@ -1461,6 +1481,20 @@ mod tests {
 
     /// pi/app's app.rs, whose `refused` this layer's mirrors (todo.md, M5 group 8).
     const APP_RS: &str = include_str!("../../pi/app/src/app.rs");
+
+    /// The created-by line names this target's app and the crate version (M7-4): `ios` on the
+    /// iPhone's targets, `android` on every other. Run on an iOS simulator too (todo.md, M7 B1).
+    #[test]
+    fn created_by_names_this_target_and_the_crate_version() {
+        let app = if cfg!(target_os = "ios") {
+            BackupApp::Ios
+        } else {
+            BackupApp::Android
+        };
+        assert_eq!(CREATED_BY.app(), app);
+        let version = CREATED_BY.version().map(|n| n.to_string()).join(".");
+        assert_eq!(version, env!("CARGO_PKG_VERSION"));
+    }
 
     /// Each `CoreError` variant's name: the exhaustive match makes a new variant a compile error
     /// here until the table test below sorts it.
