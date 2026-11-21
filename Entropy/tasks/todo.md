@@ -20560,6 +20560,151 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   run 44865641576, 14 of 14 jobs success (unit and journeys-1..6 on iOS 26.5 iPhone 17 and iOS 18.6 iPhone 16).
   Also green there: Entropy Android 44865641612 (9 of 9), Entropy Pi image 44865641588 (a = b).
 
+## M7: Hardening and audit
+
+Gate (docs/build-plan.md:302): "External auditor signs off; a third party reproduces the Pi image and Android APK".
+Deliverables: "Birthday-collision job, signed reproducible releases, SBOM, threat-model review". Needs M4, M5, M6
+(all merged). Two parts of the gate are people outside the project (an auditor, a third-party builder), so M7 has two
+halves: the work that makes a release auditable and reproducible (Stages A-H, ours), and the audit and outside rebuild
+(the owner's arrangements, Q102 and Q103). The plan below is for the owner's review; no M7 code until it is approved.
+
+### Inputs from M6 and earlier
+- M6 merged 2026-11-21 as bd242098 (PR bitwilll/keepcrypt#10); `m7-hardening` is cut from it. Still open from M6, owed
+  by the owner: I0-I5 on a real iPhone, Q89 (its model and iOS version); from M5: the S25's Android version and
+  TalkBack P1. None blocks M7's own stages; all are needed before a release (BP:323 "one real phone").
+- Items earlier milestones moved to M7, collected (todo.md line numbers at bd242098):
+  - Birthday-collision nightly job on core (BP:320; Q42 (b), :1176-1180; reboots stay with M8's bench image).
+  - Release signing, minisign or GPG, and who holds the key (:1391); release numbering, `0.0.0` until M7 (:1188).
+  - verify.py's release form, its release scan, its selftest on Tails' Python, and `tools/verify` in the audit scope
+    (:4759-4766); the shared user guide (MA:168).
+  - Pi (:9509-9525): the pinned build container (Debian by digest, snapshot apt) and `repro-check` in clean
+    containers; a third-party and an arm64-host reproduction; Buildroot's next LTS and a current kernel before the
+    first release (:1055); dm-verity (Q39 (g)); a hang watchdog (audit question); the Pi image as a required check.
+  - Android (:14104-14112): two builds giving one APK hash and a third-party rebuild; release signing and SBOM;
+    F-Droid, GitHub releases, Play and the Data safety label; target 37; lint and R8 with the dex scan on the shrunk
+    APK; an API 35 MediaProjection leg; emulator and image pinning; the Android workflow required; Pixel and Samsung
+    capture checks before release; graphics-path's native library.
+  - iPhone: its own expected-symbol list for releases (:1395); source, exact Xcode and build steps (BP:343).
+  - The audit list (owner item 6 and later): core's library residuals (:1407-1420), qrcodegen-no-heap's stack
+    temporaries (:6782), the Pi's kernel FAT/USB paths, rppal's and nix's unsafe sites, the spidev buffer, the hwrng
+    `reading_mutex`, Buildroot's `.hash` inputs (:9515-9521), keepcrypt-jni and jni-sys, `:secure-ui`, Documents.kt,
+    the scanner, the JVM and iPhone residuals (MA:17), tombstones, swap, page locking (:14109-14111), the signers
+    trusted on first use (:15164, :15535, :16586).
+  - Owner item 13: the seed-pipeline figure, drawn from a committed script if no source file arrives (:932).
+
+### Questions for the owner (Q100-Q108, asked 2026-11-21)
+100. **Release signing key** (:1391; BP:346)
+     Recommended: minisign (one small tool, Ed25519, what PF:177 already shows). The owner makes the key pair on an
+     offline computer and keeps the secret key and its password offline; only the public key enters the repo
+     (`Entropy/release/keepcrypt.pub`, SECURITY.md, PF:177). CI never holds it: CI builds and writes SHA256SUMS, the
+     owner checks the sums against a second, local or third-party build, then signs SHA256SUMS offline and uploads
+     the `.minisig`. Otherwise: GPG; or a CI-held key (convenient, but a CI compromise then signs releases).
+101. **Version numbers** (:1188)
+     Recommended: the first tagged release is `0.1.0`, marked pre-release and "not for real funds until the audit"
+     (SECURITY.md stays as is); `1.0.0` only after the audit's fixes (BP:350). Tags `v0.1.0`; the image
+     `keepcrypt-pi-0.1.0.img`; backups read `created-by: keepcrypt-<platform> 0.1.0`. Otherwise: start at 1.0.0.
+102. **The external audit** (BP:350; design.md:291-294)
+     Recommended: the owner chooses and engages the auditor; I prepare the audit packet (Stage G): scope `core/`,
+     `ffi/`, `tools/verify/`, the Pi image build, both apps' capture and backup code; the threat-model review; the
+     collected residual and trust-on-first-use list; the release and reproduction steps. The gate records the
+     auditor's sign-off and the published report. Otherwise: name the auditor now, or narrow the scope.
+103. **The third-party reproduction** (BP:302)
+     Recommended: one builder outside the project rebuilds `0.1.0`'s Pi image and Android APK from the tag with the
+     documented commands on their own Linux x86_64 machine and posts the SHA-256 of each (a signed comment or issue);
+     F-Droid's own rebuild counts for the APK once it is listed. I add an arm64-host leg in CI too, which is not a third
+     party. Otherwise: the auditor does the rebuild (design.md:294 asks them to anyway).
+104. **Buildroot and the kernel before the first release** (:1055)
+     Recommended: stay on Buildroot 2026.08 for `0.1.0` with the newest 6.12.y LTS kernel that is at least 14 days old,
+     its Kconfig compare and hashes redone; move to Buildroot 2027.02 LTS (due in early 2027) before `1.0.0`, after its
+     14-day wait. Otherwise: hold the first release for 2027.02.
+105. **Android distribution** (:14104; MA:190-199)
+     Recommended: GitHub releases (an APK signed with a release key the owner holds offline, as Q100) and F-Droid
+     (reproducible, verified against our signature); Google Play later, after its crypto-wallet policy is checked.
+     targetSdk 37; R8 and lint on, with the dex scan moved to the shrunk APK. Otherwise: name the channels.
+106. **iPhone distribution** (MA:196-197; BP:343)
+     Recommended: for `0.1.0`, source plus the exact Xcode version and build steps only (iOS cannot be reproduced);
+     the App Store waits for the legal entity guideline 3.1.5(i) needs, which is the owner's to set up. Otherwise:
+     TestFlight now (needs the paid Developer Program).
+107. **Pi image integrity** (Q39 (g))
+     Recommended: no dm-verity in `0.1.0`; the boot-time hash check stays, and dm-verity goes on the audit list as a
+     question. Otherwise: dm-verity now (a new kernel option set and an initramfs step).
+108. **Required checks and owner item 13**
+     Recommended: (a) the owner adds Entropy Android, Entropy iPhone and Entropy Pi image to main's ruleset as required
+     checks once Stage H's pins land (a settings change only the owner can make); (b) owner item 13 is drawn from a
+     committed script in Stage H unless a source file arrives. Otherwise: keep them optional; a hand-drawn figure.
+
+### Stage A: the birthday-collision job (BP:320; design.md:198)
+- [ ] A1 `core/tests/birthday.rs` (ignored by default, so `cargo test` stays fast): with the dice fixed, each child
+      process makes 1,000 real sessions from `getrandom` (no `test-sources`) and records each commitment C; the parent
+      runs 1,000 child processes (1,000,000 legs in all, across process restarts) and fails on any repeated C. C is
+      SHA256("KCE/v1/commit" || D), public, and equal for equal D, so the test never handles D and needs no new API.
+      Proof: a local run's count and wall time.
+- [ ] A2 The test proves it would fire: a `test-sources` variant feeds a stub narrowed to 32 bits of state and must
+      report collisions (about 116 expected in 10^6, design.md:198); one narrowed to 36 bits, about 7. Proof: both
+      counts.
+- [ ] A3 `entropy-ci.yml` gains a `schedule:` nightly job running A1 on ubuntu-24.04 (and A2's canary), not a required
+      check; its name and run land in the Review. The approved actions only, pinned by SHA.
+
+### Stage B: the release form (BP:335-346)
+- [ ] B1 Version `0.1.0` (Q101) through every crate, both apps, the Pi image name and `created-by`; one script checks
+      they agree.
+- [ ] B2 SBOM: CycloneDX JSON for the Rust workspace, the Pi image (Buildroot's `legal-info` manifest folded in) and the
+      Android APK. The generator is a build tool, not a shipped crate, but it is a new dependency: Q-item at Stage B's
+      start with the candidates (cargo-cyclonedx, cargo-sbom, or a small committed script over `cargo metadata`, the
+      last needing no new tool), for the owner's approval and a `cargo vet` entry if a crate.
+- [ ] B3 `release.yml` on a `v*` tag: builds every artifact, runs every release scan, writes SHA256SUMS and the SBOMs,
+      and attaches them to a draft GitHub release. It never signs (Q100). The changelog and the exact reproduce
+      command per artifact go in the release notes.
+- [ ] B4 `docs/release.md`: the owner's offline signing steps and the check against a second build before signing.
+
+### Stage C: the Pi image, reproducible in clean containers (PF:162-169; :9509-9525)
+- [ ] C1 A build container pinned by digest (Debian, apt from snapshot.debian.org at a fixed date); `make source`,
+      `image` and `repro-check` run inside it; the image workflow uses it, so the build host is a pinned input.
+- [ ] C2 `repro-check` builds in two fresh containers and compares SHA-256; an arm64-host leg (ubuntu-24.04-arm) builds
+      once more and must give the same hash.
+- [ ] C3 The kernel moves to the newest 6.12.y LTS at least 14 days old (Q104): pins, hashes, expected/linux.config.
+- [ ] C4 PF:162-170 rewritten for the container commands.
+
+### Stage D: the Android APK, reproducible and release-shaped (:14104)
+- [ ] D1 Two clean builds give one unsigned APK hash (CI compares, like the Pi's a = b).
+- [ ] D2 R8 and lint on; the dex reference scan runs on the shrunk APK; targetSdk 37.
+- [ ] D3 F-Droid metadata (reproducible build recipe) and the release-signing steps (Q105); Data safety text.
+- [ ] D4 Emulator system images and the AVD's packages pinned; an API 35 leg with MediaProjection automation for the
+      recording callback.
+- [ ] D5 graphics-path's native library reviewed, rebuilt from source or removed (a finding in the Review).
+
+### Stage E: the iPhone, release-shaped (BP:343; :1395)
+- [ ] E1 The release scan's expected-symbol list for the iPhone app (`_CCRandomGenerateBytes`, nothing else).
+- [ ] E2 `mobile/ios/BUILDING.md`: the exact Xcode, SDK and simulator versions, the build steps and what cannot be
+      reproduced, as MA:197 says.
+
+### Stage F: the verifier's release (:4759-4766)
+- [ ] F1 A release scan of verify.py reusing check 12's static and audit rules.
+- [ ] F2 Its `--selftest` run on the Python that current Tails ships (the version read from Tails' own release notes
+      at that time; CI runs that Python version).
+- [ ] F3 The release copies verify.py byte for byte from the tag; its SHA-256 goes in the notes.
+
+### Stage G: threat-model review and the audit packet
+- [ ] G1 A threat-model review against design.md's table (DS:55-70), as it stands after M6: each threat, the code and
+      tests that answer it, and what is left; findings fixed or listed. One finding per line, for the owner's review.
+- [ ] G2 `docs/audit.md`: the scope (Q102), the build and reproduce steps, the full residual and trust-on-first-use list
+      collected above, and the questions for the auditor (dm-verity, the watchdog, the kernel's FAT/USB paths).
+
+### Stage H: docs and CI
+- [ ] H1 The user guide shared by all platforms (MA:168); owner item 13's figure from a committed script (Q108 (b)).
+- [ ] H2 design.md:278's "Gate" line and BP:320 agree on where the birthday test runs (Q42 (b) already decided).
+- [ ] H3 For Q108 (a): the three workflows' job names frozen and listed for the owner's ruleset change.
+
+### Verification (the gate, BP:302, and the deliverables)
+- [ ] The nightly birthday job green on core with 1,000,000 legs, and its canary catching the 32- and 36-bit stubs.
+- [ ] A `v0.1.0` draft release from release.yml: every artifact, SHA256SUMS, the SBOMs, the release scans green.
+- [ ] SHA256SUMS signed by the owner offline (Q100); `minisign -Vm` checks against the committed public key.
+- [ ] Pi image: two clean containers and the arm64 host give one hash; a third party reproduces it (Q103).
+- [ ] Android APK: two clean builds give one hash; a third party (or F-Droid) reproduces it (Q103, Q105).
+- [ ] The threat-model review and the audit packet delivered; the auditor's sign-off recorded (Q102).
+- [ ] Before the release: I0-I5 and P1 done; a Pixel and a Samsung capture check; the duplicate-seed, watch-only and
+      metal read-back drills (BP:330-332) on Pi, Android and iPhone.
+
 ## Review
 _Added after completion, with pasted proof for every ticked item._
 
