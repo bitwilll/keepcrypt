@@ -16232,6 +16232,37 @@ animation (the curtain's task to the app's). The check is not relaxed, the envir
 now prints, for each lit frame, its three most frequent colours in the window with their counts, how many distinct
 colours it holds, and how many pixels outside the window (the system bars) are lit (lit_source; its selftest 53): a
 fill and drawn content then read differently. The next repeat is diagnosed from those lines.
+Repeat and cause found (2026-11-18). The Android run 44148124713 (at fed382ff on m6-iphone, no Android change since
+M5's merge d5c1a3a6), API 34's capture job, step 6's shipping cold launch: "lit frame 6 of the stream: 219812
+pixel(s) in the app's window, columns 1-358, rows 25-638, brightest #d4dbe0", "its most frequent colours in the app's
+window #d4dbe0 (219812), of 1 distinct; 10588 of the 10588 pixels outside it lit", 1 of 17 frames. lit_source reads a
+fill: one colour over the whole window, every pixel of the system bars lit. It is the system shell's backdrop behind
+an animated switch from one task to another, never the app's. Shown:
+- The colour. Both repeats are a light neutral at L* 87: #d4dbe0 (API 34) has L* 87.0, #d8d9e4 (API 36) L* 86.9.
+  The API 34 image's framework-res (pulled from kc34, read with aapt2) defines color/overview_background as
+  system_neutral2_500 with android:lStar 87; its system_neutral2_500 is #70777c, which at L* 87 (CIELAB, a* and b*
+  kept) is #d3dbe1, one step from #d4dbe0. AOSP's WM shell (DefaultTransitionHandler) paints overview_background on
+  the display area behind an opaque task that opens or closes when the switch is animated and no wallpaper shows.
+- kc34, the leg's own scenario looped by a scratch script (the curtain, am force-stop, android-frames.py record
+  --expect black, am start -W of the shipping MainActivity, 3 s; capture-control and the shipping APK of the
+  2026-11-17 kc34 set): at animation scale 1, 3 of 3 cold launches lit, #d4dbe0 in the band between the curtain's task
+  sliding out and the app's sliding in (1224 to 11016 pixels a frame, the rest black). At scale 0, the leg's setting,
+  1 of 40: run 34, "lit frame 3 of the stream: 217872 pixel(s) ... brightest #d4dbe0", "#d4dbe0 (217872), of 1
+  distinct; 12528 of the 12528 pixels outside it lit", 1 of 13 frames: CI's line, on the Mac.
+- The shell's own log (protolog WM_SHELL_TRANSITIONS on kc34, scale 0): the leg's launch is an OPEN transition that
+  DefaultTransitionHandler animates ("loadAnimation: anim=...AnimationSet... type=OPEN isEntrance=false", then
+  "isEntrance=true", finished 8 ms later), so scale 0 shortens the switch but still plays it, and for a frame the
+  backdrop shows with neither task drawn. With am start --activity-no-animation (FLAG_ACTIVITY_NO_ANIMATION) the
+  app's change carries "f=NO_ANIMATION" and no animation is loaded, so no backdrop is painted: at scale 1, 5 of 5
+  launches black; at scale 0, 40 of 40; each one COLD.
+Fix (the leg script alone; android-frames.py, the window's region and what counts as lit are unchanged):
+first_frame's cold launch is am start -W --activity-no-animation, for both APKs. The app's starting window and first
+screen are drawn as in any launch and judged as before; only the system's switch animation is gone. The leg's selftest
+gains a case: a stand-in system that lights the whole screen behind an animated launch from the curtain (KC_BACKDROP)
+passes with the flag, and with the flag dropped (a mutant) fails, "lit frame 2 of the stream: 202628 pixel(s) ...
+#ffffff (202628), of 1 distinct"; android-emulator --selftest 65 passed (64 before). For the owner: the first-frame
+recordings now launch the app with no transition animation, where a person's launch from the launcher has one; the
+check itself (every frame black over the app's window) is unchanged.
 
 **Open item (2026-11-16): API 34 offline blocks that lose the session.** Two Android runs, both on API 34 alone:
 43771972846 (at ce8c807a) and 43836938055 (at 9bcd8e6c) failed FlowTest's watch-only journey at FlowTest.kt:610 (the
@@ -16289,6 +16320,37 @@ budgeted from the two runs with it (43904980358 at e60e5444, 43917696008 at 012a
 both), the slower whole job plus 25%, rounded up: API 34 capture then 16 KB 22 (1050 s), journeys 9 (420 s), ui 8
 (370 s), registry 12 (564 s); API 36 capture 22 (1036 s), journeys 9 (432 s), ui 10 (442 s), registry 25 (1200 s).
 API 34's four leave the 90-minute ceiling U3n gave them; API 36's were 40, 26, 27 and 40.
+Repeat and cause found (2026-11-18): LifecycleTest's backup scrypt case, not the network. The Android run 44148124713
+(at fed382ff on m6-iphone, no Android change since M5's merge d5c1a3a6), API 34's registry job, failed
+leavingDuringABackupsScryptDiscardsTheSession at LifecycleTest.kt:527, "the dice's Done did not start the seed", as
+43836938055 had, now with the probe lines: "the app: RESUMED, screen CheckPrompt, page 0, gate false, overlay null,
+notice null, airplane mode true, Wi-Fi off true"; airplane_mode_on=1, wifi_on=0, wifi_apm_state=0. The press had taken
+and the seed was made: only finish's reply leads from the dice to the check prompt. The test read Working in the same
+main-thread step as diceDone, on the belief that a long call's reply reaches the main thread only by a later dispatch
+(the model's scope is Dispatchers.Main.immediate, and runOnMainSync holds the main thread). That belief is wrong:
+withContext(worker) returns without suspending when its block has finished before the calling coroutine reaches its
+suspension (kotlinx's DispatchedCoroutine: the block's completion finds the decision UNDECIDED, marks it RESUMED and
+dispatches nothing; getResult then returns the value on the calling thread). On a busy runner the main thread can be
+descheduled between handing finish to the worker and that point, and a dice-only finish is quick: work's whole
+continuation, done's show(CheckPrompt) included, then runs inside diceDone, inside the test's runOnMainSync, and
+Working is never on show. Shown on the Mac with the real model and core (a throwaway :screens host test, run alone in
+its own JVM and not committed: commonTest compiles for iOS too and the test uses java.lang.Thread): a Main.immediate
+stand-in (no dispatch on the test's thread, a queue otherwise), dice-50-words12's rolls, then diceDone. A worker whose
+call ends before its dispatch returns: "right after diceDone the screen is CheckPrompt, main queue 0". A worker whose
+call ends 200 ms later: "the screen is Working; after the worker, 1 queued for main; drained: CheckPrompt". The app is
+right either way (the reply runs on the main thread, and only the busy screen's frame is skipped), so it is unchanged.
+43836938055's failure fits the same cause; it had no probe lines, so that is not shown.
+Fix (the test alone): toTheLastAnswer accepts Working or the check prompt after the dice's Done and prints a probe
+line when the reply was taken in the same step; any other screen still fails, now naming it. The start-up self-test
+case (LifecycleTest.kt:135) rested on the same belief for First launch's Continue: it accepts Self-test, or Go offline
+(a new model's Go offline comes only from the self-test's reply) with its probe line. No other in-process read of a
+busy screen is made in the androidTests (the scrypt case already handles a reply that came first).
+Also in that failure's probe, and not its cause: dumpsys wifi's records show Wi-Fi switched on by an airplane-mode
+toggle at 18:48:10.984 (DisabledState to EnabledState) and off again at 11.606 (android_apm), after the shell's
+disable at 10.188, all with airplane mode on. Capture.whileOffline's ready check reads the two settings back, and they
+can read offline before the system has handled a late airplane-mode broadcast (the earlier block's restore is the
+likely one), so Wi-Fi can come on briefly inside a block. Here the app ended offline with no notice. No failure has
+been traced to it; a follow-up for the lead, not changed here.
 
 **Open item (2026-11-16): two failures of android-local.sh's whole run alone.** On one boot the ui part runs before the
 registry part, and two tests leave state that a later one trips on (found by the Stage U-6 workflow, seen again on kc37
@@ -21018,12 +21080,16 @@ in the test-registry APK (U3n).
 ### M5: items the gate report names (open, diagnosed, never rerun to green)
 1. **The lit raw frame** (open item 2026-10-21): repeated 2026-11-16 on API 36's test-registry cold launch (a whole
    window of light grey, not the app's); cause unknown; android-frames.py now names the frame's colours (6a6619f6).
+   Cause found 2026-11-18 (its open item): the system shell's overview_background backdrop behind the animated
+   switch from the curtain's task to the app's; the first-frame launches now ask for no animation, the check unchanged.
 2. **API 36 recents** (open item 2026-10-21): no repeat since; cause unknown.
 3. **The launcher's ANR dialog** (open item 2026-10-31): cause known (the emulator's launcher); U1a8's close never
    exercised on a device.
 4. **The age -d hand-off's logcat count** (open item 2026-10-31): no repeat since; U4r names each match's position.
 5. **The API 34 offline blocks** (open item 2026-11-16): closed as the stale-bounds tap (e60e5444, green since);
-   the Wi-Fi memory reset kept as hygiene.
+   the Wi-Fi memory reset kept as hygiene. LifecycleTest's scrypt case repeated 2026-11-17 (run 44148124713, API 34)
+   and its own cause was found 2026-11-18 (its open item): the dice's Done's reply taken in the same main-thread step,
+   which the test did not allow for; the test fixed, the app unchanged.
 6. **The back swipe**: U2k's tick covers the Back key alone; no CI image attaches a gestural bar, so the swipe branch
    ran nowhere.
 
