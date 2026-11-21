@@ -20718,6 +20718,10 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       created_by_names_this_target_and_the_crate_version among them (`ios` there, `android` on the host); the three
       iOS schemes built for testing, KeepCryptTests on Shipping 141 tests 0 failures, `--ios-app` clean on the
       Shipping and WithTestRegistry apps against the new expected Info files.
+      CI then failed at c6590498 (run 44937973859, gates job): every --selftest-apk case, because the stand-ins for
+      aapt2's output (scripts/testdata/apk/badging.txt, xmltree.txt) still said 0.0.0 against the 0.1.0 expected
+      manifest. Fixed at the root: both stand-ins at 0.1.0 and listed in check-version.sh (51 cases now), lesson
+      recorded; local --selftest-apk 89 passed, 0 failed.
 - [ ] B2 SBOM: CycloneDX JSON for the Rust workspace, the Pi image (Buildroot's `legal-info` manifest folded in) and the
       Android APK. The generator is a build tool, not a shipped crate, but it is a new dependency: Q-item at Stage B's
       start with the candidates (cargo-cyclonedx, cargo-sbom, or a small committed script over `cargo metadata`, the

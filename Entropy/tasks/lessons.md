@@ -138,3 +138,14 @@ scripts that read the changed one (grep for its name and its markers) and run th
 - Rule: a background loop in a CI step that tolerates failing commands sets `set +e` itself, logs each tick, and
   prints that log when the step fails; it is run locally under `bash -e -o pipefail` before it is pushed.
 
+
+## 2026-11-22: a version bump left the APK scan's stand-ins at the old version; CI's gates job failed
+- Mistake: B1 (694bcccf) moved the expected Android manifests to 0.1.0 but not scripts/testdata/apk/badging.txt and
+  xmltree.txt, the --selftest-apk stand-ins for aapt2's output that are checked against those manifests. Every
+  --selftest-apk case failed in CI's gates job (run 44937973859, at c6590498); the pre-push checks passed.
+- Root cause: the version sites were found by searching for the old string outside scripts/testdata, on the view that
+  fixtures do not carry the version; these two mirror an expected file and must. And the pre-push checks run
+  --selftest but not --selftest-apk, which only CI ran.
+- Rule: a fixture that stands in for a built artifact's output follows the expected file it is checked against, and
+  scripts/check-version.sh lists every such site. Before pushing a change to any expected/ file, or to anything
+  --selftest-apk or another self-test mode reads, run that mode locally.

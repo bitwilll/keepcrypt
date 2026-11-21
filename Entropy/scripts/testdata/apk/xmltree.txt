@@ -1,7 +1,7 @@
 N: android=http://schemas.android.com/apk/res/android (line=12)
   E: manifest (line=12)
     A: http://schemas.android.com/apk/res/android:versionCode(0x0101021b)=1
-    A: http://schemas.android.com/apk/res/android:versionName(0x0101021c)="0.0.0" (Raw: "0.0.0")
+    A: http://schemas.android.com/apk/res/android:versionName(0x0101021c)="0.1.0" (Raw: "0.1.0")
     A: http://schemas.android.com/apk/res/android:compileSdkVersion(0x01010572)=37
     A: http://schemas.android.com/apk/res/android:compileSdkVersionCodename(0x01010573)="17" (Raw: "17")
     A: package="com.keepcrypt.entropy" (Raw: "com.keepcrypt.entropy")

@@ -152,7 +152,7 @@ TRYBUILD=overwrite cargo test -p keepcrypt-core --locked --test typestate   # on
 cargo deny --locked check && cargo audit && cargo vet --locked   # plain `cargo vet` re-fetches imports
 scripts/check-path-deps.sh           # every non-workspace crate comes from crates.io (no path or git overrides)
 scripts/check-version.sh             # every crate, both apps and the Pi image name the workspace version (M7 B1)
-scripts/check-version.sh --selftest # 45 cases: each site changed or removed in a copy must fail
+scripts/check-version.sh --selftest # 51 cases: each site changed or removed in a copy must fail
 python3 -I scripts/sbom.py --selftest  # 32 cases; the SBOMs (CycloneDX 1.6, M7 B2), one per artifact, from cargo metadata:
 # python3 -I scripts/sbom.py workspace --metadata META --lock Cargo.lock --out OUT
 # python3 -I scripts/sbom.py apk --metadata META_ANDROID_TRIPLE (x3) --lock Cargo.lock \

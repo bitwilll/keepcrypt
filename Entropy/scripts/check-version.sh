@@ -3,7 +3,8 @@
 # Cargo.toml's [workspace.package], which every crate takes with `version.workspace = true` and
 # Rust code reads with env!("CARGO_PKG_VERSION"), keepcrypt-ffi's and pi/app's created-by lines
 # included. Every other place that names it must name the same one, exactly once where listed:
-# - Android: both build.gradle.kts versionName, the expected manifests, HomeScreens.kt's APP_VERSION;
+# - Android: both build.gradle.kts versionName, the expected manifests and --selftest-apk's stand-ins for
+#   aapt2's output on them, HomeScreens.kt's APP_VERSION;
 # - iPhone: Info.plist's CFBundleShortVersionString, the expected Info files, Texts.swift's
 #   appVersion, and the tests that spell out About's line or the development-build line;
 # - Pi: keepcrypt-pi.mk's version, the image name (pi/os/Makefile, genimage.cfg), the build path
@@ -38,6 +39,10 @@ SITES = [
     ("mobile/android/capture-control/build.gradle.kts", r'^\s*versionName = "' + V + r'"$', 1),
     ("mobile/android/expected/manifest-shipping.txt", r"^versionName " + V + r"$", 1),
     ("mobile/android/expected/manifest-withTestRegistry.txt", r"^versionName " + V + r"$", 1),
+    # The --selftest-apk stand-ins for aapt2's output on the shipping APK, checked against the expected manifest.
+    ("scripts/testdata/apk/badging.txt", r"^package: name='com\.keepcrypt\.entropy' versionCode='1' versionName='" + V + r"'", 1),
+    ("scripts/testdata/apk/xmltree.txt", r'versionName\(0x0101021c\)="' + V + r'" \(Raw: "[0-9.]+"\)$', 1),
+    ("scripts/testdata/apk/xmltree.txt", r'versionName\(0x0101021c\)="[0-9.]+" \(Raw: "' + V + r'"\)$', 1),
     ("mobile/android/screens/src/commonMain/kotlin/com/keepcrypt/entropy/screens/HomeScreens.kt",
      r'^const val APP_VERSION = "' + V + r'"$', 1),
     ("mobile/ios/KeepCrypt/Info.plist", r"<key>CFBundleShortVersionString</key>\s*<string>" + V + r"</string>", 1),

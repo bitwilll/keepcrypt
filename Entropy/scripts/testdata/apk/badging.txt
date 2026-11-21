@@ -1,4 +1,4 @@
-package: name='com.keepcrypt.entropy' versionCode='1' versionName='0.0.0' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
+package: name='com.keepcrypt.entropy' versionCode='1' versionName='0.1.0' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
 minSdkVersion:'34'
 targetSdkVersion:'36'
 uses-permission: name='android.permission.HIDE_OVERLAY_WINDOWS'
