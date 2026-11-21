@@ -20485,7 +20485,8 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
 - [ ] A screenshot discards the session: the notification wipes it and explains why (XCTest and XCUITest); I1's
   hardware screenshot on each sensitive screen.
 - [ ] App Privacy Report shows no network use: the app's scan (no networking code or SDK); I5's report after I2-I4.
-- [ ] Snapshot import works: `with-dice-50` through the document picker with its Stale warning (simulator and I4).
+- [ ] Snapshot import works: kcr.json's `small` through the Snapshot file hook, a dice-50-words12 seed checked against
+  it, the stale line in the unit tests (simulator); the document picker on the iPhone (I4).
 - [ ] Sparrow watch-only import works: I3 (Sparrow and Bitcoin Core, the same first address).
 - [ ] A go-ahead QR from the test registry reveals the words, and a Stop wipes them: the decoder on canned frames in
   CI; I4 by the iPhone's camera.
