@@ -89,8 +89,13 @@
 #      screen: some frame must show its known pixels (android-frames.py --expect visible); then the
 #      same with its words page, whose known pixels are its TEST REGISTRY strip's.
 #   6. The first frame, for each app APK: the curtain, the app force-stopped, a recording from under
-#      the curtain through its cold launch (am start -W, which must report COLD) to its first screen
-#      and 3 s more: every frame black over the app's window (android-frames.py --expect black). Its
+#      the curtain through its cold launch (am start -W --activity-no-animation, which must report
+#      COLD) to its first screen and 3 s more: every frame black over the app's window (android-frames.py
+#      --expect black). The launch asks for no animation because the system's shell paints its own
+#      backdrop behind an animated switch from one task to another (overview_background, a light
+#      neutral at L* 87): the open item of 2026-10-21, a whole frame of #d4dbe0 on API 34 and of
+#      #d8d9e4 on API 36, never the app's. The app's starting window and first screen are drawn as
+#      in any launch; the check on them is unchanged. Its
 #      first frame is the curtain's and a stream may carry no frame after it (screenrecord writes one
 #      only when the display changes), so a second recording starts with the app's first screen up,
 #      whose first frame screenrecord composes at once: every frame black over the window too.
@@ -163,7 +168,10 @@
 # leg's end, after the later checks ran, and so does an empty screencap of the control's screens; capture-control
 # still in recents after pm clear, a recording that ends before it is stopped, raw frames that never
 # show the control's words page, the app's window lit in the first-frame stream, and the same with that
-# stream carrying no frame after the curtain (only the second stream sees it) each exit 1. Step 7: the
+# stream carrying no frame after the curtain (only the second stream sees it) each exit 1. A stand-in
+# system that lights the whole screen behind an animated cold start from the curtain (the shell's
+# backdrop) still passes, since both first-frame launches ask for no animation (a case of its own: a
+# launch that drops the flag fails it). Step 7: the
 # leg that passes finds no INTERNET in either app's package block and nothing in their data directories,
 # with the planted file the control's one hit; a package block that names INTERNET, a stand-in of each of
 # the renderer's two shader caches (both paths named), a file the app wrote, a planted file the listing
@@ -213,7 +221,9 @@ EOF
 # The selftest's stand-in adb: -s emulator-5554 COMMAND, answered from and into the case directory
 # $KC_STUB (screen: what the display shows; front: the package whose MainActivity was started last).
 # The control's words page shows the known colour, as its first screen does, unless KC_WORDS_SCREEN
-# names another screen; KC_SCREENCAP_EMPTY makes the shell's screencap give nothing. Step 7: a
+# names another screen; KC_SCREENCAP_EMPTY makes the shell's screencap give nothing. Under
+# KC_BACKDROP an app started from the curtain without --activity-no-animation lights the whole screen,
+# as the system's backdrop behind an animated switch of tasks does. Step 7: a
 # debuggable build (KC_DEBUGGABLE, 1 by default) gives a root shell; each app's package block
 # requests CAMERA (and INTERNET under KC_INTERNET); its data directories hold nothing but HWUI's and
 # EGL's shader caches under KC_SHADER_CACHE and a file it wrote under KC_APP_FILE, and a file planted
@@ -271,11 +281,20 @@ case "$*" in
   'shell getprop ro.product.cpu.abilist') echo "${KC_ABILIST:-x86_64}" ;;
   'shell am start -W '*)
     for a; do c=$a; done
+    animated=yes
+    case " $* " in *' --activity-no-animation '*) animated=no ;; esac
     case $c in
-      *.CurtainActivity) echo black > "$s/screen" ;;
-      *.ControlActivity) echo control > "$s/screen" ;;
-      *.WordsActivity) echo "${KC_WORDS_SCREEN:-control}" > "$s/screen" ;;
-      *.MainActivity) echo "${KC_APP_SCREEN:-black}" > "$s/screen"; echo "${c%%/*}" > "$s/front"; rm -f "$s/killed" ;;
+      *.CurtainActivity) echo black > "$s/screen"; : > "$s/curtain" ;;
+      *.ControlActivity) echo control > "$s/screen"; rm -f "$s/curtain" ;;
+      *.WordsActivity) echo "${KC_WORDS_SCREEN:-control}" > "$s/screen"; rm -f "$s/curtain" ;;
+      *.MainActivity)
+        if [ -n "${KC_BACKDROP:-}" ] && [ -e "$s/curtain" ] && [ "$animated" = yes ]; then
+          echo lit > "$s/screen"
+        else
+          echo "${KC_APP_SCREEN:-black}" > "$s/screen"
+        fi
+        rm -f "$s/curtain"
+        echo "${c%%/*}" > "$s/front"; rm -f "$s/killed" ;;
     esac
     printf 'Status: ok
 LaunchState: COLD
@@ -436,6 +455,7 @@ EOF
   leg screencap-empty KC_SCREENCAP_EMPTY=1
   leg app-window-lit KC_APP_SCREEN=lit
   leg app-window-lit-no-frame KC_APP_SCREEN=lit-unsent
+  leg backdrop-behind-an-animated-launch --part capture KC_BACKDROP=1
   leg internet KC_INTERNET=1
   leg shader-cache KC_SHADER_CACHE=1
   leg app-wrote-a-file KC_APP_FILE=1
@@ -737,6 +757,9 @@ EOF
   expect app-window-lit 1 "FAIL: emulator: api=34: shipping: a raw frame shows the app's window"
   expect app-window-lit-no-frame 1 "pass: api=34 first frame (shipping): every frame black" \
     "FAIL: emulator: api=34: shipping: a raw frame with the app's first screen up shows its window"
+  expect backdrop-behind-an-animated-launch 0 "pass: api=34 first frame (shipping): every frame black" \
+    "pass: api=34 first frame (shipping, its first screen up)" "pass: api=34 first frame (registry): every frame black" \
+    "pass: api=34 first frame (registry, its first screen up)"
   expect internet 1 "pass: api=34 nothing persisted (com.keepcrypt.entropy.testregistry): no file in its data directories" \
     "FAIL: emulator: api=34: dumpsys package com.keepcrypt.entropy: the app requests or holds INTERNET; dumpsys package com.keepcrypt.entropy.testregistry: the app requests or holds INTERNET (each reported above)"
   # The renderer's shader caches are files the app wrote like any other (M5-70 (d)): no name is allowed.
@@ -1399,14 +1422,17 @@ if in_part capture; then
   echo "pass: api=$api control (a) raw frames, words page: $(sed -n 's/^android-frames: PASS visible: //p' "$frames")"
 fi
 
-# first_frame NAME PACKAGE REGION DISPLAY: step 6 for one app.
+# first_frame NAME PACKAGE REGION DISPLAY: step 6 for one app. The cold launch has no animation
+# (FLAG_ACTIVITY_NO_ANIMATION), so the shell paints no backdrop of its own behind the switch from the
+# curtain's task to the app's (header, step 6); with animation scales 0 alone it still did, for a frame,
+# on CI's slow emulators (runs 43771972846, API 36, and 44148124713, API 34).
 first_frame() {
   name=$1
   pkg=$2
   curtain
   dev shell am force-stop "$pkg" || fail "am force-stop $pkg failed"
   start_recording "$name" --expect black --display "$4" --region "$3"
-  start_activity "$pkg/com.keepcrypt.entropy.MainActivity"
+  start_activity "$pkg/com.keepcrypt.entropy.MainActivity" --activity-no-animation
   grep -q -e '^LaunchState: COLD' "$work/start.txt" || fail "$name: am start did not report a cold launch"
   sleep 3
   dev shell dumpsys window > "$work/focus.txt" 2>&1

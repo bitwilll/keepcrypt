@@ -110,10 +110,11 @@ class LifecycleTest {
 
     /**
      * First launch's Continue (through the model, as its button calls it) runs the start-up self-test,
-     * read back as the Self-test screen in the same main-thread step (the self-test's reply comes back
-     * through the model's scope only after that step), so the press is seen to take and First launch
-     * afterwards can only be a discard's. The app is left at once (Home), so the leave comes during the
-     * self-test or just after it passed, and the screen it leaves behind once the self-test's reply is
+     * read back in the same main-thread step as the Self-test screen, or as Go offline when the
+     * self-test's reply was taken in that step (withContext returns without suspending when the worker is
+     * done before the main thread reaches its suspension; run 44148124713 met it with finish), so the
+     * press is seen to take and First launch afterwards can only be a discard's. The app is left at once
+     * (Home), so the leave comes during the self-test or just after it passed, and the screen it leaves behind once the self-test's reply is
      * in says which: First launch when the leave discarded the self-test (its Continue runs it again),
      * Go offline when the self-test had passed. Back in the app (am start, the task to the front), the
      * cover is taken away and, after a discard, Continue runs the self-test again; either way it has
@@ -132,7 +133,11 @@ class LifecycleTest {
             activity.model.firstLaunchDone()
             activity.model.state.value.screen
         }
-        assertEquals("First launch's Continue did not start the self-test", Screen.SelfTest, pressed)
+        if (pressed == Screen.GoOffline) probe("start-up self-test: its reply was taken in the step that pressed Continue, so Self-test never showed")
+        assertTrue(
+            "First launch's Continue did not start the self-test: " + screenId(pressed),
+            pressed == Screen.SelfTest || pressed == Screen.GoOffline,
+        )
         device.pressHome()
         await("the activity stopped", 30) { stage(activity) == Stage.STOPPED }
         val left = SystemClock.elapsedRealtime() - begun
@@ -512,19 +517,26 @@ class LifecycleTest {
      * encrypted backup", the passphrase past its gate (its two pages read in-process from the state's
      * Secrets), "I wrote it down", the first answer and its Done, and the second answer's letters on the
      * model's letter pad. The passphrase's copies are zeroed once typed.
+     *
+     * The dice's Done has started the seed when the step that pressed it ends on Working (finish runs on
+     * the worker) or already on the check prompt: withContext returns without suspending when its block is
+     * done before the main thread reaches its suspension, so a finish that ends while the main thread is
+     * descheduled has its reply taken in the same step (run 44148124713, API 34: the app on CheckPrompt, its
+     * notice none). Only finish's reply reaches the check prompt from the dice; any other screen fails.
      */
     private fun toTheLastAnswer(activity: MainActivity) {
         toDice(activity)
-        val ready = onMain {
+        val pressed = onMain {
             val model = activity.model
             for (roll in DICE_50_ROLLS) {
                 model.dicePick.replace(roll)
                 model.confirmRoll()
             }
             model.diceDone()
-            model.state.value.screen == Screen.Working
+            model.state.value.screen
         }
-        assertTrue("the dice's Done did not start the seed", ready)
+        if (pressed == Screen.CheckPrompt) probe("the dice's Done: finish's reply was taken in the step that pressed it, so Working never showed")
+        assertTrue("the dice's Done did not start the seed: " + screenId(pressed), pressed == Screen.Working || pressed == Screen.CheckPrompt)
         await("the check prompt", START_SECONDS) { onMain { activity.model.state.value.screen } == Screen.CheckPrompt }
         val confirm = onMain {
             val model = activity.model
