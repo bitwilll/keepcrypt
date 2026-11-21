@@ -20791,6 +20791,36 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       once more and must give the same hash.
 - [ ] C3 The kernel moves to the newest 6.12.y LTS at least 14 days old (Q104): pins, hashes, expected/linux.config.
 - [ ] C4 PF:162-170 rewritten for the container commands.
+      C2's arm64 leg (2026-11-22): the image's cross toolchain, Bootlin's armv6-eabihf, runs on x86_64 hosts only
+      (pins.txt), so no arm64 host can run the build as it is. Asked: drop the leg, switch to Buildroot's internal
+      toolchain, or emulate. Owner's answer: "Emulate x86_64 on arm64". So the container is linux/amd64 on every
+      host, and the arm64 leg (ubuntu-24.04-arm) runs it under QEMU (Ubuntu's qemu-user-static, binfmt); it
+      must give leg a's hash. It may near GitHub's 6-hour job limit: its first run measures it (M7-6).
+      Plan (C1-C4):
+      - C1 `pi/os/container/Dockerfile`: debian:trixie-20261104-slim by its index digest; apt from
+        snapshot.debian.org at 20261103T202439Z (debian) and 20261103T160100Z (debian-security), what
+        20261104T000000Z resolves to, signatures checked by the image's keyring; Buildroot's host packages;
+        rustup-init 1.29.3 by SHA-256, then the rust-toolchain.toml toolchain. Each pin past the 14-day cutoff
+        (2026-11-08). `pi/os/container.sh` builds it and runs every pi/os command in a fresh container (checkout
+        at /keepcrypt, build directory at /kc-work, the caller's user), the scans with the build's host tools
+        (`tools`); the workflow's legs build, hash, scan and write release files only through it.
+      - C2 `container.sh repro-check`: source and image in one fresh container, image again in another, cmp. CI's
+        legs a and b are two fresh containers on two runners; the arm64 leg is a third, under emulation.
+      - C3 raspberrypi/linux 2569533d6c33 (6.12.115), the newest rpi-6.12.y merge at least 14 days old (merged
+        2026-11-02; the next, 2026-11-17, is too new). Its GitHub archive's SHA-256 c78d71fd...933940, the same in two
+        downloads (247,555,356 bytes). defconfig, linux.hash, pins.txt; expected/linux.config and the image lists
+        regenerated from a build in the container and reviewed (the diff in the Review).
+      - C4 PF's "Build, flash and verify" commands through container.sh; pins.txt's build-host note.
+      Proof: a local build in the container (the lists and config), CI's legs a, b and arm64 agreeing.
+      Progress (2026-11-22): the container built locally (Docker Desktop, linux/amd64 emulated): rustup-init's
+      SHA-256 checked, rustc 1.98.1, 179 packages; kconfig.sh and rootfs-prefix.py self-tests pass in it. A full
+      local image build under emulation was too slow (28 minutes and still in Buildroot's host-cmake) and was
+      stopped by the lead, by mistake, with a `docker kill` of every container. So expected/linux.config and the
+      image lists come from CI's native legs: the commit carrying C1-C4 fails the scan on 6.12.115 as expected, and
+      the next commit records the printed lists after review.
+- M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
+  timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
+  dispatches, with the owner's word.
 
 ### Stage D: the Android APK, reproducible and release-shaped (:14104)
 - [ ] D1 Two clean builds give one unsigned APK hash (CI compares, like the Pi's a = b).
@@ -20815,9 +20845,21 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
 
 ### Stage F: the verifier's release (:4759-4766)
 - [ ] F1 A release scan of verify.py reusing check 12's static and audit rules.
+      Done (2026-11-22; CI proof at the head carrying it): entropy-release.yml compares the release's verify.py with
+      the tag's byte for byte and runs `vectorgen.py --selftest --check 12 --verify-py` on that copy. Local: check 12
+      on a copy passed (4.7 s).
 - [ ] F2 Its `--selftest` run on the Python that current Tails ships (the version read from Tails' own release notes
       at that time; CI runs that Python version).
+      Read 2026-11-22: the current Tails is 7.17.1 (tails.net's install feed); Tails 7.0's notes call it "the first
+      version of Tails based on Debian 13 (Trixie)", and Tails ships Debian's python3. The pinned Pi build container
+      is trixie at the 2026-11-03 snapshot: python3 3.13.5-1 (python3.13 3.13.5-2+deb13u5). entropy-release.yml
+      builds it and runs verify.py selftest and vectorgen --selftest in it, native on the x86_64 runner.
+      Finding (M7-7): under x86_64 emulation (Docker on an Apple-silicon Mac) check 12 failed twice, the closed-stdin
+      run exiting 2 and not 70 and the pseudo-terminal Ctrl-C timing out; natively on trixie arm64 with the same
+      Python, check 12 passed. The emulator in the process takes fd 0 and slows the pty: an emulation artefact, not
+      Python 3.13's or verify.py's. So F2 runs natively, never emulated; the Pi arm64 leg runs no verifier check.
 - [ ] F3 The release copies verify.py byte for byte from the tag; its SHA-256 goes in the notes.
+      Done with B3 (release-notes.py prints the copy's SHA-256) and F1's cmp; run 44937973937 at c6590498 wrote it.
 
 ### Stage G: threat-model review and the audit packet
 - [ ] G1 A threat-model review against design.md's table (DS:55-70), as it stands after M6: each threat, the code and

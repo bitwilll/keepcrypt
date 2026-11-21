@@ -93,7 +93,11 @@ define print-time
 	@printf 'pi/os: SOURCE_DATE_EPOCH=%s TZ=%s KC_WORK=%s\n' "$$SOURCE_DATE_EPOCH" "$$TZ" "$(KC_WORK)"
 endef
 
-.PHONY: source image repro-check scan legal-info
+.PHONY: source image repro-check scan legal-info print-image
+
+# The image's file name, for pi/os/container.sh repro-check.
+print-image:
+	@echo $(IMAGE)
 
 source:
 	$(print-time)

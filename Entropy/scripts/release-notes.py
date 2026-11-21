@@ -56,9 +56,10 @@ def notes(version, commit, changelog, verifier_sha):
         "- `verify.py`: the offline verifier, SHA-256 `%s`." % verifier_sha, "",
         "## Reproduce", "",
         "From a clean checkout of the tag (`git checkout v%s`), in `Entropy/`:" % version, "",
-        "- **Pi image** (Ubuntu 24.04, Buildroot's host packages, rustup; the build directory must be "
-        "`/kc-work`): `KC_WORK=/kc-work make -C pi/os source image`, then `sha256sum "
-        "/kc-work/out/images/%s` equals its line in `SHA256SUMS`. CI built it twice and compared." % image,
+        "- **Pi image** (Docker on any host; the pinned build container, `pi/os/container/Dockerfile`): "
+        "`export KC_WORK=/kc-work && sh pi/os/container.sh build && sh pi/os/container.sh run make -C pi/os "
+        "source image`, then `sha256sum /kc-work/out/images/%s` equals its line in `SHA256SUMS`. CI built it "
+        "on two x86_64 hosts and an arm64 one and compared." % image,
         "- **Android APK, unsigned** (JDK 17, Android SDK and NDK r30 as `scripts/android-gradle.sh` "
         "checks): `sh scripts/android-rust.sh shipping && sh scripts/android-gradle.sh "
         "--dependency-verification strict :app:assembleShippingRelease`; the release APK is that "

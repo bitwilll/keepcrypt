@@ -165,23 +165,27 @@ The device writes exactly one kind of file, an age-encrypted backup (format in t
 Builders either reproduce the image from source or verify a signed release; both paths end with a disposable verification run before any real seed is made.
 
 ```bash
-# Build from source on a Linux x86_64 host, as CI does on GitHub's hosted runners
-# (a pinned build container and rebuilds in clean containers come with M7's outside reproduction)
-git clone https://github.com/bitwilll/keepcrypt && cd keepcrypt
-export KC_WORK=/kc-work              # build directory: outside Entropy/, no spaces, the same path in every build
-make -C Entropy/pi/os source         # fetches every pinned input; the only step with network access
-make -C Entropy/pi/os image          # Buildroot with BR2_EXTERNAL=Entropy/pi/os, keepcrypt_pizero_defconfig, offline
-make -C Entropy/pi/os repro-check    # builds twice in fresh output directories at the same path and compares SHA-256
+# Build from source with Docker on any host, as CI does: every step runs in the pinned build
+# container (pi/os/container/Dockerfile: Debian trixie by digest, packages from snapshot.debian.org at a
+# fixed time, rustup by SHA-256). The container is linux/amd64; an arm64 host runs it under emulation.
+git clone https://github.com/bitwilll/keepcrypt && cd keepcrypt/Entropy
+git checkout vX.Y.Z                  # the release's tag
+export KC_WORK=/kc-work              # build directory: absolute, outside Entropy/; mounted at /kc-work inside
+sh pi/os/container.sh build          # builds the container
+sh pi/os/container.sh run make -C pi/os source   # fetches every pinned input; the only step with network access
+sh pi/os/container.sh run make -C pi/os image    # Buildroot with BR2_EXTERNAL=Entropy/pi/os, keepcrypt_pizero_defconfig, offline
+sh pi/os/container.sh repro-check    # builds again in two fresh containers and compares SHA-256
+sha256sum /kc-work/out/images/keepcrypt-pi-X.Y.Z-st7789-240x240.img   # must match SHA256SUMS in the release
 
-# Or verify a release download
-minisign -Vm keepcrypt-pi-1.0.0.img -P <release-public-key>
-sha256sum keepcrypt-pi-1.0.0.img   # must match SHA256SUMS in the release
+# Or verify a release download (docs/release.md): the signature first, then the image's hash
+minisign -Vm SHA256SUMS -p keepcrypt.pub
+sha256sum -c --ignore-missing SHA256SUMS
 
 # Flash on Linux (double-check the device name first)
-sudo dd if=keepcrypt-pi-1.0.0.img of=/dev/sdX bs=4M conv=fsync status=progress
+sudo dd if=keepcrypt-pi-X.Y.Z-st7789-240x240.img of=/dev/sdX bs=4M conv=fsync status=progress
 # Flash on macOS (diskutil list names the card; double-check N first)
 diskutil unmountDisk /dev/diskN
-sudo dd if=keepcrypt-pi-1.0.0.img of=/dev/rdiskN bs=4m
+sudo dd if=keepcrypt-pi-X.Y.Z-st7789-240x240.img of=/dev/rdiskN bs=4m
 ```
 
 **First-boot checklist.**

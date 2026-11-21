@@ -29,6 +29,8 @@ on:
       - 'Entropy/scripts/sbom.py'
       - 'Entropy/scripts/check-version.sh'
       - 'Entropy/CHANGELOG.md'
+      - 'Entropy/pi/os/container/**'
+      - 'Entropy/pi/os/container.sh'
   workflow_dispatch:
 
 permissions:
@@ -48,7 +50,7 @@ jobs:
   release:
     name: release checks, workspace SBOM and notes
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -94,6 +96,25 @@ jobs:
           (cd "$rel" && sha256sum -- "keepcrypt-entropy-$KC_VERSION.sbom.cdx.json" verify.py RELEASE-NOTES.md > SHA256SUMS)
           cat "$rel/SHA256SUMS"
           cat "$rel/RELEASE-NOTES.md"
+      # The verifier's release (Entropy/tasks/todo.md, M7 F1-F3): the release's verify.py is the tag's, byte for
+      # byte, and check 12's rules (its imports and attributes, no test material, its known answers, a lone copy,
+      # fault twins, audited runs) run on that copy itself.
+      - name: verify.py's release scan (the tag's bytes; check 12 on the release's copy)
+        run: |
+          cmp tools/verify/verify.py "$RUNNER_TEMP/release/verify.py"
+          python3 -I tools/verify/vectorgen.py --selftest --check 12 --verify-py "$RUNNER_TEMP/release/verify.py"
+      # F2: verify.py is for an offline computer, ideally Tails. Tails 7 is Debian 13, trixie (Tails 7.0's
+      # notes), and ships Debian's python3: the pinned Pi build container is trixie at one snapshot (Python
+      # 3.13.5), native on this x86_64 runner, so the verifier's self-tests run on Tails' Python there.
+      - name: The verifier's self-tests on Tails' Python (Debian trixie, the pinned container)
+        run: |
+          export KC_WORK=$RUNNER_TEMP/kc-work
+          mkdir "$KC_WORK"
+          sh pi/os/container.sh build > "$RUNNER_TEMP/container-build.log" 2>&1 || { cat "$RUNNER_TEMP/container-build.log"; exit 1; }
+          grep -E '^python3(\.[0-9]+)? ' "$RUNNER_TEMP/container-build.log"
+          sh pi/os/container.sh run python3 --version
+          sh pi/os/container.sh run python3 -I tools/verify/verify.py selftest
+          sh pi/os/container.sh run python3 -I tools/verify/vectorgen.py --selftest
       - name: Upload the release's source-wide files
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:

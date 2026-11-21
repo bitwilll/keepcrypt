@@ -221,13 +221,16 @@ scripts/banned-api-check.sh --artifact T target/T/release/libkeepcrypt_core.rlib
 # exit 1 with exactly the registry marker, the simulator marker and the test key, and no stub marker:
 cargo build --release --locked -p keepcrypt-pi-sim --bin keepcrypt-pi-sim --features keepcrypt-core/test-registry --target T --target-dir target/pi-sim-scan
 scripts/banned-api-check.sh --artifact T target/pi-sim-scan/T/release/keepcrypt-pi-sim
-# The Pi image (pi/os; Linux x86_64 hosts only; CI: .github/workflows/entropy-pi-image.yml builds it on two fresh
-# runners and compares). KC_WORK (default /kc-work) holds Buildroot, the downloads, the crates and the build: an
-# absolute path outside Entropy/ with no spaces, the same in every build (reproducibility needs the same path):
-make -C pi/os source                 # the only target that uses the network: pinned Buildroot, every download, the crates
-make -C pi/os image                  # afresh in $KC_WORK/out, offline (a missing download fails it); prints the SHA-256
-make -C pi/os repro-check            # builds it twice in fresh output directories and compares the two images
-make -C pi/os scan                   # after make image: --image-lists on the built image, then --image against expected/
+# The Pi image (pi/os; CI: .github/workflows/entropy-pi-image.yml builds it on two fresh x86_64 runners and an arm64
+# one, and compares). Every command runs in the pinned build container (M7 C1; pi/os/container/Dockerfile), with
+# Docker on any host (linux/amd64; emulated on arm64): the checkout is /keepcrypt and the build directory /kc-work
+# inside. KC_WORK, the host's build directory (absolute, outside Entropy/), holds Buildroot, the downloads, the
+# crates and the build:
+sh pi/os/container.sh build                          # the container: Debian by digest, snapshot.debian.org, rustup by SHA-256
+sh pi/os/container.sh run make -C pi/os source       # the only target that uses the network: pinned Buildroot, every download, the crates
+sh pi/os/container.sh run make -C pi/os image        # afresh in $KC_WORK/out, offline (a missing download fails it); prints the SHA-256
+sh pi/os/container.sh repro-check                    # source and image in one fresh container, image in another; compares
+sh pi/os/container.sh tools make -C pi/os scan       # after make image: --image-lists on the built image, then --image against expected/
 # What CI's image legs run on their build, in this order (make scan runs the first and the last; the build's host
 # mcopy, mdir and unsquashfs first on PATH:
 # PATH="$KC_WORK/out/host/bin:$PATH"); IMG is $KC_WORK/out/images/keepcrypt-pi-0.1.0-st7789-240x240.img, KCONFIG the

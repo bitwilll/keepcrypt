@@ -1,6 +1,8 @@
-# KeepCrypt-Entropy Pi image (Entropy/tasks/todo.md, M4 groups 14 and 15; Q38): the SD card image
-# built from Entropy/pi/os twice, on two fresh runners at the same KC_WORK, and a third job that
-# fails unless both builds gave the same image (docs/build-plan.md, "Reproducible build"). Leg a
+# KeepCrypt-Entropy Pi image (Entropy/tasks/todo.md, M4 groups 14 and 15, M7 C1-C2; Q38): the SD card
+# image built from Entropy/pi/os three times, on two fresh x86_64 runners and an arm64 one, each in a
+# fresh copy of the pinned build container (Entropy/pi/os/container/Dockerfile, run through
+# pi/os/container.sh; the arm64 host emulates its linux/amd64), at the same KC_WORK, and a job that
+# fails unless all three gave the same image (docs/build-plan.md, "Reproducible build"). Leg a
 # restores Buildroot's downloads (dl/) from the cache by exact key and leg b downloads everything
 # afresh; Buildroot checks every download by its hash either way. Leg a uploads the image, kept
 # 14 days, which the owner downloads signed in to GitHub; any commit can be rebuilt after that by
@@ -20,8 +22,8 @@
 # through env and with only). Every job builds a PR's head commit, never GitHub's merge commit,
 # or a dispatch's ref, or the pushed or scheduled commit, and prints the commit it built.
 #
-# The two legs share one list of steps (a YAML anchor), so they cannot drift apart; the job-level
-# LEG says which leg runs, and only the cache and upload steps read it.
+# The three legs share one list of steps (a YAML anchor), so they cannot drift apart; the job-level
+# LEG says which leg runs, and only the emulation, cache, release-file and upload steps read it.
 
 name: Entropy Pi image
 
@@ -108,22 +110,25 @@ jobs:
           if [ -e "$KC_WORK" ]; then echo "FAIL: $KC_WORK exists on a fresh runner" >&2; exit 1; fi
           sudo install -d -o "$(id -u)" -g "$(id -g)" "$KC_WORK"
           ls -ld "$KC_WORK"
-      # The mandatory host packages of Buildroot's manual ("System requirements"), from Ubuntu;
-      # most are on the runner image already. Like the runner image, they are not pinned (Q38 (e):
-      # a pinned build container comes with M7; pi/os/pins.txt), so each leg prints the versions
-      # it got, the host compilers' among them, and a difference between the legs can be traced.
-      - name: Buildroot's host packages (Ubuntu's)
+      # The arm64 leg runs the linux/amd64 build container under emulation (Ubuntu's
+      # qemu-user-static registers QEMU with binfmt_misc): the cross toolchain, Bootlin's
+      # armv6-eabihf, runs on x86_64 hosts only (pi/os/pins.txt; tasks/todo.md, M7 C2, the owner's
+      # answer of 2026-11-22).
+      - name: x86_64 emulation (arm64 leg)
+        if: env.LEG == 'arm64'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends bc build-essential cpio file patch rsync unzip wget
-          dpkg-query -W -f '${Package} ${Version}\n' bc build-essential cpio file patch rsync unzip wget gcc g++ make
-      # keepcrypt-pi is built inside Buildroot with this toolchain (pi/os/package/keepcrypt-pi),
-      # and llvm-nm, which lists its imports, is its llvm-tools-preview.
-      - name: Install the pinned toolchain (rust-toolchain.toml)
+          sudo apt-get install -y --no-install-recommends qemu-user-static
+          dpkg-query -W -f '${Package} ${Version}\n' qemu-user-static
+          uname -m
+      # The pinned build host (tasks/todo.md, M7 C1; pi/os/container/Dockerfile): Debian trixie by
+      # digest, its packages from snapshot.debian.org at one fixed time, rustup-init by SHA-256 and
+      # rust-toolchain.toml's toolchain, with Buildroot's host packages. Every pi/os command below
+      # runs in a fresh container of it (pi/os/container.sh); the step prints its package list.
+      - name: The build container (pi/os/container.sh build)
         run: |
-          rustup toolchain install
-          rustc --version
-          cargo --version
+          docker --version
+          time sh pi/os/container.sh build
       # Leg a only, by exact key (no restore-keys); on a miss the post step saves what leg a
       # downloaded. Buildroot uses a cached file only if it has the pinned hash.
       - name: Buildroot's downloads from the cache (leg a; leg b downloads afresh)
@@ -132,8 +137,8 @@ jobs:
         with:
           path: ${{ env.KC_WORK }}/dl
           key: ${{ runner.os }}-${{ runner.arch }}-pi-image-dl-${{ hashFiles('Entropy/pi/os/pins.txt', 'Entropy/pi/os/configs/keepcrypt_pizero_defconfig', 'Entropy/pi/os/patches/linux/linux.hash') }}
-      - name: make source image
-        run: time make -C pi/os source image
+      - name: make source image (in the container)
+        run: time sh pi/os/container.sh run make -C pi/os source image
       # The job's outputs, for the compare job and the scan, and the image's lists (banned-api-check.sh
       # --image-lists, with the build's host mcopy, mdir and unsquashfs), the reviewed copy of which
       # lives in pi/os/expected/ (commit 16). The image is the one keepcrypt-pi-*.img the build made
@@ -162,7 +167,7 @@ jobs:
           image=${sum%% *}
           sum=$(sha256sum "$built")
           binary=${sum%% *}
-          lists=$(PATH="$KC_WORK/out/host/bin:$PATH" scripts/banned-api-check.sh --image-lists "$img" "${configs[0]}")
+          lists=$(sh pi/os/container.sh tools scripts/banned-api-check.sh --image-lists "$img" "${configs[0]}")
           printf '%s\n' "$lists"
           get() { printf '%s\n' "$lists" | sed -n "s/^sha256 $1 \([0-9a-f]\{64\}\)\$/\1/p"; }
           [ "$(get image)" = "$image" ] || fail "--image-lists hashed another image"
@@ -172,7 +177,7 @@ jobs:
           [ -n "$packed" ] || fail "--image-lists printed no sha256 keepcrypt-pi line"
           echo "keepcrypt-pi SHA-256: built $binary, packed $packed"
           [ "$packed" = "$binary" ] || fail "the image's /usr/bin/keepcrypt-pi is not the keepcrypt-pi cargo built"
-          prefix=$(python3 -I pi/os/rootfs-prefix.py "$img" "$KC_WORK/out/images/rootfs.squashfs")
+          prefix=$(sh pi/os/container.sh run python3 -I pi/os/rootfs-prefix.py "$img" "$KC_WORK/out/images/rootfs.squashfs")
           for v in "$p1" "$p2" "$binary" "$prefix"; do [ -n "$v" ] || fail "an empty hash or prefix"; done
           df -h
           {
@@ -198,7 +203,7 @@ jobs:
           imgs=("$KC_WORK"/out/images/keepcrypt-pi-*.img)
           configs=("$KC_WORK"/out/build/linux-*/.config)
           [ "${#imgs[@]}" -eq 1 ] && [ "${#configs[@]}" -eq 1 ] || { echo "FAIL: not exactly one image and one .config" >&2; exit 1; }
-          PATH="$KC_WORK/out/host/bin:$PATH" scripts/banned-api-check.sh --selftest-image "${imgs[0]}" "${configs[0]}"
+          sh pi/os/container.sh tools scripts/banned-api-check.sh --selftest-image "${imgs[0]}" "${configs[0]}"
       # The image scan (banned-api-check.sh --image; tasks/todo.md, M4 group 14 steps 2-7; Q38 (d)):
       # this build's boot and root lists, keepcrypt-pi's imports and the kernel config must equal
       # the reviewed pi/os/expected/, the deny list, the board files and Q35's inittab must hold,
@@ -215,7 +220,7 @@ jobs:
           imgs=("$KC_WORK"/out/images/keepcrypt-pi-*.img)
           configs=("$KC_WORK"/out/build/linux-*/.config)
           [ "${#imgs[@]}" -eq 1 ] && [ "${#configs[@]}" -eq 1 ] || { echo "FAIL: not exactly one image and one .config" >&2; exit 1; }
-          PATH="$KC_WORK/out/host/bin:$PATH" scripts/banned-api-check.sh --image "${imgs[0]}" pi/os/expected "${configs[0]}" "$BINARY"
+          sh pi/os/container.sh tools scripts/banned-api-check.sh --image "${imgs[0]}" pi/os/expected "${configs[0]}" "$BINARY"
       # Leg a only, after the scan passed: the release files every run makes, so a release tag's run
       # (Entropy/tasks/todo.md, M7 B3, Q110) is no different from any other. Buildroot's legal-info
       # (make -C pi/os legal-info, offline as make image is) gives manifest.csv, and scripts/sbom.py
@@ -228,13 +233,13 @@ jobs:
           NAME: ${{ steps.hash.outputs.name }}
           IMAGE_PATH: ${{ steps.hash.outputs.path }}
         run: |
-          time make -C pi/os legal-info
+          time sh pi/os/container.sh run make -C pi/os legal-info
           rel=$KC_WORK/release
           mkdir "$rel"
-          CARGO_HOME=$KC_WORK/cargo cargo metadata --locked --offline --format-version 1 \
+          sh pi/os/container.sh run env CARGO_HOME=/kc-work/cargo cargo metadata --locked --offline --format-version 1 \
             --filter-platform arm-unknown-linux-gnueabihf > "$KC_WORK/metadata-arm.json"
           cp "$KC_WORK/out/legal-info/manifest.csv" "$rel/$NAME.legal-info-manifest.csv"
-          python3 -I scripts/sbom.py pi-image --metadata "$KC_WORK/metadata-arm.json" --lock Cargo.lock \
+          sh pi/os/container.sh run python3 -I scripts/sbom.py pi-image --metadata "$KC_WORK/metadata-arm.json" --lock Cargo.lock \
             --manifest "$rel/$NAME.legal-info-manifest.csv" --out "$rel/$NAME.sbom.cdx.json"
           cp "$IMAGE_PATH" "$rel/"
           (cd "$rel" && sha256sum -- "$NAME" "$NAME.sbom.cdx.json" "$NAME.legal-info-manifest.csv" > SHA256SUMS)
@@ -269,14 +274,27 @@ jobs:
     outputs: *leg-outputs
     steps: *leg-steps
 
+  build-arm64:
+    # The third build, on an arm64 host, running the same linux/amd64 container under emulation
+    # (tasks/todo.md, M7 C2 and lead decision M7-6): it must give leg a's image. GitHub's job limit,
+    # six hours, is its timeout; its first runs measure how much of it emulation takes.
+    name: pi-image build (arm64 host, emulated x86_64)
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 360
+    env:
+      LEG: arm64
+    defaults: *leg-defaults
+    outputs: *leg-outputs
+    steps: *leg-steps
+
   reproducible:
     # Runs when a leg failed too (its scan, say), so the run always says whether the two builds
     # agreed; not when the run was cancelled. Fails unless both image hashes are non-empty and
     # equal, both legs built the same commit and both legs succeeded (so both scans passed); then
     # the summary names the commit, the image and its SHA-256, the rootfs prefix and the binary's
     # SHA-256.
-    name: pi-image reproducible (a = b)
-    needs: [build-a, build-b]
+    name: pi-image reproducible (a = b = arm64)
+    needs: [build-a, build-b, build-arm64]
     if: ${{ !cancelled() }}
     runs-on: ubuntu-24.04
     timeout-minutes: 5
@@ -299,26 +317,36 @@ jobs:
           PREFIX_B: ${{ needs.build-b.outputs.prefix }}
           BINARY_A: ${{ needs.build-a.outputs.binary }}
           BINARY_B: ${{ needs.build-b.outputs.binary }}
+          RESULT_ARM64: ${{ needs.build-arm64.result }}
+          COMMIT_ARM64: ${{ needs.build-arm64.outputs.commit }}
+          NAME_ARM64: ${{ needs.build-arm64.outputs.name }}
+          IMAGE_ARM64: ${{ needs.build-arm64.outputs.image }}
+          PARTITION_1_ARM64: ${{ needs.build-arm64.outputs.partition1 }}
+          PARTITION_2_ARM64: ${{ needs.build-arm64.outputs.partition2 }}
+          PREFIX_ARM64: ${{ needs.build-arm64.outputs.prefix }}
+          BINARY_ARM64: ${{ needs.build-arm64.outputs.binary }}
         run: |
           for v in RESULT COMMIT NAME IMAGE PARTITION_1 PARTITION_2 PREFIX BINARY; do
             a=${v}_A
             b=${v}_B
-            echo "$v: a ${!a:-(none)}, b ${!b:-(none)}"
+            c=${v}_ARM64
+            echo "$v: a ${!a:-(none)}, b ${!b:-(none)}, arm64 ${!c:-(none)}"
           done
           fail() { echo "FAIL: pi-image reproducible: $1" >&2; exit 1; }
-          [ -n "$IMAGE_A" ] && [ -n "$IMAGE_B" ] || fail "a leg gave no image hash"
-          [ "$IMAGE_A" = "$IMAGE_B" ] || fail "the two builds gave different images (the partition hashes above say which part)"
-          [ -n "$COMMIT_A" ] && [ "$COMMIT_A" = "$COMMIT_B" ] || fail "the legs built different commits"
-          [ "$RESULT_A" = success ] && [ "$RESULT_B" = success ] || fail "a leg's result is not success (a: $RESULT_A, b: $RESULT_B): a step after its build failed, its scan or leg a's upload, or the leg was cancelled; the image is not accepted"
-          echo "both legs built $COMMIT_A into $NAME_A, SHA-256 $IMAGE_A, and both scans passed"
+          [ -n "$IMAGE_A" ] && [ -n "$IMAGE_B" ] && [ -n "$IMAGE_ARM64" ] || fail "a leg gave no image hash"
+          [ "$IMAGE_A" = "$IMAGE_B" ] || fail "legs a and b gave different images (the partition hashes above say which part)"
+          [ "$IMAGE_A" = "$IMAGE_ARM64" ] || fail "the arm64 host gave another image than leg a (the partition hashes above say which part)"
+          [ -n "$COMMIT_A" ] && [ "$COMMIT_A" = "$COMMIT_B" ] && [ "$COMMIT_A" = "$COMMIT_ARM64" ] || fail "the legs built different commits"
+          [ "$RESULT_A" = success ] && [ "$RESULT_B" = success ] && [ "$RESULT_ARM64" = success ] || fail "a leg's result is not success (a: $RESULT_A, b: $RESULT_B, arm64: $RESULT_ARM64): a step after its build failed, its scan or leg a's upload, or the leg was cancelled; the image is not accepted"
+          echo "all three legs built $COMMIT_A into $NAME_A, SHA-256 $IMAGE_A, and every scan passed"
           {
             echo "## Entropy Pi image"
             echo
             echo "- Commit: \`$COMMIT_A\`"
             echo "- Image: \`$NAME_A\`, leg a's artifact (kept 14 days)"
-            echo "- Image SHA-256, the same in legs a and b: \`$IMAGE_A\`"
+            echo "- Image SHA-256, the same in legs a and b and on the arm64 host: \`$IMAGE_A\`"
             echo "- Rootfs prefix: \`$PREFIX_A\`"
             echo "- keepcrypt-pi SHA-256, the build's (the file cargo built, which the image's /usr/bin/keepcrypt-pi equals): \`$BINARY_A\`"
             echo
-            echo "**Scanned.** Both legs' scans of their image against the reviewed \`pi/os/expected/\` (\`banned-api-check.sh --image\`, with the kernel config and that binary hash) passed, as they must for the legs to succeed; each leg's \"Scan\" step holds the output."
+            echo "**Scanned.** All three legs' scans of their image against the reviewed \`pi/os/expected/\` (\`banned-api-check.sh --image\`, with the kernel config and that binary hash) passed, as they must for the legs to succeed; each leg's \"Scan\" step holds the output."
           } >> "$GITHUB_STEP_SUMMARY"
