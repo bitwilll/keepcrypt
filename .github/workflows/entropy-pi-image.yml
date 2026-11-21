@@ -32,6 +32,8 @@ on:
       - '.github/workflows/entropy-pi-image.yml'
   push:
     branches: [main]
+    # A release tag (Entropy/tasks/todo.md, M7 B3, Q110): GitHub applies no path filter to a tag push.
+    tags: ['v*']
     paths:
       - 'Entropy/**'
       - '.github/workflows/entropy-pi-image.yml'
@@ -214,6 +216,38 @@ jobs:
           configs=("$KC_WORK"/out/build/linux-*/.config)
           [ "${#imgs[@]}" -eq 1 ] && [ "${#configs[@]}" -eq 1 ] || { echo "FAIL: not exactly one image and one .config" >&2; exit 1; }
           PATH="$KC_WORK/out/host/bin:$PATH" scripts/banned-api-check.sh --image "${imgs[0]}" pi/os/expected "${configs[0]}" "$BINARY"
+      # Leg a only, after the scan passed: the release files every run makes, so a release tag's run
+      # (Entropy/tasks/todo.md, M7 B3, Q110) is no different from any other. Buildroot's legal-info
+      # (make -C pi/os legal-info, offline as make image is) gives manifest.csv, and scripts/sbom.py
+      # pi-image the image's SBOM from it and from keepcrypt-pi's cargo metadata for its target, read
+      # offline from the crates make source fetched. SHA256SUMS holds the image's, the SBOM's and the
+      # manifest's SHA-256.
+      - name: Release files (leg a; legal-info, the image's SBOM, SHA256SUMS)
+        if: env.LEG == 'a'
+        env:
+          NAME: ${{ steps.hash.outputs.name }}
+          IMAGE_PATH: ${{ steps.hash.outputs.path }}
+        run: |
+          time make -C pi/os legal-info
+          rel=$KC_WORK/release
+          mkdir "$rel"
+          CARGO_HOME=$KC_WORK/cargo cargo metadata --locked --offline --format-version 1 \
+            --filter-platform arm-unknown-linux-gnueabihf > "$KC_WORK/metadata-arm.json"
+          cp "$KC_WORK/out/legal-info/manifest.csv" "$rel/$NAME.legal-info-manifest.csv"
+          python3 -I scripts/sbom.py pi-image --metadata "$KC_WORK/metadata-arm.json" --lock Cargo.lock \
+            --manifest "$rel/$NAME.legal-info-manifest.csv" --out "$rel/$NAME.sbom.cdx.json"
+          cp "$IMAGE_PATH" "$rel/"
+          (cd "$rel" && sha256sum -- "$NAME" "$NAME.sbom.cdx.json" "$NAME.legal-info-manifest.csv" > SHA256SUMS)
+          rm "$rel/$NAME"
+          cat "$rel/SHA256SUMS"
+      - name: Upload the release files (leg a)
+        if: env.LEG == 'a'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: pi-image-release-files
+          path: ${{ env.KC_WORK }}/release/
+          retention-days: 14
+          if-no-files-found: error
       # Leg a only, and only after the scan above passed: a failed step ends the job, so an image
       # with a hit is never uploaded. Kept 14 days for the owner's hardware checks (H1-H4).
       - name: Upload the image (leg a; scanned)

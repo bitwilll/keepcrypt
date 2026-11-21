@@ -15,6 +15,7 @@ The specification lives in `docs/`. Read all of it before starting any milestone
 | `docs/pi-firmware.md` | Pi hardware, OS image, firmware, ceremony screens |
 | `docs/mobile-apps.md` | Android and iPhone apps, capture protection, offline rules |
 | `docs/seal-watchonly-braille.md` | Collision seal and registry, watch-only export, braille backup |
+| `docs/release.md` | The owner's release procedure: tag, second build, offline signing, publishing |
 | `docs/KeepCrypt-SeedBook_Braille.pdf` | The owner's braille reference: insert format and the full word list |
 
 If the docs and this file disagree, stop and ask the owner. Do not guess.
@@ -158,6 +159,7 @@ python3 -I scripts/sbom.py --selftest  # 32 cases; the SBOMs (CycloneDX 1.6, M7 
 #   --classpath mobile/android/expected/shipping-runtime-classpath.txt --verification mobile/android/gradle/verification-metadata.xml --out OUT
 # python3 -I scripts/sbom.py pi-image --metadata META_ARM --lock Cargo.lock --manifest $KC_WORK/out/legal-info/manifest.csv --out OUT
 #   (META: cargo metadata --locked --format-version 1 [--filter-platform TRIPLE]; the manifest from make -C pi/os legal-info)
+python3 -I scripts/release-notes.py --selftest   # 10 cases; release.yml (entropy-release.yml) writes the notes draft on a v* tag
 python3 -I tools/verify/vectorgen.py --selftest   # 13 checks; also with /usr/bin/python3 -I (3.9, the floor)
 # Generated vectors are regenerated, never hand-edited, then checked by --selftest:
 python3 -I tools/verify/vectorgen.py --write-seal-vectors        # vectors/seal.json

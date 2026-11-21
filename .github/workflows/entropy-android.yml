@@ -110,6 +110,8 @@ on:
       - '.github/workflows/entropy-android.yml'
   push:
     branches: [main]
+    # A release tag (Entropy/tasks/todo.md, M7 B3, Q110): GitHub applies no path filter to a tag push.
+    tags: ['v*']
     paths:
       - 'Entropy/mobile/**'
       - 'Entropy/ffi/**'
@@ -534,11 +536,23 @@ jobs:
       # with each download. Nothing else: the throwaway key and the canary stay on the runner, and
       # the test APKs and capture-control's reach the leg jobs only through the hand-off (this run's
       # cache entry), never as an artifact. Each capture job uploads its positive control's captures.
-      - name: Stage the uploads (both APKs, NOT-FOR-RELEASE, the P4 files, SHA256SUMS)
+      - name: Stage the uploads (both APKs, NOT-FOR-RELEASE, the unsigned release APK and its SBOM, the P4 files, SHA256SUMS)
         run: |
           up=$RUNNER_TEMP/upload
           mkdir "$up"
           cp "$RUNNER_TEMP/apks/app-shipping-release.apk" "$up/app-shipping-release.apk"
+          # The release's APK, unsigned: the owner signs it offline (Q100; docs/release.md), and its
+          # SBOM (scripts/sbom.py apk: keepcrypt-jni over the three ABIs, and the reviewed shipping
+          # runtime classpath). Every run makes them, so a release tag's run is no different.
+          cp mobile/android/app/build/outputs/apk/shipping/release/app-shipping-release-unsigned.apk "$up/"
+          for t in aarch64-linux-android armv7-linux-androideabi x86_64-linux-android; do
+            cargo metadata --locked --format-version 1 --filter-platform "$t" > "$RUNNER_TEMP/metadata-$t.json"
+          done
+          python3 -I scripts/sbom.py apk --metadata "$RUNNER_TEMP/metadata-aarch64-linux-android.json" \
+            --metadata "$RUNNER_TEMP/metadata-armv7-linux-androideabi.json" \
+            --metadata "$RUNNER_TEMP/metadata-x86_64-linux-android.json" --lock Cargo.lock \
+            --classpath mobile/android/expected/shipping-runtime-classpath.txt \
+            --verification mobile/android/gradle/verification-metadata.xml --out "$up/app-shipping-release.sbom.cdx.json"
           cp "$RUNNER_TEMP/apks/app-withTestRegistry-release.apk" "$up/app-withTestRegistry-release-NOT-FOR-RELEASE.apk"
           cp mobile/android/app/build/p4/goahead-clear-empty-bucket.png mobile/android/app/build/p4/goahead-collision-dice-50.png "$up/"
           python3 -I - "$up" <<'PY'
@@ -565,9 +579,9 @@ jobs:
                   f.write("%s %s\n" % (name, named("seeds", name)["seal_id"]))
           PY
           cat "$up/p4-seal-ids.txt"
-          (cd "$up" && sha256sum -- *.apk *.png *.kcr p4-seal-ids.txt > SHA256SUMS)
+          (cd "$up" && sha256sum -- *.apk *.png *.kcr p4-seal-ids.txt *.sbom.cdx.json > SHA256SUMS)
           cat "$up/SHA256SUMS"
-      - name: Upload both APKs, the P4 files and SHA256SUMS
+      - name: Upload the APKs, the SBOM, the P4 files and SHA256SUMS
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: android-apks

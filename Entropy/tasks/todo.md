@@ -20749,7 +20749,40 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
 - [ ] B3 `release.yml` on a `v*` tag: builds every artifact, runs every release scan, writes SHA256SUMS and the SBOMs,
       and attaches them to a draft GitHub release. It never signs (Q100). The changelog and the exact reproduce
       command per artifact go in the release notes.
+      Re-plan (2026-11-21, before any B3 code): the workflow gate (banned-api-check.sh --workflows) allows a
+      top-level `contents: read` only, no token, and no `uses:` but checkout, cache and upload-artifact at their
+      pinned SHAs. So CI cannot create or fill a GitHub release (it needs `contents: write` or a token), and a
+      release workflow cannot call or collect from the build workflows (a reusable `uses: ./...` or
+      download-artifact is outside the list). Q109 and Q110 put this to the owner.
+      Q109. Where the release's files are gathered. Recommended: CI only builds and uploads, as Q100's offline
+      signing has it anyway; the owner downloads the artifacts, checks them against a second build, signs, and
+      makes the release from their own machine (`gh release create`, docs/release.md, B4). No gate rule changes.
+      Otherwise: one release job with `contents: write` and the token, a reviewed exception in the gate.
+      Q110. How the artifacts are built on a tag. Recommended: the Pi image and Android workflows also run on a
+      `v*` tag and, on one, add the artifact's SBOM and SHA256SUMS to their upload; a short release.yml on the
+      same tag runs the source-wide checks (the tag equals the workspace version, check-version, the workspace
+      SBOM, verify.py's SHA-256 for the notes) and writes the notes draft. Nothing is built twice in two places.
+      Otherwise: a self-contained release.yml repeating the Pi image and APK builds (about 900 lines copied from
+      two workflows, which would drift apart) for one run with one bundle.
+      Owner's answers (2026-11-21): Q109 "Owner makes it" and Q110 "Existing workflows on tag", as recommended.
+      B3 is now: the Pi image and Android workflows also run on a `v*` tag and, on one, upload the artifact with its
+      SBOM and SHA256SUMS; `release.yml` on the tag checks that the tag is `v` + the workspace version, runs
+      check-version and the gate, writes the workspace SBOM, verify.py's SHA-256 and the notes draft (changelog
+      section and the reproduce command per artifact), and uploads them. It never signs and never publishes.
+      Done (2026-11-21; CI proof at the head carrying it): `.github/workflows/entropy-release.yml` ("Entropy
+      release": tag check, check-version, the gate, verify.py selftest, vectorgen and both scripts' self-tests,
+      then the workspace SBOM, verify.py, RELEASE-NOTES.md and SHA256SUMS as `release-source-files`; also on a PR
+      that changes it or its scripts); `scripts/release-notes.py` (10-case self-test, in the gates job) over the new
+      `CHANGELOG.md`; the Pi image workflow's leg a runs `make -C pi/os legal-info` and `sbom.py pi-image` on every
+      run and uploads `pi-image-release-files`; the Android build stages the unsigned shipping APK and its SBOM
+      into `android-apks` and its SHA256SUMS; both run on a `v*` tag. Proof (local): --workflows clean (6
+      workflows), the gate clean, the release step's commands run under `bash -e -o pipefail` (workspace SBOM
+      a2fd321d..., verify.py 0ba842e2..., equal to `shasum` of the file).
 - [ ] B4 `docs/release.md`: the owner's offline signing steps and the check against a second build before signing.
+      Done (2026-11-21): docs/release.md (the release key made offline, the checks before the tag, the tag's three
+      runs and their artifacts, the second build of the image, APK and verify.py, the offline apksigner and
+      minisign steps, `gh release create --draft --prerelease`), listed in CLAUDE.md's docs table. Ticked at the
+      gate with the owner's review of it.
 
 ### Stage C: the Pi image, reproducible in clean containers (PF:162-169; :9509-9525)
 - [ ] C1 A build container pinned by digest (Debian, apt from snapshot.debian.org at a fixed date); `make source`,
