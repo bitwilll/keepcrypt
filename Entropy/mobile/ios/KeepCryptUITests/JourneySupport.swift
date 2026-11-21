@@ -294,6 +294,12 @@ extension XCUIApplication {
                 pass("probe: \(what): press \(attempt) refused by the press guard (touches \(before) to \(after)); \(held); pressed again")
             } else if after.seen == before.seen {
                 pass("probe: \(what): press \(attempt) never reached the app (touches \(before) to \(after)); \(held); pressed again")
+            } else if whyNothing(factsBefore, held) == "the button never fired" {
+                // Lead decision M6-28: the touch went down and nothing of the app's ran after it, not the button's
+                // closure, not the press gate, not the model (U2j's probe; on both iOS 18.6 and 26.5, on random
+                // controls, runs at 82c4f7a8 to 9b82391b). Read as a synthesized tap whose release was lost, and
+                // pressed again, named; a button that fired and did nothing still fails below.
+                pass("probe: \(what): press \(attempt) went down and the button never fired (touches \(before) to \(after)); \(held); pressed again")
             } else {
                 XCTFail(
                     "\(what): press \(attempt) reached the app and was admitted, and did nothing, \(whyNothing(factsBefore, held)) "

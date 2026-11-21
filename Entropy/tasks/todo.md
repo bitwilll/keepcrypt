@@ -18486,6 +18486,14 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   Button now and again never ran its closure for an admitted touch ("roll 38's Confirm: ... the button never
   fired", MatchFoundJourneyUITests on macos-26; the dead Confirm and dead face before it), and the recognizer's
   part in the gestures' arbitration was the one thing of ours between the touch and SwiftUI.
+- M6-28 (2026-11-21, the lead's, from the runs at 82c4f7a8 to 9b82391b): a journey press that went down and whose
+  button never fired (U2j's probe: no closure ran after the touch went down, the press gate dropped nothing, the
+  model took nothing) is pressed again, named in a probe line, as a press that never reached the app is; one whose
+  button fired and did nothing still fails (M6-21). Why: it happened on iOS 18.6 and 26.5 alike, on random controls
+  (a dice face, Confirm, First launch's Continue), with nothing of the app's running after the touch-down, which
+  reads as a synthesized tap whose release was lost; M6-27 (the guard only observes) did not change it. The cause is
+  not proven, and the gate report names it open. First launch's Continue in launchedToGoOffline goes through
+  pressUntil too (a plain tap there left Go offline unreached).
 - Open item (2026-11-18), the dead Confirm: run 44185394720 at 8112f0d5, WordsUITests on macos-26, every Confirm
   from roll 32 to 50 "reached the app and was admitted, and did nothing" (touches seen, none refused) while the
   face keys went on working; run 44173357483 lost one roll of 50 in SnapshotJourneyUITests (macos-26), maybe the

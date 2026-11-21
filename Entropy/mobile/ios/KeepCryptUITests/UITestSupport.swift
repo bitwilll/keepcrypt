@@ -16,7 +16,11 @@ extension XCUIApplication {
         launch()
         XCTAssertTrue(element("first_launch").waitForExistence(timeout: 30), "First launch first", file: file, line: line)
         pastPressGuard()
-        buttons["first_launch_continue"].tap()
+        // Classified as every journey press is (pressUntil; M6-28): a Continue whose tap was lost is pressed again,
+        // named, where a plain tap left Go offline unreached (LifecycleUITests at 9b82391b, iOS 26.5).
+        pressUntil(buttons["first_launch_continue"], "first_launch_continue to go_offline", placed: true, file: file, line: line) {
+            ["self_test", "go_offline"].contains { self.element($0).exists }
+        }
         XCTAssertTrue(element("go_offline").waitForExistence(timeout: 60), "the self-test passed: Go offline", file: file, line: line)
         pastPressGuard()
     }
