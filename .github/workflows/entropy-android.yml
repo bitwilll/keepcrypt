@@ -39,6 +39,11 @@
 # and the owner's P4 files (the two go-ahead PNGs, two .kcr snapshots and the two Seal IDs) with
 # their SHA-256, kept 14 days.
 #
+# Beside the build job, job build-b (M7 D1) builds the unsigned shipping release APK once more on
+# another fresh runner, at another checkout path, in another time zone and under another umask, and
+# job apk-reproducible requires the two to be the same bytes, entry by entry
+# (scripts/android-repro.py).
+#
 # Then the emulators (M5 group 6, commit 8), on those signed bytes, in the eight leg jobs at once:
 # system-images;android-34;default;x86_64 and system-images;android-36;default;x86_64 (API 34, the minSdk
 # from Q84, M5-84 (c); API 31 until commit U3n), each API
@@ -170,6 +175,9 @@ jobs:
       # The hand-off's SHA256SUMS (its step, this job's last), which the leg jobs check their files
       # against before they install anything.
       sha256sums: ${{ steps.handoff.outputs.sha256sums }}
+      # The unsigned shipping APK's SHA-256 and its three libkeepcrypt.so's, which the second clean
+      # build (job build-b) must give again (M7 D1).
+      unsigned: ${{ steps.unsigned.outputs.sums }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -399,6 +407,19 @@ jobs:
             echo "== aapt2 dump xmltree AndroidManifest.xml"
             "$bt/aapt2" dump xmltree --file AndroidManifest.xml "$apk"
           done
+      # The release's APK, unsigned, as Gradle wrote it (M7 D1): its SHA-256 and each libkeepcrypt.so's
+      # in it, the reference the second clean build (job build-b) must reproduce byte for byte.
+      - name: The unsigned shipping APK's SHA-256 (the reference for build-b)
+        id: unsigned
+        run: |
+          apk=mobile/android/app/build/outputs/apk/shipping/release/app-shipping-release-unsigned.apk
+          python3 -I scripts/android-repro.py sums "$apk" > "$RUNNER_TEMP/unsigned-sums"
+          cat "$RUNNER_TEMP/unsigned-sums"
+          {
+            echo 'sums<<KC_UNSIGNED_END'
+            cat "$RUNNER_TEMP/unsigned-sums"
+            echo 'KC_UNSIGNED_END'
+          } >> "$GITHUB_OUTPUT"
       # The throwaway signing key (M5 group 5; Q62): a PKCS12 key made here by keytool, in
       # $RUNNER_TEMP, for this run alone. It is never stored or uploaded and is no secret (its store
       # password is written below): it only lets the emulators install the APKs, and release
@@ -614,6 +635,8 @@ jobs:
       # shipped APK that is not the one uploaded fail the build's; a file more, hidden or missing, a
       # directory, a changed byte, a line twice, a malformed or empty line, no output and no directory
       # fail the leg's).
+      - name: Reproducibility check selftest (scripts/android-repro.py --selftest)
+        run: python3 -I scripts/android-repro.py --selftest
       - name: Hand-off selftest (scripts/android-handoff.sh --selftest)
         run: sh scripts/android-handoff.sh --selftest
       # The hand-off to the leg jobs (lead decision M5-70 (b)), this job's last steps, so nothing
@@ -648,6 +671,121 @@ jobs:
           path: ${{ runner.temp }}/apks/
           key: ${{ runner.os }}-${{ runner.arch }}-android-apks-${{ github.run_id }}-${{ github.run_attempt }}
           lookup-only: true
+
+  # The second clean build (M7 D1; the Pi image's a = b): another fresh runner, the checkout at
+  # another path, another time zone and umask, builds the shipping release APK alone, with
+  # the same strict locking and dependency verification, and prints the same sums. Job
+  # apk-reproducible compares them with the build job's. Its unsigned APK is uploaded (7 days), so a
+  # difference can be diffed against the build job's android-apks.
+  build-b:
+    name: android build (b, the second clean build)
+    runs-on: ubuntu-24.04
+    # Budget: the build job's 17 minutes; this job builds one APK and runs no tests.
+    timeout-minutes: 17
+    defaults:
+      run:
+        working-directory: other/tree/Entropy
+    env:
+      KC_BUILD_TOOLS: 36.0.0
+      KC_NDK: 30.0.16248370
+      TZ: Asia/Kathmandu
+      LC_ALL: C.UTF-8
+    outputs:
+      unsigned: ${{ steps.unsigned.outputs.sums }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          path: other/tree
+      - name: Build facts (the commit, the path, the time zone, JDK 17, NDK r30, build-tools)
+        run: |
+          fail() { echo "FAIL: build facts: $1" >&2; exit 1; }
+          echo "commit: $(git rev-parse HEAD)"
+          echo "ImageVersion: $ImageVersion"
+          echo "pwd: $(pwd)"
+          echo "TZ=$TZ, date: $(date)"
+          [ -n "${JAVA_HOME_17_X64:-}" ] && [ -x "$JAVA_HOME_17_X64/bin/java" ] || fail "no JDK 17 (JAVA_HOME_17_X64)"
+          "$JAVA_HOME_17_X64/bin/java" -version 2>&1 | tee "$RUNNER_TEMP/java-version"
+          grep -q '^openjdk version "17[.]' "$RUNNER_TEMP/java-version" || fail "JAVA_HOME_17_X64 is not a JDK 17"
+          echo "JAVA_HOME=$JAVA_HOME_17_X64" >> "$GITHUB_ENV"
+          props=$ANDROID_HOME/ndk/$KC_NDK/source.properties
+          grep -q "^Pkg[.]Revision = $KC_NDK\$" "$props" || fail "no NDK $KC_NDK ($props)"
+          [ -x "$ANDROID_HOME/build-tools/$KC_BUILD_TOOLS/aapt2" ] || fail "no build-tools $KC_BUILD_TOOLS"
+          [ -f "$ANDROID_HOME/licenses/android-sdk-license" ] || fail "the runner's SDK licence is not accepted"
+      - name: Gradle distribution cache key (the pin in scripts/android-gradle.sh)
+        run: |
+          v=$(sed -n 's/^version=\([0-9][0-9.]*\)$/\1/p' scripts/android-gradle.sh)
+          h=$(sed -n 's/^sha256=\([0-9a-f]\{64\}\)$/\1/p' scripts/android-gradle.sh)
+          [ -n "$v" ] && [ -n "$h" ] || { echo "FAIL: no version or SHA-256 pin in scripts/android-gradle.sh" >&2; exit 1; }
+          {
+            echo "KC_GRADLE_ZIP=gradle-$v-bin.zip"
+            echo "KC_GRADLE_KEY=gradle-$v-bin-$h"
+          } >> "$GITHUB_ENV"
+      - name: The Gradle distribution from the cache (keyed on its version and SHA-256)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.keepcrypt-gradle/${{ env.KC_GRADLE_ZIP }}
+          key: ${{ runner.os }}-${{ runner.arch }}-${{ env.KC_GRADLE_KEY }}
+      - name: Install the pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+      - name: The crate registry from the cache (keyed on the toolchain and Cargo.lock)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+          key: ${{ runner.os }}-${{ runner.arch }}-android-rust-${{ hashFiles('other/tree/Entropy/rust-toolchain.toml', 'other/tree/Entropy/Cargo.lock') }}
+      # umask 0077 here and below: no file this build writes is group- or world-readable, unlike the
+      # build job's 0022, so a file mode that reaches the APK shows as a difference.
+      - name: Rust library (scripts/android-rust.sh shipping)
+        run: |
+          umask 0077
+          sh scripts/android-rust.sh shipping
+      - name: Build the shipping release APK (strict locking and dependency verification)
+        run: |
+          umask 0077
+          sh scripts/android-gradle.sh --dependency-verification strict :app:assembleShippingRelease
+      - name: The unsigned shipping APK's SHA-256
+        id: unsigned
+        run: |
+          apk=mobile/android/app/build/outputs/apk/shipping/release/app-shipping-release-unsigned.apk
+          python3 -I scripts/android-repro.py sums "$apk" > "$RUNNER_TEMP/unsigned-sums"
+          cat "$RUNNER_TEMP/unsigned-sums"
+          {
+            echo 'sums<<KC_UNSIGNED_END'
+            cat "$RUNNER_TEMP/unsigned-sums"
+            echo 'KC_UNSIGNED_END'
+          } >> "$GITHUB_OUTPUT"
+          mkdir "$RUNNER_TEMP/b"
+          cp "$apk" "$RUNNER_TEMP/b/app-shipping-release-unsigned-b.apk"
+      - name: Upload build b's unsigned APK (for a diff when the two differ)
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: android-apk-b
+          path: ${{ runner.temp }}/b/app-shipping-release-unsigned-b.apk
+          retention-days: 7
+          if-no-files-found: error
+
+  # The two clean builds agree (M7 D1): the build job's sums and build-b's, line for line.
+  apk-reproducible:
+    name: android reproducible (a = b)
+    needs: [build, build-b]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Compare the unsigned APK's sums (a = b)
+        env:
+          KC_A: ${{ needs.build.outputs.unsigned }}
+          KC_B: ${{ needs.build-b.outputs.unsigned }}
+        run: python3 -I scripts/android-repro.py compare
 
   emulators:
     name: android emulators (${{ matrix.legs }})

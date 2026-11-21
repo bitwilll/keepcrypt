@@ -20865,6 +20865,13 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
 
 ### Stage D: the Android APK, reproducible and release-shaped (:14104)
 - [ ] D1 Two clean builds give one unsigned APK hash (CI compares, like the Pi's a = b).
+      Plan (2026-11-22): entropy-android.yml's build job prints the unsigned shipping APK's sums as an output; a new
+      job build-b, on another fresh runner, checks the commit out at another path (other/tree), in another time zone
+      (Asia/Kathmandu) and under umask 0077, builds libkeepcrypt.so and :app:assembleShippingRelease alone with the
+      same strict locking and verification, and prints the same sums; job apk-reproducible (a = b) compares them line
+      for line. scripts/android-repro.py (sums, compare, --selftest; the selftest runs in the build job) prints the
+      APK's SHA-256 and every entry's, in the APK's order, so a difference names its entries without moving an APK;
+      build-b also uploads its APK (android-apk-b, 7 days) for a byte diff. No new action or dependency.
 - [ ] D2 R8 and lint on; the dex reference scan runs on the shrunk APK; targetSdk 37.
 - [ ] D3 F-Droid metadata (reproducible build recipe) and the release-signing steps (Q105); Data safety text.
 - [ ] D4 Emulator system images and the AVD's packages pinned; an API 35 leg with MediaProjection automation for the
