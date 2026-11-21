@@ -23446,6 +23446,9 @@ in the test-registry APK (U3n).
 6. **The back swipe**: U2k's tick covers the Back key alone; no CI image attaches a gestural bar, so the swipe branch
    ran nowhere.
 
+Items 1 and 5's fixes merged 2026-11-21 on the owner's "merge PR #11 approve" (PR bitwilll/keepcrypt#11, merge
+commit d5a34f94; every required check green, Vercel's failure ignored as agreed); main merged into m6-iphone after.
+
 ### M5: for the owner's approval
 1. The new tap (e60e5444) and the budgets it allowed (62396383): every emulator job now budgeted at its measured
    time plus 25% from two runs; one slow runner can stop a job, and the lead then re-measures (M5-30).
