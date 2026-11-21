@@ -39,7 +39,17 @@ final class CheckEdgesUITests: XCTestCase {
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let refuse = springboard.alerts.buttons.matching(NSPredicate(format: "label BEGINSWITH %@", "Don")).firstMatch
         XCTAssertTrue(refuse.waitForExistence(timeout: 30), "iOS's camera prompt as the scan starts")
-        refuse.tap()
+        // M6-28 on SpringBoard's prompt (run 44887514334 at 491b3cdf, iOS 26.5): the tap was sent and the prompt
+        // stayed, the app's scene not active 60 s on, and it covered the app for every test after. A tap whose
+        // prompt is still up 5 s on is tapped again, named; three that leave it up fail here.
+        var attempt = 1
+        while true {
+            refuse.tap()
+            if refuse.waitForNonExistence(timeout: 5) { break }
+            XCTAssertLessThan(attempt, 3, "iOS's camera prompt still up after \(attempt) taps of Don't Allow")
+            pass("probe: Don't Allow: tap \(attempt) left iOS's camera prompt up; tapped again")
+            attempt += 1
+        }
         app.on("scan", "the scan screen")
         app.waitLabel(
             "scan_line", "The camera was not allowed, so the go-ahead QR cannot be scanned. Type the go-ahead code instead: the check stays open.")

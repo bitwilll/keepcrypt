@@ -18555,7 +18555,10 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   (a dice face, Confirm, First launch's Continue), with nothing of the app's running after the touch-down, which
   reads as a synthesized tap whose release was lost; M6-27 (the guard only observes) did not change it. The cause is
   not proven, and the gate report names it open. First launch's Continue in launchedToGoOffline goes through
-  pressUntil too (a plain tap there left Go offline unreached).
+  pressUntil too (a plain tap there left Go offline unreached). Extended 2026-11-21 (run 44887514334 at 491b3cdf,
+  journeys-5, iOS 26.5): CheckEdgesUITests' tap of Don't Allow on iOS's camera prompt was sent and the prompt stayed
+  (facts at 60 s: screen scan, scene not active), covering the app for LifecycleUITests' seven tests after it (each
+  "First launch first"). The tap is now repeated while the prompt is still up 5 s on, named, at most three.
 - Open item (2026-11-18), the dead Confirm: run 44185394720 at 8112f0d5, WordsUITests on macos-26, every Confirm
   from roll 32 to 50 "reached the app and was admitted, and did nothing" (touches seen, none refused) while the
   face keys went on working; run 44173357483 lost one roll of 50 in SnapshotJourneyUITests (macos-26), maybe the
@@ -23530,6 +23533,9 @@ The final head's code is 68ff6e73 (the commit after it changes tasks/todo.md alo
   fired", pressed again and passed.
 - **Entropy Android 44865641612** at 68ff6e73: 9 of 9 green (the Q97 changes). **Entropy Pi image 44865641588**:
   green, a = b.
+- After it: at 491b3cdf (the approval commit and main's PR #11 merged in) Entropy CI 44887514300, Android
+  44887514377 and the Pi image 44887514374 green; Entropy iPhone 44887514334 red on journeys-5 (iOS 26.5) alone, the
+  lost Don't Allow tap above (M6-28's extension), fixed in the commit after, not rerun to green.
 - Before it: run 44857826728 at 953746d2, every journey green on both legs and both unit jobs red at build (U3p;
   lessons.md 2026-11-21). No iPhone or emulator job was rerun to green at any M6 head.
 
