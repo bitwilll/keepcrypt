@@ -23533,9 +23533,15 @@ The final head's code is 68ff6e73 (the commit after it changes tasks/todo.md alo
 - Before it: run 44857826728 at 953746d2, every journey green on both legs and both unit jobs red at build (U3p;
   lessons.md 2026-11-21). No iPhone or emulator job was rerun to green at any M6 head.
 
-### M6 gate status: CI MET at 68ff6e73 (2026-11-21); I0-I5 on the owner's iPhone and the owner's approval pending
+### M6 gate status: CI MET at 68ff6e73 (2026-11-21), approved by the owner and merged (PR bitwilll/keepcrypt#10)
 - Simulator and CI proof for each gate item: the Verification list above and the gate report on PR
   bitwilll/keepcrypt#10. The items that need a real iPhone (capture by Control Center, AirPlay and iPhone Mirroring;
   a hardware screenshot; App Privacy Report; Sparrow and Bitcoin Core; the camera scan) wait for I0-I5.
 - Named, not blocking: M6-28's dead simulator press (cause unproven); iOS 17 on no CI simulator; the journeys-5 and
   -6 budgets on few green runs (M5-30); Q89's iPhone model and iOS version.
+- Approved 2026-11-21 ("approve M6 gate, merge it"), before I0-I5 were run: the gate items that need a real iPhone
+  (capture by Control Center, AirPlay and iPhone Mirroring; a hardware screenshot; App Privacy Report; Sparrow and
+  Bitcoin Core; the camera scan) stand on simulator and CI proof alone, and their Verification items stay unticked
+  until the owner reports I0-I5. Q89's iPhone model and iOS version stay open with them. This commit records the
+  approval; PR bitwilll/keepcrypt#10 is merged after the required checks pass on it. M7 starts only when the owner
+  asks.
