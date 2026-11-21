@@ -11,7 +11,10 @@ extension XCUIApplication {
         descendants(matching: .any).matching(identifier: id).firstMatch
     }
 
-    /// Launched, First launch's Continue pressed, the start-up self-test passed: Go offline.
+    #if KC_TEST_HOOKS
+    /// Launched, First launch's Continue pressed, the start-up self-test passed: Go offline. Its callers are the
+    /// TestHooks build's alone, as is pressUntil (JourneySupport.swift); U3p: outside that build it did not compile
+    /// (the Shipping unit job at 953746d2).
     func launchedToGoOffline(file: StaticString = #filePath, line: UInt = #line) {
         launch()
         XCTAssertTrue(element("first_launch").waitForExistence(timeout: 30), "First launch first", file: file, line: line)
@@ -24,6 +27,7 @@ extension XCUIApplication {
         XCTAssertTrue(element("go_offline").waitForExistence(timeout: 60), "the self-test passed: Go offline", file: file, line: line)
         pastPressGuard()
     }
+    #endif
 }
 
 /// Waits past the press guard's 300 ms after a screen appeared, before a deliberate press.

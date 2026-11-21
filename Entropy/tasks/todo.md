@@ -20459,6 +20459,15 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   KitPair is the app's one custom Layout; every other KitType.scaled call is in a view body. U3l's button-first
   query stays (cheaper); its comment now says what was found. Proof: the iOS 18.6 journeys at the head carrying it,
   whose crash-report step reads "no KeepCrypt crash or hang report" or does not run.
+  Confirmed: every iOS 18.6 journey green at b167f155 and after, no crash report.
+  U3n (2026-11-21, the lead's): journeys-6's narrow-iPhone DynamicType step samples the app (`sample`, every 20 s)
+  and prints the call graphs on a failure, for the iOS 26 hang at the largest size after Continue (seen once, never
+  sampled). U3o (953746d2, lead decision M6-28): a press that went down and never fired is pressed again, named;
+  First launch's Continue goes through pressUntil. Run 44857826728 at 953746d2: all 12 journey jobs green on both
+  legs, journeys-6 included (no hang sampled), but both unit jobs failed to build: launchedToGoOffline, compiled
+  in Shipping, now called pressUntil, which is TestHooks-only. U3p: launchedToGoOffline is under `#if KC_TEST_HOOKS`
+  with pressUntil, as all its callers are (lessons.md, 2026-11-21). Proof (local): the three schemes built for
+  testing; CI at the head carrying it.
 - [ ] U4. Every bug U1-U3 finds is fixed at its root with a test that failed before the fix; the gate report lists
   them. Proof: CI at each stage's head; local runs reported as local.
 

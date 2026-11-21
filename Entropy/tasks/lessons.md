@@ -117,3 +117,13 @@ scripts that read the changed one (grep for its name and its markers) and run th
 - Rule: a pre-push check's exit code is tested directly (no pipe after it, or `set -o pipefail`), and its output is
   read before the push; pre-push shells start with the toolchain PATH prefix. A push that slipped past a red check
   is reported to the owner as such, the check rerun, and the cause recorded here.
+
+## 2026-11-21: a UI-test helper change broke the Shipping test build; only the hooks build was compiled
+- Mistake: U3o (953746d2) made UITestSupport.swift's launchedToGoOffline, compiled in every configuration, call
+  pressUntil, which JourneySupport.swift defines under `#if KC_TEST_HOOKS` alone. Both unit jobs failed at
+  build-for-testing of KeepCrypt-Shipping ("cannot find 'pressUntil' in scope"); every journey job, a TestHooks build,
+  was green.
+- Root cause: the change was made for the journeys and checked against their build only; the UI-test target is
+  compiled three times (Shipping, WithTestRegistry, TestHooks) and the pre-push checks build none of them.
+- Rule: before pushing a change to any iOS source, UI tests included, build-for-testing runs locally for all three
+  schemes (KeepCrypt-Shipping, -WithTestRegistry, -TestHooks) and each exit code is read.
