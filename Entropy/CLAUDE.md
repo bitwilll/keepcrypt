@@ -152,6 +152,12 @@ cargo deny --locked check && cargo audit && cargo vet --locked   # plain `cargo 
 scripts/check-path-deps.sh           # every non-workspace crate comes from crates.io (no path or git overrides)
 scripts/check-version.sh             # every crate, both apps and the Pi image name the workspace version (M7 B1)
 scripts/check-version.sh --selftest # 45 cases: each site changed or removed in a copy must fail
+python3 -I scripts/sbom.py --selftest  # 32 cases; the SBOMs (CycloneDX 1.6, M7 B2), one per artifact, from cargo metadata:
+# python3 -I scripts/sbom.py workspace --metadata META --lock Cargo.lock --out OUT
+# python3 -I scripts/sbom.py apk --metadata META_ANDROID_TRIPLE (x3) --lock Cargo.lock \
+#   --classpath mobile/android/expected/shipping-runtime-classpath.txt --verification mobile/android/gradle/verification-metadata.xml --out OUT
+# python3 -I scripts/sbom.py pi-image --metadata META_ARM --lock Cargo.lock --manifest $KC_WORK/out/legal-info/manifest.csv --out OUT
+#   (META: cargo metadata --locked --format-version 1 [--filter-platform TRIPLE]; the manifest from make -C pi/os legal-info)
 python3 -I tools/verify/vectorgen.py --selftest   # 13 checks; also with /usr/bin/python3 -I (3.9, the floor)
 # Generated vectors are regenerated, never hand-edited, then checked by --selftest:
 python3 -I tools/verify/vectorgen.py --write-seal-vectors        # vectors/seal.json

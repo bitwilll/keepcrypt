@@ -373,6 +373,7 @@ jobs:
       - run: sh scripts/capi-exports.sh --selftest
       - run: sh scripts/check-version.sh
       - run: sh scripts/check-version.sh --selftest
+      - run: python3 -I scripts/sbom.py --selftest
       - name: Install the pinned toolchain (rust-toolchain.toml)
         run: |
           rustup toolchain install

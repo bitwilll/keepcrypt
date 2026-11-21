@@ -20722,6 +20722,30 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       Android APK. The generator is a build tool, not a shipped crate, but it is a new dependency: Q-item at Stage B's
       start with the candidates (cargo-cyclonedx, cargo-sbom, or a small committed script over `cargo metadata`, the
       last needing no new tool), for the owner's approval and a `cargo vet` entry if a crate.
+      Owner's answer (2026-11-21): "approve the script over cargo metadata, continue". No new tool or dependency.
+      Plan: `scripts/sbom.py` (Python stdlib, `python3 -I`, no network, 3.9+) writes CycloneDX 1.6 JSON, one SBOM
+      per artifact, byte-for-byte reproducible (sorted, no timestamp, no serial number), and fails closed on any
+      input it cannot account for:
+      - `workspace`: every shipped Rust root (keepcrypt-pi, keepcrypt-jni, keepcrypt-capi) over `cargo metadata
+        --locked` for all platforms, normal and build dependencies (dev ones are not built into anything);
+        crates.io packages as `pkg:cargo` purls with Cargo.lock's SHA-256 and the manifest's licence expression;
+        a crates.io package with no Cargo.lock checksum, or any source other than crates.io or the workspace, fails.
+      - `apk`: keepcrypt-jni over the three Android triples' metadata, and the 120 lines of
+        expected/shipping-runtime-classpath.txt (the reviewed list CI holds the APK to) as `pkg:maven` purls with
+        their artifacts' SHA-256 from gradle/verification-metadata.xml; a classpath line the metadata lacks fails.
+      - `pi-image`: keepcrypt-pi over arm-unknown-linux-gnueabihf, and Buildroot's legal-info manifest.csv
+        (package, version, licence, source archive) as `pkg:generic`; a malformed manifest fails. The manifest
+        exists only after an image build, so release.yml (B3) runs `make -C pi/os legal-info` and this mode on it.
+      - `--selftest`: fixtures under scripts/testdata/sbom/ give known SBOMs, and each refusal above fails.
+      Proof: the self-test; the workspace and APK SBOMs from the real inputs, twice, byte-equal; the gate clean.
+      Proof (2026-11-21, local; the pi-image mode's live run lands with B3's release.yml): `--selftest` 32 passed,
+      0 failed, on python3 and /usr/bin/python3 (3.9.6); `workspace` 87 components (77 crates.io required, 7
+      build-only excluded, 3 workspace crates), `apk` 193 (70 crates.io over the three Android triples, 120
+      classpath lines: 76 with their binary's SHA-256, 44 Multiplatform roots and BOMs with their .module or .pom
+      alone, none without a descriptor), each run twice byte-equal; the gate and --workflows clean. Two refusals
+      the real inputs found first, both now cases: Gradle variants name their binary their own way
+      (animation.aar), and kotlin-stdlib holds an -all jar beside its primary jar; a licence check that took
+      "see LICENSE file" for three ids is now an expression grammar. `make -C pi/os legal-info` added.
 - [ ] B3 `release.yml` on a `v*` tag: builds every artifact, runs every release scan, writes SHA256SUMS and the SBOMs,
       and attaches them to a draft GitHub release. It never signs (Q100). The changelog and the exact reproduce
       command per artifact go in the release notes.

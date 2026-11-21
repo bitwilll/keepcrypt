@@ -93,7 +93,7 @@ define print-time
 	@printf 'pi/os: SOURCE_DATE_EPOCH=%s TZ=%s KC_WORK=%s\n' "$$SOURCE_DATE_EPOCH" "$$TZ" "$(KC_WORK)"
 endef
 
-.PHONY: source image repro-check scan
+.PHONY: source image repro-check scan legal-info
 
 source:
 	$(print-time)
@@ -137,6 +137,14 @@ repro-check:
 	sha256sum $(KC_WORK)/repro/first.img $(OUT)/images/$(IMAGE)
 	cmp $(KC_WORK)/repro/first.img $(OUT)/images/$(IMAGE)
 	@echo 'pi/os: both builds gave the same image'
+
+# The Buildroot packages' legal-info, after make image and offline as it is: legal-info/manifest.csv
+# (package, version, licence, source archive) is the Pi image SBOM's package list (tasks/todo.md, M7
+# item B2: scripts/sbom.py pi-image), beside the licence texts and sources Buildroot copies there.
+legal-info:
+	test -f $(OUT)/images/$(IMAGE) || { echo 'pi/os: no $(IMAGE) in $(OUT)/images; run make image first' >&2; exit 1; }
+	$(BR_OFFLINE) legal-info
+	test -s $(OUT)/legal-info/manifest.csv || { echo 'pi/os: legal-info wrote no manifest.csv' >&2; exit 1; }
 
 # The image scan (tasks/todo.md, M4 groups 14 and 15; Q38 (d)) on the image make image left in
 # $(OUT): the kernel's .config is the one under $(OUT)/build/linux-*/, and the binary's SHA-256 is
