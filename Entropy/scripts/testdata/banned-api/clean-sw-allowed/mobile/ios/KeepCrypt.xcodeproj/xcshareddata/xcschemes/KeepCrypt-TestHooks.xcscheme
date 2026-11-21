@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Scheme
+   LastUpgradeVersion = "1640"
+   version = "1.7">
+   <ArchiveAction
+      buildConfiguration = "Shipping"
+      revealArchiveInOrganizer = "YES">
+   </ArchiveAction>
+   <ProfileAction buildConfiguration = "Shipping"/>
+   <TestAction
+      buildConfiguration = "TestHooks"
+      shouldUseLaunchSchemeArgsEnv = "YES">
+   </TestAction>
+   <LaunchAction
+      buildConfiguration = "TestHooks"
+      launchStyle = "0">
+   </LaunchAction>
+</Scheme>

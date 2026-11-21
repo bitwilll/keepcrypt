@@ -8,6 +8,7 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getAllSemanticsNodes
 import androidx.compose.ui.text.TextLayoutResult
+import androidx.compose.ui.text.font.FontFamily
 
 /**
  * A screen's layout as Compose has it, read in-process from the activity's semantics (Q78, lead decision
@@ -23,8 +24,11 @@ internal object Layout {
      * column: its id (Compose's, the same at every position while the screen shows), its test tag, whether it is a
      * control (it takes a click, or is a button by its role) and whether it shows text; its whole size and its
      * top-left corner, unclipped, and shown, the part of it inside its parents' clips, the window and the system
-     * bars' insets (null when none), all in the window's pixels; and overflow, whether its text overflows its box
-     * (overflows).
+     * bars' insets (null when none), all in the window's pixels; overflow, whether its text overflows its box
+     * (overflows); and Q97's facts of its text's lines (U3h), each a yes or no computed here, its text never kept:
+     * brokenWord, a line broken between two letters or digits (inside a word or a group); wrapped, more lines than
+     * its own (a soft wrap); monospace, set in the monospaced face (the code, the letters typed, C, D, the overview,
+     * the choices); large, set at 36 sp or more (the insert's word, the Seal ID).
      */
     class Node(
         val id: Int,
@@ -37,6 +41,10 @@ internal object Layout {
         val top: Float,
         val shown: Rect?,
         val overflow: Boolean,
+        val brokenWord: Boolean,
+        val wrapped: Boolean,
+        val monospace: Boolean,
+        val large: Boolean,
     )
 
     /** Every semantics node of the activity's Compose view as it lies now. */
@@ -59,6 +67,10 @@ internal object Layout {
                 node.positionInWindow.y,
                 node.boundsInWindow.intersect(safe).takeUnless { it.isEmpty },
                 texts.any { overflows(it, node.size.width.toFloat(), node.size.height.toFloat()) },
+                texts.any(::brokenWord),
+                texts.any(::wrapped),
+                texts.any { it.layoutInput.style.fontFamily == FontFamily.Monospace },
+                texts.any { it.layoutInput.style.fontSize.value >= LARGE_SP },
             )
         }
     }
@@ -73,6 +85,21 @@ internal object Layout {
     private fun overflows(text: TextLayoutResult, width: Float, height: Float): Boolean =
         text.multiParagraph.didExceedMaxLines || text.multiParagraph.height > height + EDGE_PX ||
             (0 until text.lineCount).any { text.getLineRight(it) - text.getLineLeft(it) > width + EDGE_PX }
+
+    /** Whether a line of text ends between two letters or digits: a word or a group broken across lines (Q97). */
+    private fun brokenWord(text: TextLayoutResult): Boolean {
+        val chars = text.layoutInput.text.text
+        return (0 until text.lineCount - 1).any { line ->
+            val end = text.getLineEnd(line)
+            end in 1 until chars.length && chars[end - 1].isLetterOrDigit() && chars[end].isLetterOrDigit()
+        }
+    }
+
+    /** Whether text takes more lines than its own (its newlines plus one): a soft wrap (Q97). */
+    private fun wrapped(text: TextLayoutResult): Boolean = text.lineCount > text.layoutInput.text.text.count { it == '\n' } + 1
+
+    /** The size from which a text is large (Q97): the insert's word (48 sp) and the Seal ID (36 sp). */
+    private const val LARGE_SP = 36f
 
     /** How far, in pixels, a node's laid-out text or its shown parts may pass its bounds (Compose's sizes are fractional). */
     const val EDGE_PX = 1f

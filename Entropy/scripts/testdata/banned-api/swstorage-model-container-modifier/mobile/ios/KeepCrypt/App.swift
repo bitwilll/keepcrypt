@@ -1,0 +1,1 @@
+    .modelContainer(for: Entry.self)

@@ -159,35 +159,31 @@ fun Bip39Entry(
             actions = {
                 BasicText(bip39Shown(letters), Modifier.padding(vertical = 6.dp).secret(), style = KitType.hex)
                 AsciiPad(keys, onKey = onKey)
-                Row {
+                KitPair("Previous keys", "Next keys") {
                     KitButton(
                         "Previous keys",
                         "keys_previous",
                         enabled = keys > 0,
-                        modifier = Modifier.weight(1f).padding(end = 6.dp),
                         onClick = onPreviousKeys,
                     )
                     KitButton(
                         "Next keys",
                         "keys_next",
                         enabled = keys < ASCII_PAGES - 1,
-                        modifier = Modifier.weight(1f).padding(start = 6.dp),
                         onClick = onNextKeys,
                     )
                 }
-                Row {
+                KitPair("Delete", "Done") {
                     KitButton(
                         "Delete",
                         "bip39_delete",
                         enabled = letters.length > 0,
-                        modifier = Modifier.weight(1f).padding(end = 6.dp),
                         onClick = onDelete,
                     )
                     KitButton(
                         "Done",
                         "bip39_done",
                         enabled = letters.length > 0,
-                        modifier = Modifier.weight(1f).padding(start = 6.dp),
                         onClick = onDone,
                     )
                 }
@@ -262,9 +258,9 @@ fun WatchDescriptorQr(state: UiState, testRegistry: Boolean, passGate: () -> Uni
                 screenId(Screen.WatchDescriptorQr),
                 testRegistry,
                 actions = {
-                    Row {
-                        KitButton("Previous", "watch_previous", modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onPrevious)
-                        KitButton("Done", "watch_done", modifier = Modifier.weight(1f).padding(start = 6.dp), onClick = onDone)
+                    KitPair("Previous", "Done") {
+                        KitButton("Previous", "watch_previous", onClick = onPrevious)
+                        KitButton("Done", "watch_done", onClick = onDone)
                     }
                 },
             ) {
@@ -356,7 +352,7 @@ fun RevealD(state: UiState, testRegistry: Boolean, passGate: () -> Unit, onNext:
                 actions = { KitButton("Next", "d_done", onClick = onNext) },
             ) {
                 Heading("Device leg D")
-                BasicText(deviceLegText(leg), Modifier.padding(vertical = 6.dp).secret(), style = KitType.hex)
+                WholeLines(deviceLegText(leg), Modifier.padding(vertical = 6.dp).secret(), KitType.hex, lines = 4)
                 KitText(D_NOTE, KitType.small)
             }
         }

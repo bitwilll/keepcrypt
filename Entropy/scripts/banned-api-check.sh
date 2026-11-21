@@ -2,7 +2,8 @@
 # Banned-API grep gate: CLAUDE.md security rules 1, 3, 5 and 9 (plan: tasks/todo.md, M0; the Shell
 # category and the hash ban: M3 group 13; the Kotlin, Android and FFI categories: M5 group 3; the
 # Kotlin Multiplatform, iPhone and bridge rules: M5's re-plan for Compose Multiplatform, "Gate
-# changes"), and the release-artifact scan for rules 1 and 10 (tasks/todo.md, M1 group 11).
+# changes"; the Swift and iPhone rules: M6 item A1), and the release-artifact scan for rules 1 and
+# 10 (tasks/todo.md, M1 group 11).
 #
 #   scripts/banned-api-check.sh             scan the repo this script lives in
 #   scripts/banned-api-check.sh DIR         scan DIR as if it were the repo root
@@ -35,6 +36,14 @@
 #   scripts/banned-api-check.sh --selftest-apk
 #                                           the APK check's refusals and rules on stub tools and stub
 #                                           APKs, with no Android SDK (see "APK selftest mode" below)
+#   scripts/banned-api-check.sh --ios-app CONFIG APP EXPECTED_DIR
+#                                           check and scan a built iPhone app of CONFIG (Shipping or
+#                                           WithTestRegistry) against the reviewed summaries in
+#                                           EXPECTED_DIR (mobile/ios/expected; see "iPhone app mode")
+#   scripts/banned-api-check.sh --selftest-ios-app
+#                                           --ios-app's rules on stand-in apps built with the SDK's
+#                                           clang and swiftc, macOS with Xcode only (see "iPhone app
+#                                           selftest mode" below)
 #   scripts/banned-api-check.sh --selftest  every fixture in scripts/testdata/banned-api/ must trip the
 #                                           gate for its category; every clean-* fixture must pass; the
 #                                           Kotlin hit fixtures whose rule a scope skips must pass
@@ -421,6 +430,63 @@
 # libkeepcrypt.so by a SHA-256 or not for every ABI, a missing scanned copy and no com.keepcrypt
 # class. Prints PASS or FAIL per case and a count; exit 0 all passed, 1 not.
 #
+# iPhone app mode (tasks/todo.md, M6 item C4; Q91; rules 1, 5, 8, 9 and 10; lead decision M6-5): --ios-app
+# CONFIG APP EXPECTED_DIR on a built .app (CONFIG Shipping or WithTestRegistry, its Xcode configuration;
+# EXPECTED_DIR mobile/ios/expected), on macOS with python3 and the pinned toolchain's llvm-nm and
+# llvm-objdump (llvm-tools-preview). A device build's binary property lists read as XML ones (python3's
+# plistlib). Categories:
+#   IosPlist   the Info.plist's hard rules, whatever the expected summary says: CFBundleIdentifier
+#              com.keepcrypt.entropy (Shipping) or com.keepcrypt.entropy.testregistry, MinimumOSVersion
+#              17.0, an NSCameraUsageDescription, none of NSAppTransportSecurity, UIBackgroundModes,
+#              CFBundleURLTypes, CFBundleDocumentTypes, UTExportedTypeDeclarations,
+#              LSApplicationQueriesSchemes, NSBonjourServices, NSLocalNetworkUsageDescription,
+#              NSUserActivityTypes, UIFileSharingEnabled, LSSupportsOpeningDocumentsInPlace,
+#              UISupportsDocumentBrowser, NSUbiquitousContainers, BGTaskSchedulerPermittedIdentifiers or
+#              NSUserTrackingUsageDescription, imported types exactly .age and .kcr (each conforming to
+#              public.data alone) and a CFBundleExecutable that is a file name; and its summary (every
+#              key but the stamped DT*, BuildMachineOSBuild and CFBundleSupportedPlatforms, as sorted
+#              JSON) equal to CONFIG-Info.json.
+#   IosPrivacy PrivacyInfo.xcprivacy present, NSPrivacyTracking false, no tracking domains, no
+#              collected data types, NSPrivacyAccessedAPITypes a list; its summary equal to
+#              CONFIG-PrivacyInfo.json.
+#   IosBundle  any entry of the bundle but Info.plist, PkgInfo, PrivacyInfo.xcprivacy, the executable,
+#              _CodeSignature/CodeResources and embedded.mobileprovision (an embedded framework, library,
+#              plug-in or resource bundle: a Swift package's or an SDK's), and any link.
+#   the main executable under the artifact rules (Marker, TestKey, Symbol, StdRandom, Format and
+#              OSImport, the iOS targets' rules: _CCRandomGenerateBytes imported), KC_TEST_HOOKS_DO_NOT_SHIP
+#              a Marker hit too; in WithTestRegistry the registry marker and the test key required
+#              (IosApp, "not the test-registry build") and no hit; in Shipping both hits as everywhere.
+#   Network    an undefined symbol of URL loading, the Network framework's connections and C API,
+#              CFNetwork, Core Foundation's sockets and streams, WebKit, Safari, Multipeer, Bluetooth or the
+#              BSD socket calls ($ios_net); a symbol taken from the Network framework that is not
+#              NWPathMonitor's or NWPath's (the offline check's monitor, C5); a denied framework linked
+#              ($ios_denied_frameworks: CFNetwork, NetworkExtension, WebKit, SafariServices,
+#              AuthenticationServices, MultipeerConnectivity, CoreBluetooth, CloudKit, AdSupport,
+#              AppTrackingTransparency, MetricKit).
+#   Clipboard  an undefined UIPasteboard or NSItemProvider symbol.
+#   IosSecretId a secret node's accessibility identifier (lead decision M6-20; EXPECTED_DIR's
+#              secret-identifiers.txt, one a line): its bytes anywhere in the main executable, which only
+#              the TestHooks build may hold (its SecretNode names are compiled in under KC_TEST_HOOKS alone).
+#              Each listed name must be 16 bytes or more (exit 2 otherwise): Swift builds a string of 15
+#              or fewer in the code itself, where no byte scan finds it.
+#   IosLink    a linked library outside /System/Library/Frameworks/ and /usr/lib/ (an @rpath or
+#              @executable_path one, embedded).
+# Exit 0 clean, 1 hits, 2 usage, a missing expected summary or tool, an unreadable plist, or no main
+# executable.
+#
+# iPhone app selftest mode (M6 item C4): --selftest-ios-app, on macOS with Xcode only (entropy-ios.yml
+# runs it; the gates job's Linux runner has no SDK). Stand-in apps built here for the simulator with the
+# SDK's clang (a C main importing CCRandomGenerateBytes) and swiftc (NWPathMonitor alone, and an
+# NWConnection), against summaries made from the stand-in Info.plist and privacy manifest: a clean
+# shipping and test-registry app and the path monitor pass, and a stamped key changed is left out;
+# each other case gives its hits: the registry marker and test key in Shipping, the test-registry app
+# without its key or its marker, the hooks and source markers, no OS import, arc4random, CFNetwork,
+# UIPasteboard, an @rpath library, a connection, an embedded framework, a PlugIns directory, a link,
+# ATS, background modes, URL types, no camera string, another imported type, another deployment target,
+# the shipping id in WithTestRegistry, tracking and no privacy manifest; another CONFIG, a bundle that is
+# no .app, a missing expected summary and no executable exit 2; and the committed mobile/ios/expected
+# summaries are in their own form and keep every hard rule.
+#
 # Categories (main patterns; the full lists are in the check functions below; comments count
 # everywhere but where a rule says otherwise):
 #   RNG        rule 1: any PRNG, and any OS RNG outside core: Math.random, java.util.Random, a bare
@@ -452,8 +518,9 @@
 #              path segment (rustfmt puts "    net::TcpListener," on its own line), TcpStream,
 #              TcpListener, UdpSocket, and (tasks/todo.md, M5 group 3) android.webkit, WebView,
 #              javax.net, Socket(, DatagramSocket, java.net.http, ConnectivityManager, Cronet and
-#              DownloadManager. Not banned: "import Network" and NWPathMonitor (the offline
-#              check), and reading back a picked .age or .kcr file (rule 8):
+#              DownloadManager. Not banned here: "import Network" and NWPathMonitor, which the
+#              Swift rules (below) allow in the offline check's one file alone, and reading back
+#              a picked .age or .kcr file (rule 8):
 #              Data(contentsOf: URL(fileURLWithPath: path)), Data(contentsOf: pickedURL).
 #              In a .py file (tasks/todo.md M2 group 2, Q23; completed by the stage-A review,
 #              2026-10-10, and by M3's Q31 (h)), an import of socket, ssl (or their C modules
@@ -835,10 +902,11 @@
 #              drand48, arc4random, SecRandomCopyBytes, URLSession, NWConnection and CFNetwork are
 #              other categories' everywhere. KtSourceSet refuses iosMain and iosTest themselves in
 #              M5, so a KtIos hit there comes with one of its.
-#   KtRoot     (lead decisions M5-19 and M5-25; "KtRoot: <file>: <detail>"): a .kt or .kts file
-#              under mobile/ outside mobile/android/, and any tracked file under mobile/ios/ (read
-#              from git ls-files as the Build rule reads it), which stays empty until M6 brings the
-#              Swift and Xcode rules.
+#   KtRoot     (lead decision M5-19; "KtRoot: <file>: <detail>"): a .kt or .kts file under
+#              mobile/ outside mobile/android/. M5's second clause (M5-25: any tracked file under
+#              mobile/ios/, which stayed empty in M5) was retired by M6's item C2 (lead decision
+#              M6-6), whose commit brought the iPhone app's first files under the Swift and Xcode
+#              rules below (M6 items A1 and A2).
 #   KtCinterop (the re-plan's C bridge): mobile/android/core-ffi/src/nativeInterop/cinterop/
 #              keepcrypt.def holds exactly the lines headers = keepcrypt.h, headerFilter =
 #              keepcrypt.h and package = com.keepcrypt.native, each once, and no other (no ---
@@ -847,7 +915,8 @@
 #              of its own. KtSourceSet refuses nativeInterop itself in M5 (Q73), so even that one
 #              definition is a hit there.
 #   FFI        in .rs files under ffi/ (tasks/todo.md, M5 groups 3 and 7; Q53; Q66's split into
-#              keepcrypt-guard and keepcrypt-jni, M5-32; keepcrypt-capi is M6's after Q73):
+#              keepcrypt-guard and keepcrypt-jni, M5-32; keepcrypt-capi, the second boundary, M6
+#              item B4):
 #              catch_unwind outside every comment and string or char literal (so ffi/clippy.toml's
 #              ban, a doc line and a string are no call site) anywhere but ffi/guard/src/lib.rs,
 #              and there every one but the path call std::panic::catch_unwind( in the body of the
@@ -855,24 +924,25 @@
 #              wrapper, a fn guarded in a mod, an impl or another fn, a macro_rules definition and a
 #              second call are hits); an export (no_mangle, export_name, or the word extern, which
 #              an extern fn with any ABI string or none starts, outside comments and literals)
-#              anywhere but ffi/jni/src/lib.rs, and there an export whose own body does not call
-#              keepcrypt_guard::guarded( (the crate root's no_mangle JNI_OnLoad aside) or that has
+#              anywhere but the two boundaries' ffi/jni/src/lib.rs and ffi/capi/src/lib.rs, and
+#              there an export whose own body does not call keepcrypt_guard::guarded( (the crate
+#              root's no_mangle JNI_OnLoad in jni's, and kc_max_out in capi's, aside) or that has
 #              no body, an extern that $ or ) follows (a macro's ABI), and macro_rules; the JNI
 #              names (a Java_ function, JNI_OnLoad, JNIEnv, jni_sys) outside comments and literals
-#              anywhere but ffi/jni/, and in ffi/jni/src/lib.rs an extern fn whose ABI is not
-#              "system", its words read over lines and comments; macro_rules and macro_export
-#              outside comments and literals in any file under ffi/src/, ffi/guard/src/ and
-#              ffi/jni/src/ (lead decision M5-35; lib.rs's through the export scan), so no macro
+#              anywhere but ffi/jni/, in ffi/jni/src/lib.rs an extern fn whose ABI is not
+#              "system", and in ffi/capi/src/lib.rs one whose ABI is not "C", its words read over
+#              lines and comments; macro_rules and macro_export outside comments and literals in
+#              any file under ffi/src/, ffi/guard/src/, ffi/jni/src/ and ffi/capi/src/ (lead
+#              decision M5-35; the boundaries' lib.rs through the export scan), so no macro
 #              writes an export out of the export scan's sight; pub outside comments and literals
 #              in any file under ffi/guard/src/ but the crate root's one line
 #              "pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {" (M5-35), so
-#              keepcrypt-guard re-exports nothing of keepcrypt-ffi and keepcrypt-jni reaches the
+#              keepcrypt-guard re-exports nothing of keepcrypt-ffi and both boundaries reach the
 #              safe layer through guarded alone, and any line after it there but exactly
 #              "    let input = Zeroizing::new(input);", so guarded wipes the input it takes (a
-#              missing one is reported at the pinned line); and once ffi/jni/src/lib.rs exports a
-#              function,
-#              the one catch_unwind call in fn guarded is required (a missing one is reported at
-#              ffi/jni/src/lib.rs:1).
+#              missing one is reported at the pinned line); and once either boundary's lib.rs
+#              exports a function, the one catch_unwind call in fn guarded is required (a missing
+#              one is reported at that lib.rs:1).
 #              Session::new (the Shell rule's shapes, comments counting) anywhere under ffi/ but
 #              ffi/src/ceremony.rs, each one after its first there, and none there once the file
 #              exists (reported at line 1). The identifiers thread and JoinHandle anywhere but in
@@ -880,6 +950,114 @@
 #              a joined thread would turn a panic into a value, and the shared clippy.toml cannot ban
 #              thread spawning (core/tests/panic_wipe.rs joins one). A test thread turns no shipped
 #              panic into a value, and ffi_discard_during_call needs one.
+#   Swift and the iPhone (tasks/todo.md, M6 item A1; Q86-Q92; rules 1, 3, 5, 8, 9, 10 and 11), on
+#              every scanned file under mobile/ios/ (Swift, Objective-C, C and headers, the module
+#              map, the project file, schemes, plists, settings files), comments and string
+#              literals counting, as everywhere: RNG, Network and Clipboard keep their names and
+#              add the Swift rules below to what they refuse everywhere. Four files are allowed
+#              more (and two more by SwFailOpen's and SwOpenURL's own entries below), each one path ($sw_app is mobile/ios/KeepCrypt; a file of the same name
+#              anywhere else gets every rule): $sw_app/OfflineCheck.swift (the offline check, Stage
+#              C's C5: import Network as the exact line, and NWPathMonitor), $sw_app/SecureLayer.swift
+#              (Q88's secure layer: UITextField, with isSecureTextEntry = true), $sw_app/
+#              DocumentPicker.swift (the .fileExporter backup and its read back: the writes) and
+#              mobile/ios/KeepCryptCore/module.modulemap (the one module map, C2). The full lists are
+#              at each check function.
+#   RNG        under mobile/ios also (swrng): RandomNumberGenerator as the start of a word (a
+#              hand-written PRNG's conformance), UUID( and NSUUID( and UUID.init and CFUUIDCreate (a
+#              random UUID from the OS), CryptoKit, SecKeyCreateRandomKey and SecKeyGeneratePair.
+#   Network    under mobile/ios also: a name that starts Network and a capital (iOS 26's
+#              NetworkConnection, NetworkListener, NetworkBrowser; NetworkExtension), CFStream,
+#              CFSocket, socket(, getaddrinfo(, gethostbyname(, getnameinfo(, NetService,
+#              MultipeerConnectivity and its MC classes, CoreBluetooth and its managers
+#              (sw_network); an import of Network, plain or of one declaration, outside the offline
+#              check, and there any but the exact line "import Network" (sw_network_import,
+#              sw_network_import_offline); and any word that starts NW and a capital or nw_ outside
+#              the offline check, and there any but NWPathMonitor (sw_nw, sw_nw_offline;
+#              NWConnection, NWListener and NWBrowser are network()'s).
+#   Clipboard  under mobile/ios also (swclipboard): PasteButton, UIPasteControl, SwiftUI's
+#              copy, cut, paste, drag and drop modifiers, UIKit's edit menu
+#              (UIEditMenuInteraction, UIMenuController, UIResponderStandardEditActions,
+#              canPerformAction), a func copy(, cut( or paste( and a #selector of one, and UIKit's
+#              drag and drop (UIDragInteraction, UIDropInteraction, NSItemProvider).
+#   SwLog      print(, debugPrint(, dump(, NSLog(, os_log(, os_signpost(, syslog( and C's
+#              printf family, puts( and fputs(; OSLog and OSSignpost names, Logger as a word, an
+#              import of os or OSLog; standardError, standardOutput, stderr and stdout;
+#              CustomStringConvertible and CustomDebugStringConvertible; and an interpolation \( in
+#              a string after a call of fatalError(, precondition(, preconditionFailure(, assert( or
+#              assertionFailure( on its line (KtLog's template rule in Swift).
+#   SwStorage  in every file: UserDefaults, @AppStorage, @SceneStorage, NSKeyedArchiver and
+#              NSKeyedUnarchiver, Core Data, SwiftData, CloudKit and Core Spotlight and their
+#              classes, the Keychain (SecItem*, kSecClass, kSecAttr*, kSecValue*, kSecReturn*,
+#              kSecMatch*), NSUbiquitousKeyValueStore, user activities and state restoration, the
+#              app's own directories (documentsDirectory, temporaryDirectory, NSTemporaryDirectory,
+#              containerURL and the rest) and C's fopen family; and, outside DocumentPicker.swift,
+#              every write: write(to:, write(toFile:, FileManager's createFile(, copyItem(,
+#              moveItem(, removeItem( and the rest, a FileHandle forWriting or forUpdating,
+#              OutputStream, FileWrapper, FileDocument, UIDocument, NSFileCoordinator, .fileExporter,
+#              .fileMover and forExporting.
+#   SwInput    TextField and every name it starts, SecureField, TextEditor, UITextView,
+#              becomeFirstResponder and canBecomeFirstResponder (in SecureLayer.swift too),
+#              UIKeyInput, UITextInput, UISearch*, .searchable, addTextField, @FocusState and
+#              .focused; UITextField outside SecureLayer.swift; and there every isSecureTextEntry
+#              but an assignment of the literal true, and, once it names UITextField, a statement
+#              isSecureTextEntry = true on a line of its own is required ("missing ..." at line 1).
+#   SwPackage  by path ("SwPackage: <file>: <detail>"): a file named Package.swift,
+#              Package.resolved, Podfile, Podfile.lock, Cartfile, Cartfile.resolved or
+#              Cartfile.private, a .podspec, a file under a .swiftpm/, swiftpm/, Pods/ or Carthage/
+#              directory, and a .modulemap other than mobile/ios/KeepCryptCore/module.modulemap; by
+#              text: any word holding SwiftPackage (XCRemoteSwiftPackageReference,
+#              XCLocalSwiftPackageReference, XCSwiftPackageProductDependency),
+#              packageProductDependencies, packageReferences, CocoaPods' [CP] phases, Pods- and
+#              Pods_ names, Manifest.lock, Carthage, Apple's advertising, tracking and diagnostics
+#              frameworks (AdSupport, ASIdentifierManager, AppTrackingTransparency,
+#              ATTrackingManager, advertisingIdentifier, identifierForVendor, MetricKit,
+#              MXMetricManager), an import or include line naming an analytics, crash or ad SDK in
+#              any letter case (sw_sdk: firebase, crashlytics, sentry, bugsnag and the rest), and in
+#              the one module map link, extern, umbrella and framework as words.
+#   SwTestHook the compilation condition KC_TEST_HOOKS, the UI tests' hooks into the app (rule 10's
+#              Swift form; C5, lead decision M6-5): in a .swift file (lower case) it passes (#if
+#              KC_TEST_HOOKS); in a .pbxproj only inside the buildSettings of an XCBuildConfiguration
+#              that only test targets' lists hold (PBXNativeTargets of product type
+#              bundle.unit-test or bundle.ui-testing), or of the one named TestHooks that only the
+#              app target's list holds, once (the one PBXNativeTarget of product type application);
+#              the project's own configurations, the app's others and any other target's hit, read
+#              as a property list without a parser (sw_hooks_pbxproj; a file it cannot follow allows
+#              none), and every line holding more of it than those allowed strings hits, a
+#              comment's too; in any other file (an .xcconfig, a header's #define, a plist, a
+#              scheme) every line that names it hits. And the TestHooks configuration is the
+#              UI-test scheme's alone, never archived: the word TestHooks in a scheme (.xcscheme in
+#              any letter case) other than mobile/ios/KeepCrypt.xcodeproj/xcshareddata/xcschemes/
+#              KeepCrypt-TestHooks.xcscheme, and there inside its ArchiveAction, hits
+#              (sw_hooks_schemes).
+#   SwRoot     ("SwRoot: <file>: <detail>"): a .swift, .m, .mm or .modulemap file, or a file
+#              under a .xcodeproj or .xcworkspace directory, outside mobile/ios/, in any letter case:
+#              the app's code and project live under mobile/ios/, the one Xcode root, as Kotlin
+#              lives under mobile/android/ (KtRoot), so no Swift rule's scope can be stepped round.
+#   SwFailOpen (rule 3; M6 item A2, lead decision M6-6): KtFailOpen in Swift. In every file: try? and
+#              try!, Result(catching: and Result { }, flatMapError, Combine's .catch, .tryCatch,
+#              .replaceError and .assertNoFailure, NSSetUncaughtExceptionHandler and its getter,
+#              signal( and sigaction(, and the unstructured tasks (Task { }, Task(, Task<,
+#              Task.detached, withThrowingTaskGroup, withThrowingDiscardingTaskGroup, async let);
+#              every catch clause (Objective-C's @catch too) whose block does not end in a call of
+#              Ceremony.halt( closed on its line or a throw (a rethrow), read fail closed like
+#              KtFailOpen's finally blocks (a quote, a backtick, a # or a comment in the clause, or
+#              a catch in a comment or a string, hits at the catch); a type, extension or typealias
+#              named Ceremony or a func halt outside mobile/ios/KeepCrypt/Ceremony.swift (C3's file,
+#              the Swift CeremonyModel's), and there a func halt declared without -> Never.
+#              Differences from KtFailOpen: the allowance is the block's last statement, not a
+#              caught type with its import; there is no test scope (XCTest's XCTAssertThrowsError
+#              needs no catch); no package allow-list (Swift has no kotlinx.coroutines to read);
+#              and no finally rule, since Swift's defer cannot return, break or throw.
+#   SwOpenURL  (rule 9; A2, M6-6): KtIntent in Swift. Any .open( call, openURL, canOpenURL,
+#              OpenURLAction, SwiftUI's Link(, the settings URLs (openSettingsURLString,
+#              openNotificationSettingsURLString), SafariServices, SFSafariViewController,
+#              ASWebAuthenticationSession and UIDocumentInteractionController, in every file but
+#              mobile/ios/KeepCrypt/OpenSettings.swift; there the one call
+#              UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)! passes
+#              (the camera prompt's "Open Settings"; options and a completion may follow), and every
+#              other line naming those names, the word URL or NSURL, URLComponents, an
+#              .init(string:, fileURLWithPath: or filePath:, or a string literal that starts with a
+#              scheme and its : hits.
 #
 # Fail-closed noise, not bypasses (rename or spell it out instead): a named format argument called
 # path that rustfmt wraps onto its own line ("        path = \"seed.age\",") is an Include hit in
@@ -913,7 +1091,23 @@
 # "Kotlin's uuid package"). A catch of a qualified type (java.io.IOException) in Documents.kt is a
 # hit (import it), and so is a DialogProperties(securePolicy = ...) wrapped over lines (keep the
 # call on one line); a removal of a manifest component is written on one line, tools:node="remove"
-# with the tag.
+# with the tag. Under mobile/ios, a comment or a string that names a Swift rule's word is a hit
+# like code (write "the offline check's monitor", not NWPathMonitor, outside its file; "the
+# system's defaults store", not UserDefaults); a function of our own named print, dump or puts, a
+# property named stdout or a type named Logger is a SwLog hit, a parse of a UUID (UUID(uuidString:))
+# an RNG hit, a method named copy, cut or paste a Clipboard hit, and a type or variable whose name
+# starts Network and a capital or NW and a capital a Network hit (rename it); NWPathMonitor twice
+# with one character between them, as in NWPathMonitor,NWPathMonitor, is a hit in the offline check
+# (write a blank after the comma); import Network with a comment after it there is a hit (put the
+# comment on its own line); the secure layer's statement is written field.isSecureTextEntry = true,
+# on its own line (an optional chain, field?.isSecureTextEntry, is no such line); and
+# KC_TEST_HOOKS in a project file that does not read as the property list it must be, or in a
+# configuration the reading cannot tie to a test target alone, is a hit wherever it stands. A catch
+# in prose or a string under mobile/ios is a SwFailOpen hit (write "a handler"), and so is a halt
+# whose argument is a string or spans lines (pass a case: Ceremony.halt(.core), on one line); any
+# method of our own named open, a property named openURL and a type named Link are SwOpenURL hits
+# (rename them; call the settings helper OpenSettings.show(), not .open()); and in OpenSettings.swift
+# the word URL in a comment, and a string that starts like a scheme ("Note:"), are hits.
 #
 # Portable on purpose: POSIX sh, POSIX ERE (no \b \s \< \>, no -P -w), POSIX sed (BRE, in
 # selectable() and textselection(); ERE with -E, which BSD and GNU sed share, in threads_by_path())
@@ -1042,7 +1236,7 @@ usage: scripts/banned-api-check.sh [--selftest [--shard K/N] | DIR | --artifact 
                                    --image-lists IMG KCONFIG | --image IMG EXPECTED_DIR KCONFIG BIN_SHA256 |
                                    --selftest-image IMG KCONFIG | --os-config OS_DIR |
                                    --apk VARIANT APK EXPECTED_DIR MERGER_REPORT CERT_SHA256 JNILIBS_DIR |
-                                   --selftest-apk]
+                                   --selftest-apk | --ios-app CONFIG APP EXPECTED_DIR | --selftest-ios-app]
   (none)      scan the repo this script lives in
   DIR         scan DIR as if it were the repo root
   --artifact  scan release artifacts built for TARGET: test markers, the test registry key, RNG
@@ -1086,6 +1280,17 @@ usage: scripts/banned-api-check.sh [--selftest [--shard K/N] | DIR | --artifact 
               NDK's llvm-nm and llvm-readobj on PATH)
   --selftest-apk
               the APK check's refusals and rules on stub tools and stub APKs (sh and python3 only)
+  --ios-app   check and scan a built iPhone app APP of CONFIG (Shipping or WithTestRegistry): its
+              Info.plist and privacy manifest summaries equal EXPECTED_DIR's (mobile/ios/expected) and keep
+              the hard rules (bundle id, iOS 17.0, a camera string, no ATS, background mode, URL type or
+              document type, imports .age and .kcr alone, no tracking or collected data), the app's own
+              files alone, and its executable under the artifact rules with no hooks marker, the registry
+              marker and test key in WithTestRegistry alone, no network, clipboard or denied framework,
+              the Network framework for NWPathMonitor alone, the system's libraries alone (macOS, python3,
+              the pinned toolchain)
+  --selftest-ios-app
+              --ios-app's refusals and rules on stand-in apps built with the SDK's clang and swiftc
+              (macOS with Xcode only)
   --selftest  run the fixtures in scripts/testdata/banned-api/, scripts/testdata/artifact/,
               scripts/testdata/workflows/ and scripts/testdata/os-config/, the image lists' built-in
               cases and the image scan's, on a stub image; with --shard K/N (K and N from 1 to 9999,
@@ -1115,15 +1320,29 @@ manifest's network permissions, backup, debug and components; a Kotlin Multiplat
 outside the allow list (no iPhone set in M5), a Java source, the iOS names in iosMain and iosTest,
 C callbacks, pinned memory, Kotlin Multiplatform DSL lines outside the allow list (no iPhone target
 in M5) and Kotlin/Native settings, and a cinterop definition other than the one exact .def; Kotlin outside
-mobile/android and a tracked file under mobile/ios; a tracked binary (a klib, a framework, any
+mobile/android; a tracked binary (a klib, a framework, any
 Mach-O, ELF, ar, zip, dex, keystore or compressed file among them) under mobile/; the CI passphrase
 key outside its two files; and under ffi/ a catch_unwind but the one std::panic::catch_unwind call
-in the crate root's fn guarded in ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs or one
-there that does not call keepcrypt_guard::guarded, macro_rules there or macro_rules and
-macro_export in ffi/src, ffi/guard/src and ffi/jni/src, a pub in ffi/guard/src but fn guarded's
-one line, a first statement of guarded other than the input's Zeroizing wrap, a JNI name outside ffi/jni/ or a C-ABI export in its lib.rs, a second Session::new or one
-outside ffi/src/ceremony.rs, and thread or JoinHandle outside ffi/tests/. A directory symlink is
-refused. Exit 0 clean, 1 hits, 2 usage or read error.
+in the crate root's fn guarded in ffi/guard/src/lib.rs, an export outside ffi/jni/src/lib.rs and
+ffi/capi/src/lib.rs or one there that does not call keepcrypt_guard::guarded, macro_rules there or
+macro_rules and macro_export in ffi/src, ffi/guard/src, ffi/jni/src and ffi/capi/src, a pub in
+ffi/guard/src but fn guarded's one line, a first statement of guarded other than the input's
+Zeroizing wrap, a JNI name outside ffi/jni/, a C-ABI export in jni's lib.rs or another ABI than "C"
+in capi's, a second Session::new or one
+outside ffi/src/ceremony.rs, and thread or JoinHandle outside ffi/tests/. Under mobile/ios, the
+Swift rules: more RNG, network and clipboard names (a hand-written generator, UUIDs, CryptoKit,
+iOS 26's Network names, BSD sockets, Bonjour, Multipeer, Bluetooth, the paste, copy, drag and drop
+APIs), the Network framework outside the offline check's file and anything but NWPathMonitor
+there, logging and printing and trap messages built from values, persistence and the app's
+directories, file writes outside the document picker's file, the system keyboard (UITextField
+outside the secure layer's file, which must set isSecureTextEntry = true), Swift packages,
+CocoaPods, Carthage, SDKs and tracking, a module map but the one, KC_TEST_HOOKS outside Swift
+files, the test targets' build settings and the app's TestHooks configuration, that configuration
+in a scheme but the UI-test one or in its archive action, try? and try!, a catch that does not end in
+Ceremony.halt( or a throw, Combine's error eaters, crash handlers and unstructured tasks, another
+Ceremony or halt outside Ceremony.swift, and opening a URL or another app but the settings page
+from OpenSettings.swift; and Swift, Objective-C, module maps and Xcode projects
+outside mobile/ios. A directory symlink is refused. Exit 0 clean, 1 hits, 2 usage or read error.
 EOF
 }
 
@@ -1486,7 +1705,7 @@ session_new_again() {
 # describes; depth (a block comment's nesting) and instr, israw and raw (an open string) carry over
 # lines. It also keeps each string's text as written (escapes unread, a line break as \n) in
 # lits[1..nlits], in the order the strings close on the line, and lit holds an open one's text
-# over lines; only ffi_jni_abi reads them. rust_tokens' tokens() then feeds code to the program's
+# over lines; only ffi_abi_scan reads them. rust_tokens' tokens() then feeds code to the program's
 # own tok(t), one token at a time and in order over lines: a word, ::, "" (a string, emptied; the
 # k-th "" of a line is lits[k]) or any other character but a blank.
 rust_lex='
@@ -2892,22 +3111,765 @@ kt_def() {
     }' "$1"
 }
 
+# --- Swift and the iPhone (tasks/todo.md, M6 item A1; Q86-Q92; rules 1, 5, 8, 9, 10 and 11) -------
+
+# The allowed files: each is one path, and a file of the same name anywhere else gets every rule.
+# The offline check (Stage C's C5) is the one file that may import Network, and it may name
+# NWPathMonitor alone; Q88's secure layer is the one file that may name UITextField, and must then
+# set isSecureTextEntry = true; the document picker (Stage D's .fileExporter backup and its read
+# back) is the one file that may write a file; the module map is the one way C reaches Swift
+# (keepcrypt.h's kc_call and kc_max_out, C2).
+sw_app=mobile/ios/KeepCrypt
+sw_offline=$sw_app/OfflineCheck.swift
+sw_secure=$sw_app/SecureLayer.swift
+sw_picker=$sw_app/DocumentPicker.swift
+sw_modulemap=mobile/ios/KeepCryptCore/module.modulemap
+
+# RNG (rule 1), under mobile/ios on top of rng() and osrng(), which already refuse arc4random*,
+# SecRandomCopyBytes, SystemRandomNumberGenerator, .random(, .randomElement(, .shuffled(, GameplayKit,
+# drand48 and the rest of the rand48 family, rand(, srand( and random( there as everywhere: a type
+# that conforms to RandomNumberGenerator (a hand-written PRNG; SystemRandomNumberGenerator is rng()'s,
+# so the word must start here), UUID() and NSUUID() and CFUUIDCreate (a random version 4 UUID from
+# the OS; UUID(uuidString:) hits too), CryptoKit (its keys and nonces draw from the OS, and core does
+# all crypto, rule 11) and SecKeyCreateRandomKey and SecKeyGeneratePair.
+swrng() {
+  grep -n -a -E \
+    -e "${L}RandomNumberGenerator" \
+    -e "${L}(NS)?UUID[[:space:]]*([(]|[.][[:space:]]*init$R)" \
+    -e 'CFUUIDCreate' \
+    -e 'CryptoKit' \
+    -e 'SecKeyCreateRandomKey|SecKeyGeneratePair' \
+    -- "$1"
+}
+
+# Network (rule 9), under mobile/ios on top of network(), which already refuses URLSession,
+# URLRequest, NWConnection, NWListener, NWBrowser, CFNetwork, WKWebView and the rest there as
+# everywhere: iOS 26's NetworkConnection, NetworkListener and NetworkBrowser and any other name that
+# starts Network and a capital (NetworkExtension), CFStream and CFSocket, the BSD calls socket(,
+# getaddrinfo(, gethostbyname( and getnameinfo(, Bonjour's NetService and NSNetService,
+# MultipeerConnectivity and its MC classes, and CoreBluetooth and its central and peripheral
+# managers (the app talks to no other device; a braille display is the system's, not ours).
+sw_network() {
+  grep -n -a -E \
+    -e "${L}Network[A-Z]" \
+    -e 'CFStream|CFSocket' \
+    -e "${L}(socket|getaddrinfo|gethostbyname|getnameinfo)[[:space:]]*[(]" \
+    -e "${L}(NS)?NetService" \
+    -e 'MultipeerConnectivity' \
+    -e "${L}MC(Session|NearbyService|AdvertiserAssistant|BrowserViewController)" \
+    -e 'CoreBluetooth' \
+    -e "${L}CB(Central|Peripheral)Manager" \
+    -- "$1"
+}
+
+# Network, under mobile/ios: an import of the Network framework, plain or of one declaration
+# (import struct Network.NWPathMonitor), in any file but the offline check (sw_network_import); and
+# there any such line but exactly "import Network" (blanks around it aside), so an @_exported or
+# @testable import, one of a single declaration and an import with a comment after it all hit
+# (sw_network_import_offline).
+sw_network_import_ere="${L}import[[:space:]]+((typealias|struct|class|enum|protocol|let|var|func)[[:space:]]+)?Network$R"
+sw_network_import() {
+  grep -n -a -E -e "$sw_network_import_ere" -- "$1"
+}
+sw_network_import_offline() {
+  t=$(grep -n -a -E -e "$sw_network_import_ere" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "$sw_network_import_ere" -e 's/^([0-9]+:)[[:space:]]*import[[:space:]]+Network[[:space:]]*$/\1/'
+}
+
+# Network, under mobile/ios: a name of the Network framework, a word that starts NW and a capital
+# (NWPathMonitor, NWPath, NWEndpoint, NWParameters, NWProtocolTCP) or nw_ (its C API,
+# nw_path_monitor_create), in any file but the offline check (sw_nw), and there any but
+# NWPathMonitor (sw_nw_offline), so the offline check reads the monitor's path through the closure's
+# own parameter and names no other type. NWConnection, NWListener and NWBrowser (with any ending)
+# are network()'s everywhere, so they are left to it here.
+sw_nw_ere="${L}(NW[A-Z]|nw_)"
+sw_nw() {
+  t=$(grep -n -a -E -e "$sw_nw_ere" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "$sw_nw_ere" -e 's/(^|[^A-Za-z0-9_])NW(Connection|Listener|Browser)[A-Za-z0-9_]*/\1/g'
+}
+sw_nw_offline() {
+  t=$(grep -n -a -E -e "$sw_nw_ere" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "$sw_nw_ere" -e 's/(^|[^A-Za-z0-9_])NW(Connection|Listener|Browser)[A-Za-z0-9_]*/\1/g' \
+    -e 's/(^|[^A-Za-z0-9_])NWPathMonitor([^A-Za-z0-9_]|$)/\1\2/g'
+}
+
+# Clipboard (rule 5; docs/mobile-apps.md, "Never offered: share sheet, copy"), under mobile/ios on top
+# of clipboard() and textselection(), which already refuse UIPasteboard, ShareLink,
+# UIActivityViewController and any .textSelection( but .textSelection(.disabled) there as
+# everywhere: the paste controls (PasteButton, UIPasteControl), SwiftUI's copy, cut, paste, drag
+# and drop modifiers (.copyable, .cuttable, .pasteDestination, .onCopyCommand, .onCutCommand,
+# .onPasteCommand, .draggable, .onDrag, .onDrop, .dropDestination, with a parenthesis or a
+# trailing closure), UIKit's edit menu (UIEditMenuInteraction, UIMenuController,
+# UIResponderStandardEditActions, canPerformAction), a responder's own copy, cut or paste action
+# (func copy(, #selector(paste(_:))), and UIKit's drag and drop (UIDragInteraction,
+# UIDropInteraction, NSItemProvider).
+swclipboard() {
+  grep -n -a -E \
+    -e "${L}PasteButton$R" \
+    -e 'UIPasteControl' \
+    -e "[.][[:space:]]*(copyable|cuttable|pasteDestination|onCopyCommand|onCutCommand|onPasteCommand|draggable|onDrag|onDrop|dropDestination)$R" \
+    -e 'UIEditMenuInteraction|UIMenuController|UIResponderStandardEditActions|canPerformAction' \
+    -e "${L}func[[:space:]]+(copy|cut|paste|pasteAndMatchStyle|pasteAndGo|pasteAndSearch)[[:space:]]*[(]" \
+    -e '#selector[[:space:]]*[(][[:space:]]*([A-Za-z0-9_]+[.])*(copy|cut|paste|pasteAndMatchStyle)[[:space:]]*[(]' \
+    -e 'UIDragInteraction|UIDropInteraction|NSItemProvider' \
+    -- "$1"
+}
+
+# SwLog (rules 3 and 5: nothing is logged or printed, and no trap message is built from runtime
+# values), under mobile/ios: print(, debugPrint(, dump(, NSLog( and NSLogv(, os_log( and
+# os_signpost(, syslog(, and C's puts(, printf(, fprintf(, vprintf(, fputs( and CFShow(; OSLog,
+# OSLogStore and OSSignposter (a word that starts OSLog or OSSignpost), Logger as a word (os's
+# logger, Logger(subsystem:) and Logger.init), an import of os or OSLog (import os.log too); the
+# standard streams (standardError, standardOutput, stderr, stdout); a conformance to
+# CustomStringConvertible or CustomDebugStringConvertible (what print and string interpolation
+# show, so no type gives its value a text form, as rule 5 bars Debug and Display); and a string
+# interpolation, \(, in a string after a call of fatalError(, precondition(, preconditionFailure(,
+# assert( or assertionFailure( on its line (the message lands in the crash report; KtLog's
+# template rule's Swift form). A message written on a line of its own, under the call, is not seen.
+swlog() {
+  grep -n -a -E \
+    -e "${L}(print|debugPrint|dump|NSLog|NSLogv|os_log|os_signpost|syslog|puts|printf|fprintf|vprintf|fputs|CFShow)[[:space:]]*[(]" \
+    -e "${L}OS(Log|Signpost)" \
+    -e "${L}Logger$R" \
+    -e "${L}import[[:space:]]+(os|OSLog)$R" \
+    -e "${L}(standardError|standardOutput|stderr|stdout)$R" \
+    -e "${L}Custom(Debug)?StringConvertible$R" \
+    -e '(^|[^A-Za-z0-9_])(fatalError|preconditionFailure|precondition|assertionFailure|assert)[[:space:]]*[(].*"[^"]*\\[(]' \
+    -- "$1"
+}
+
+# SwStorage (rule 8: nothing is persisted; the backup the document picker hands the system is the
+# one file written), under mobile/ios, in every file: UserDefaults (NSUserDefaults too),
+# @AppStorage and @SceneStorage, NSKeyedArchiver and NSKeyedUnarchiver, Core Data, SwiftData,
+# CloudKit and Core Spotlight by name (their imports) and their classes (NSPersistent*,
+# NSManagedObject*, ModelContainer, ModelContext, .modelContainer, @Model, CKContainer,
+# CKDatabase, CKRecord), the Keychain (SecItem*, kSecClass, kSecAttr*, kSecValue*, kSecReturn*,
+# kSecMatch*), NSUbiquitousKeyValueStore, user activities and state restoration (NSUserActivity,
+# .userActivity, .onContinueUserActivity, restorationIdentifier, restorationClass,
+# stateRestorationActivity, encodeRestorableState and the rest, shouldSaveApplicationState), the
+# app's own directories (documentDirectory and documentsDirectory, cachesDirectory,
+# applicationSupportDirectory, libraryDirectory, temporaryDirectory, downloadsDirectory,
+# homeDirectory, NSTemporaryDirectory, NSHomeDirectory, NSSearchPathForDirectoriesInDomains,
+# containerURL), and C's fopen(, freopen(, fwrite(, mkstemp( and tmpfile(. The document picker
+# file gets this list too: it writes where the user picks, never into the app's own storage.
+swstorage() {
+  grep -n -a -E \
+    -e 'UserDefaults' \
+    -e "${L}(AppStorage|SceneStorage)$R" \
+    -e 'NSKeyed(Archiver|Unarchiver)' \
+    -e "${L}(CoreData|SwiftData|CloudKit|CoreSpotlight)$R" \
+    -e 'NSPersistent|NSManagedObject' \
+    -e "${L}(ModelContainer|ModelContext)$R|[.][[:space:]]*modelContainer$R|@[[:space:]]*Model$R" \
+    -e "${L}(SecItem|kSec(Class|Attr|Value|Return|Match))" \
+    -e 'NSUbiquitousKeyValueStore' \
+    -e "${L}CK(Container|Database|Record)" \
+    -e 'NSUserActivity' \
+    -e "[.][[:space:]]*(userActivity|onContinueUserActivity)$R" \
+    -e '[Rr]estoration(Identifier|Class)|stateRestorationActivity|RestorableState|[Ss]houldSave(Secure)?ApplicationState' \
+    -e "${L}(documents?Directory|cachesDirectory|applicationSupportDirectory|libraryDirectory|temporaryDirectory|downloadsDirectory|homeDirectory|NSTemporaryDirectory|NSHomeDirectory|NSSearchPathForDirectoriesInDomains|containerURL)$R" \
+    -e "${L}(fopen|freopen|fwrite|mkstemp|tmpfile)[[:space:]]*[(]" \
+    -- "$1"
+}
+
+# SwStorage, under mobile/ios but the document picker file: a file written, by a write(to:,
+# write(toFile: or write(toURL: (Data's, String's and NSData's), FileManager's createFile(,
+# createDirectory(, copyItem(, moveItem(, replaceItem( and replaceItemAt(, removeItem(, trashItem(,
+# linkItem(, createSymbolicLink( and setAttributes(, a FileHandle forWriting or forUpdating,
+# OutputStream and NSOutputStream, and the document picker's own types and modifiers
+# (FileWrapper and fileWrapper, FileDocument, ReferenceFileDocument, UIDocument,
+# NSFileCoordinator, .fileExporter, .fileMover and UIDocumentPickerViewController's
+# forExporting:). Reading a picked file back (Data(contentsOf:)) is not a write, and passes.
+swstorage_write() {
+  grep -n -a -E \
+    -e "${L}write[[:space:]]*[(][[:space:]]*(to|toFile|toURL)[[:space:]]*:" \
+    -e "${L}(createFile|createDirectory|copyItem|moveItem|replaceItem|replaceItemAt|removeItem|trashItem|linkItem|createSymbolicLink|setAttributes)[[:space:]]*[(]" \
+    -e 'forWriting|forUpdating' \
+    -e "${L}(NS)?OutputStream$R" \
+    -e "${L}(FileWrapper|fileWrapper|FileDocument|ReferenceFileDocument|UIDocument|NSFileCoordinator)$R" \
+    -e "[.][[:space:]]*(fileExporter|fileMover)$R" \
+    -e 'forExporting' \
+    -- "$1"
+}
+
+# SwInput (docs/mobile-apps.md: never the system keyboard; in-app pads only), under mobile/ios:
+# SwiftUI's text fields and editors (TextField and every name it starts, SecureField, TextEditor),
+# UITextView, becoming first responder (becomeFirstResponder and canBecomeFirstResponder, in the
+# secure-layer file too: its field never takes focus), UIKit's text input protocols (UIKeyInput,
+# UITextInput; UITextInputTraits passes), search (UISearchBar, UISearchController,
+# UISearchTextField, .searchable), an alert's text field (addTextField) and SwiftUI focus
+# (@FocusState, .focused; VoiceOver's AccessibilityFocusState and .accessibilityFocused pass).
+swinput() {
+  grep -n -a -E \
+    -e "${L}(TextField|SecureField|TextEditor)" \
+    -e 'UITextView' \
+    -e '[Bb]ecomeFirstResponder' \
+    -e "${L}(UIKeyInput|UITextInput)$R" \
+    -e 'UISearch' \
+    -e "[.][[:space:]]*searchable$R" \
+    -e 'addTextField' \
+    -e "${L}FocusState$R" \
+    -e "[.][[:space:]]*focused$R" \
+    -- "$1"
+}
+
+# SwInput, under mobile/ios but the secure-layer file: UITextField (Q88's secure layer draws the
+# words inside a secure field's layer, in that file alone).
+sw_uitextfield() {
+  grep -n -a -E -e 'UITextField' -- "$1"
+}
+
+# SwInput, in the secure-layer file: every isSecureTextEntry but an assignment of the literal true
+# (isSecureTextEntry = true), so false, a variable, a comparison (== true) and a read all hit. The
+# file must also hold such an assignment as a statement of its own line whenever it names
+# UITextField, checked in scan() after the loop ("missing ..." at line 1).
+sw_secure_entry() {
+  t=$(grep -n -a -E -e 'isSecureTextEntry' -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits 'isSecureTextEntry' -e 's/isSecureTextEntry[[:space:]]*=[[:space:]]*true([^A-Za-z0-9_]|$)/\1/g'
+}
+sw_secure_entry_line='[[:space:]]*([A-Za-z_][A-Za-z0-9_]*[[:space:]]*[.][[:space:]]*)*isSecureTextEntry[[:space:]]*=[[:space:]]*true[[:space:]]*'
+
+# SwPackage (Q86, Q91: no third-party Swift package; rule 9: no analytics, crash or ad SDKs; rule
+# 11), under mobile/ios, by text: a Swift package in a project file (XCRemoteSwiftPackageReference,
+# XCLocalSwiftPackageReference and XCSwiftPackageProductDependency, any word holding
+# SwiftPackage; packageProductDependencies, packageReferences), CocoaPods' and Carthage's marks
+# ([CP] build phases, a Pods- or Pods_ name, Manifest.lock, Carthage), Apple's advertising,
+# tracking and diagnostics frameworks (AdSupport, ASIdentifierManager, AppTrackingTransparency,
+# ATTrackingManager, advertisingIdentifier, identifierForVendor, MetricKit and MXMetricManager,
+# which hands crash and diagnostic reports to the app); and, by sw_sdk, an import or include line
+# (Swift's import, Objective-C's #import and @import, C's #include) that names, in any letter case,
+# one of the SDKs KtSdk refuses on Android or another (firebase, crashlytics, sentry, bugsnag,
+# appcenter, datadog, newrelic, mixpanel, amplitude, flurry, googlemobileads, admob, fbsdk,
+# facebook, instabug, onesignal, appsflyer). The path rules (Package.swift, Package.resolved, a
+# Podfile, a Cartfile, a .podspec, a .swiftpm/, swiftpm/, Pods/ or Carthage/ directory, and a
+# module map other than the one) are in scan().
+swpackage() {
+  grep -n -a -E \
+    -e 'SwiftPackage|packageProductDependencies|packageReferences' \
+    -e '[[]CP[]]|Pods[-_]|Manifest[.]lock|Carthage' \
+    -e "${L}(AdSupport|ASIdentifierManager|AppTrackingTransparency|ATTrackingManager|advertisingIdentifier|identifierForVendor|MetricKit|MXMetricManager)" \
+    -- "$1"
+}
+sw_sdk() {
+  grep -n -a -i -E \
+    -e "${L}(import|include)[[:space:]].*(firebase|crashlytics|sentry|bugsnag|appcenter|datadog|newrelic|mixpanel|amplitude|flurry|googlemobileads|admob|fbsdk|facebook|instabug|onesignal|appsflyer)" \
+    -- "$1"
+}
+
+# SwPackage, in the one module map ($sw_modulemap): link (a library linked by name), extern (another
+# module map read in), umbrella (every header of a directory) and framework, as words, so the module
+# map names keepcrypt.h's declarations and nothing more (the project links the prebuilt
+# libkeepcrypt_capi.a by path, C2).
+sw_module_lines() {
+  grep -n -a -E -e "${L}(link|extern|umbrella|framework)$R" -- "$1"
+}
+
+# SwTestHook (rule 10's Swift form: the test hooks never ship; tasks/todo.md, M6 item C5 and lead
+# decision M6-5), under mobile/ios: the compilation condition KC_TEST_HOOKS, which compiles the UI
+# tests' hooks into the app, may appear in a .swift file (as #if KC_TEST_HOOKS) and, in a .pbxproj,
+# only inside the buildSettings of a build configuration of a test target or of the app target's
+# TestHooks configuration (sw_hooks_pbxproj); every other line that names it, in any other file (an
+# .xcconfig, a header's #define, a plist, a scheme), is a hit (sw_hooks). So no shipping
+# configuration of the app (Shipping, WithTestRegistry), no project-wide one, and no settings file
+# an app configuration could take as its base, defines it.
+sw_hooks() {
+  grep -n -a -F -e 'KC_TEST_HOOKS' -- "$1"
+}
+
+# sw_hooks_pbxproj FILE: the project file is read as the old-style property list it is, with no
+# parser beyond this one (a new dependency, rule 11): every comment (/* */ over lines, and // to
+# the end of a line), every quoted string (with backslash escapes, over lines) and every bare
+# string ([A-Za-z0-9_$+/:.-]) is a token, and { } ( ) = ; , are read as a dictionary's and an
+# array's punctuation, in order. A KC_TEST_HOOKS in a string (a key or a value, alone or inside a
+# longer one such as "$(inherited) KC_TEST_HOOKS" or -DKC_TEST_HOOKS) is allowed only inside
+# objects / ID / buildSettings, where ID is an XCBuildConfiguration defined once, and either listed
+# only in the buildConfigurations of XCConfigurationLists each defined once and each the
+# buildConfigurationList of nothing but PBXNativeTargets, each defined once, whose productType is
+# com.apple.product-type.bundle.unit-test or com.apple.product-type.bundle.ui-testing; or named
+# TestHooks (one name key) and listed once, in one XCConfigurationList defined once and the
+# buildConfigurationList of the app target alone: the one object whose productType is
+# com.apple.product-type.application, a PBXNativeTarget defined once (M6-5). So the app's Shipping
+# and WithTestRegistry configurations, a TestHooks one of the project (whose settings every target
+# takes) or of any other target, a TestHooks one also listed elsewhere or named twice, any of a
+# project with a second application target, a configuration of a list shared with the app or of any
+# other target, and one listed nowhere, all hit. Every line holding
+# more KC_TEST_HOOKS than its allowed strings is a hit, so one in a comment hits too; and a file
+# the reading cannot follow (a character no token takes, a brace or a ; out of place, a dictionary,
+# a string or a comment still open at the end, a second top-level dictionary) allows none. FILE is
+# read through kt_text, so a NUL byte hides nothing from the Mac's awk.
+sw_hooks_pbxproj() {
+  grep -q -a -F -e 'KC_TEST_HOOKS' -- "$1"
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  ktext=$(kt_text "$1") || return 2
+  printf '%s\n' "$ktext" | awk '
+    function count(s,    n, p) {
+      n = 0
+      while ((p = index(s, "KC_TEST_HOOKS")) > 0) {
+        n++
+        s = substr(s, p + 13)
+      }
+      return n
+    }
+    # A string that holds the condition is a candidate when it is inside the buildSettings of an
+    # object: depth 4 is the dictionary under that key of the object, at depth 3.
+    function note(v, ln,    k) {
+      k = count(v)
+      if (k == 0) return
+      if (d >= 4 && pk[2] == "objects" && type[2] == "D" && pk[4] == "buildSettings" && type[4] == "D") {
+        nc++
+        cline[nc] = ln
+        cobj[nc] = pk[3]
+        cn[nc] = k
+      }
+    }
+    # st[d]: in a dictionary 0 a key is due, 1 its =, 2 its value, 3 its ;; in an array 0 a value is
+    # due, 1 its , or the ).
+    function emit(v, ln) {
+      note(v, ln)
+      if (d == 0) {
+        bad = 1
+        return
+      }
+      if (type[d] == "D") {
+        if (st[d] == 0) {
+          ck[d] = v
+          st[d] = 1
+        } else if (st[d] == 2) {
+          if (d == 3 && pk[2] == "objects" && type[2] == "D") {
+            if (ck[3] == "isa") isa[pk[3]] = v
+            else if (ck[3] == "buildConfigurationList") bcl[pk[3]] = v
+            else if (ck[3] == "productType") ptype[pk[3]] = v
+            else if (ck[3] == "name") {
+              cname[pk[3]] = v
+              cnames[pk[3]]++
+            }
+          }
+          st[d] = 3
+        } else {
+          bad = 1
+        }
+        return
+      }
+      if (st[d] == 0) {
+        if (d == 4 && pk[2] == "objects" && pk[4] == "buildConfigurations") {
+          nm++
+          mlist[nm] = pk[3]
+          mcfg[nm] = v
+        }
+        st[d] = 1
+      } else {
+        bad = 1
+      }
+    }
+    function push(c) {
+      if (d == 0) {
+        if (c != "{" || done) {
+          bad = 1
+          return
+        }
+        d = 1
+        type[1] = "D"
+        st[1] = 0
+        pk[1] = ""
+        return
+      }
+      if (type[d] == "D" && st[d] == 2) st[d] = 3
+      else if (type[d] == "A" && st[d] == 0) st[d] = 1
+      else {
+        bad = 1
+        return
+      }
+      d++
+      type[d] = (c == "{") ? "D" : "A"
+      st[d] = 0
+      pk[d] = (type[d - 1] == "D") ? ck[d - 1] : ""
+      if (d == 3 && pk[2] == "objects" && type[2] == "D" && type[3] == "D") defs[pk[3]]++
+    }
+    function pop(c) {
+      if (d == 0 || (c == "}" && (type[d] != "D" || st[d] != 0)) || (c == ")" && type[d] != "A")) {
+        bad = 1
+        return
+      }
+      d--
+      if (d == 0) done = 1
+    }
+    function punct(c) {
+      if (c == "=" && d > 0 && type[d] == "D" && st[d] == 1) st[d] = 2
+      else if (c == ";" && d > 0 && type[d] == "D" && st[d] == 3) st[d] = 0
+      else if (c == "," && d > 0 && type[d] == "A" && st[d] == 1) st[d] = 0
+      else bad = 1
+    }
+    {
+      line = $0
+      k = count(line)
+      if (k) {
+        raw[NR] = k
+        text[NR] = line
+      }
+      n = length(line)
+      i = 1
+      while (i <= n) {
+        c = substr(line, i, 1)
+        if (incomment) {
+          if (substr(line, i, 2) == "*/") {
+            incomment = 0
+            i += 2
+          } else {
+            i++
+          }
+          continue
+        }
+        if (instr) {
+          if (c == "\\") {
+            s = s substr(line, i, 2)
+            i += 2
+          } else if (c == "\"") {
+            instr = 0
+            emit(s, sline)
+            i++
+          } else {
+            s = s c
+            i++
+          }
+          continue
+        }
+        two = substr(line, i, 2)
+        if (two == "//") break
+        if (two == "/*") {
+          incomment = 1
+          i += 2
+        } else if (c == " " || c == "\t" || c == "\r") {
+          i++
+        } else if (c == "\"") {
+          instr = 1
+          s = ""
+          sline = NR
+          i++
+        } else if (c == "{" || c == "(") {
+          push(c)
+          i++
+        } else if (c == "}" || c == ")") {
+          pop(c)
+          i++
+        } else if (c == "=" || c == ";" || c == ",") {
+          punct(c)
+          i++
+        } else if (match(substr(line, i), /^[A-Za-z0-9_$+\/:.-]+/)) {
+          emit(substr(line, i, RLENGTH), NR)
+          i += RLENGTH
+        } else {
+          bad = 1
+          i++
+        }
+      }
+      if (instr) s = s "\n"
+    }
+    END {
+      if (instr || incomment || d != 0 || !done) bad = 1
+      ut = "com.apple.product-type.bundle.unit-test"
+      ui = "com.apple.product-type.bundle.ui-testing"
+      at = "com.apple.product-type.application"
+      napps = 0
+      for (o in ptype) if (ptype[o] == at) napps++
+      for (o in bcl) {
+        if (isa[o] == "PBXNativeTarget" && defs[o] == 1 && (ptype[o] == ut || ptype[o] == ui)) towner[bcl[o]]++
+        else if (isa[o] == "PBXNativeTarget" && defs[o] == 1 && ptype[o] == at && napps == 1) aowner[bcl[o]]++
+        else oowner[bcl[o]]++
+      }
+      for (k = 1; k <= nm; k++) {
+        l = mlist[k]
+        if (isa[l] == "XCConfigurationList" && defs[l] == 1 && (l in towner) && !(l in oowner) && !(l in aowner)) tref[mcfg[k]]++
+        else if (isa[l] == "XCConfigurationList" && defs[l] == 1 && (l in aowner) && aowner[l] == 1 && !(l in oowner) && !(l in towner)) aref[mcfg[k]]++
+        else oref[mcfg[k]]++
+      }
+      for (k = 1; k <= nc; k++) {
+        o = cobj[k]
+        if (bad || isa[o] != "XCBuildConfiguration" || defs[o] != 1 || (o in oref)) continue
+        if ((o in tref) && !(o in aref)) ok[cline[k]] += cn[k]
+        else if ((o in aref) && aref[o] == 1 && !(o in tref) && (o in cnames) && cnames[o] == 1 && cname[o] == "TestHooks") ok[cline[k]] += cn[k]
+      }
+      for (ln = 1; ln <= NR; ln++) {
+        if ((ln in raw) && raw[ln] > ok[ln] + 0) {
+          print ln ":" text[ln]
+          found = 1
+        }
+      }
+      exit !found
+    }'
+}
+
+# SwTestHook, in a scheme (lead decision M6-5): TestHooks, the app's one configuration that sets
+# KC_TEST_HOOKS, is the UI-test scheme's alone and is never archived. The word TestHooks in a scheme
+# (a .xcscheme in any letter case) other than $sw_hooks_scheme is a hit on every line that names it;
+# in that scheme, a line inside its ArchiveAction is (from the line that opens <ArchiveAction to the
+# end of the element: the start tag's own /> or </ArchiveAction>; one never closed runs to the end of
+# the file). So no other scheme builds, runs, tests or archives the hooks, and archiving the UI-test
+# scheme cannot take them. A build that names the configuration on xcodebuild's command line is the
+# app scan's (--ios-app refuses the hooks' marker in both shipped configurations).
+sw_hooks_scheme=mobile/ios/KeepCrypt.xcodeproj/xcshareddata/xcschemes/KeepCrypt-TestHooks.xcscheme
+sw_hooks_schemes() {
+  grep -q -a -E -e "${L}TestHooks$R" -- "$1"
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  if [ "$1" != "$sw_hooks_scheme" ]; then
+    grep -n -a -E -e "${L}TestHooks$R" -- "$1"
+    return
+  fi
+  ktext=$(kt_text "$1") || return 2
+  printf '%s\n' "$ktext" | awk '
+    {
+      line = $0
+      if (!arch && (p = index(line, "<ArchiveAction")) > 0) {
+        arch = 1
+        tag = 1
+        line = substr(line, p)
+      }
+      if (arch && match($0, /(^|[^A-Za-z0-9_])TestHooks([^A-Za-z0-9_]|$)/)) {
+        print NR ":" $0
+        found = 1
+      }
+      if (arch && tag && (p = index(line, ">")) > 0) {
+        tag = 0
+        if (p > 1 && substr(line, p - 1, 1) == "/") arch = 0
+        line = substr(line, p + 1)
+      }
+      if (arch && !tag && index(line, "</ArchiveAction>") > 0) arch = 0
+    }
+    END { exit !found }'
+}
+
+# SwFailOpen (rule 3: no fallback, no catch-and-continue; tasks/todo.md, M6 item A2 and lead decision
+# M6-6), under mobile/ios: KtFailOpen's rules in their Swift forms. The halt is the Swift
+# CeremonyModel's static func, Ceremony.halt(, which mobile/ios/KeepCrypt/Ceremony.swift (C3)
+# defines; it returns Never, so nothing runs after it.
+sw_ceremony=$sw_app/Ceremony.swift
+sw_opensettings=$sw_app/OpenSettings.swift
+
+# SwFailOpen, every file under mobile/ios (KtFailOpen's words): try? and try! (a failure turned into
+# nil, or into a trap with no wipe; getOrNull's and !!'s Swift forms), Result(catching: and a
+# Result { } built from a closure (runCatching's), flatMapError (recover's), Combine's .catch,
+# .tryCatch, .replaceError and .assertNoFailure; the catch-alls no catch shows (M5-58's Swift
+# forms): NSSetUncaughtExceptionHandler and NSGetUncaughtExceptionHandler, and a signal( or
+# sigaction( handler; and a task whose failure waits where nobody need read it (M5-60's): Task { },
+# Task( and Task< (an unstructured task, whose thrown error is dropped unless its value is
+# awaited), Task.detached, withThrowingTaskGroup, withThrowingDiscardingTaskGroup and async let.
+# Task.sleep, Task.isCancelled and Task.checkCancellation pass, and so does SwiftUI's .task { }.
+swfailopen() {
+  grep -n -a -E \
+    -e "${L}try[[:space:]]*[?!]" \
+    -e "${L}Result[[:space:]]*([(][[:space:]]*catching|[{])" \
+    -e "${L}flatMapError$R" \
+    -e "[.][[:space:]]*(catch|tryCatch|replaceError|assertNoFailure)$R" \
+    -e 'NSSetUncaughtExceptionHandler|NSGetUncaughtExceptionHandler' \
+    -e "${L}(signal|sigaction)[[:space:]]*[(]" \
+    -e "${L}Task[[:space:]]*([{(<]|[.][[:space:]]*detached$R)" \
+    -e "${L}with(Throwing|ThrowingDiscarding)TaskGroup$R" \
+    -e "${L}async[[:space:]]+let$R" \
+    -- "$1"
+}
+
+# SwFailOpen, every file under mobile/ios (KtFailOpen's catch list): every catch clause whose block
+# does not end in the halt. Read fail closed without a parser, as kt_finally reads a finally: from
+# the word catch (Swift's, and Objective-C's @catch; Combine's .catch is swfailopen's), past its
+# pattern and where clause to its {, and on to the } that brings the count of braces back, the
+# block's last statement (after its last line break or ;, blanks aside) must be a call of
+# Ceremony.halt( closed on that line, or a throw (a rethrow), with no brace in it. A catch whose
+# line holds a quote, a backtick, a # or a comment before it, or that an open /* comment holds,
+# hits (a catch in prose or a string is a catch too); so does a quote, a backtick, a # or a comment
+# (// or /*) in its pattern or its block, or a } or ; before its {, where a brace could be text the
+# count must not see, and a file that ends before the block does: the clause is read no further.
+# Each hit is the catch's line. FILE is read through kt_text. Unlike KtFailOpen's, the allowance
+# is the block's end, not the caught type (Swift's catch has no type in its header to require), and
+# there is no test scope (XCTest's XCTAssertThrowsError needs no catch); Swift's defer cannot
+# return, break or throw (the compiler refuses), so kt_finally has no Swift form.
+sw_catch() {
+  grep -q -a -E -e "${L}catch$R" -- "$1"
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  ktext=$(kt_text "$1") || return 2
+  printf '%s\n' "$ktext" | awk '
+    function count(s, t,    n, p) {
+      n = 0
+      while ((p = index(s, t)) > 0) {
+        n++
+        s = substr(s, p + length(t))
+      }
+      return n
+    }
+    # unreadable(c, two): a character the reading cannot see past (a quote, a backtick, a # or a
+    # comment).
+    function unreadable(c, two) {
+      return c == "\"" || c == "`" || c == "#" || two == "//" || two == "/*"
+    }
+    # clause(ln, p): judges the catch whose word ends before column p of line ln; sets eln and ep to
+    # where the reading stopped, and returns 1 for a hit.
+    function clause(ln, p,    s, c, two, depth, body, n, k, seg, last) {
+      s = L[ln]
+      # The pattern and where clause, to the block.
+      while (1) {
+        if (p > length(s)) {
+          if (ln == NR) {
+            eln = ln
+            ep = p
+            return 1
+          }
+          ln++
+          s = L[ln]
+          p = 1
+          continue
+        }
+        c = substr(s, p, 1)
+        two = substr(s, p, 2)
+        if (unreadable(c, two) || c == "}" || c == ";") {
+          eln = ln
+          ep = p + 1
+          return 1
+        }
+        p++
+        if (c == "{") break
+      }
+      depth = 1
+      body = ""
+      while (1) {
+        if (p > length(s)) {
+          if (ln == NR) {
+            eln = ln
+            ep = p
+            return 1
+          }
+          ln++
+          s = L[ln]
+          p = 1
+          body = body "\n"
+          continue
+        }
+        c = substr(s, p, 1)
+        two = substr(s, p, 2)
+        if (unreadable(c, two)) {
+          eln = ln
+          ep = p + 1
+          return 1
+        }
+        p++
+        if (c == "{") depth++
+        if (c == "}" && --depth == 0) break
+        body = body c
+      }
+      eln = ln
+      ep = p
+      gsub(/;/, "\n", body)
+      n = split(body, seg, "\n")
+      last = ""
+      for (k = n; k >= 1; k--) {
+        last = seg[k]
+        gsub(/^[ \t\r\f]+|[ \t\r\f]+$/, "", last)
+        if (last != "") break
+      }
+      if (last ~ /[{}]/) return 1
+      if (last ~ /^Ceremony[ \t]*[.][ \t]*halt[ \t]*[(].*[)]$/) return 0
+      if (last ~ /^throw[ \t]/) return 0
+      return 1
+    }
+    { L[NR] = $0 }
+    END {
+      cmt = 0
+      ln = 1
+      p = 1
+      while (ln <= NR) {
+        s = L[ln]
+        rest = substr(s, p)
+        if (!match(rest, /(^|[^A-Za-z0-9_.])catch([^A-Za-z0-9_]|$)/)) {
+          cmt += count(rest, "/*") - count(rest, "*/")
+          if (cmt < 0) cmt = 0
+          ln++
+          p = 1
+          continue
+        }
+        at = p + RSTART - 1
+        if (substr(s, at, 5) != "catch") at++
+        before = substr(s, p, at - p)
+        cmt += count(before, "/*") - count(before, "*/")
+        if (cmt < 0) cmt = 0
+        pre = substr(s, 1, at - 1)
+        if (cmt > 0 || pre ~ /["`#]/ || index(pre, "//") || index(pre, "/*")) {
+          hit[ln] = 1
+          p = at + 5
+          continue
+        }
+        if (clause(ln, at + 5)) hit[ln] = 1
+        ln = eln
+        p = ep
+      }
+      for (k = 1; k <= NR; k++) {
+        if (k in hit) {
+          print k ":" L[k]
+          found = 1
+        }
+      }
+      exit !found
+    }'
+}
+
+# SwFailOpen, outside mobile/ios/KeepCrypt/Ceremony.swift: a declaration of a type, an extension or a
+# typealias named Ceremony, and a func halt, so no other code stands behind the halt the catch rule
+# allows (KtFailOpen's alias rule's Swift form). In Ceremony.swift (sw_halt_decl): every func halt
+# declared on a line without -> Never, so the halt cannot return.
+sw_ceremony_decl() {
+  grep -n -a -E \
+    -e "${L}(class|struct|enum|actor|protocol|extension|typealias)[[:space:]]+Ceremony$R" \
+    -e "${L}func[[:space:]]+halt$R" \
+    -- "$1"
+}
+sw_halt_decl() {
+  t=$(grep -n -a -E -e "${L}func[[:space:]]+halt$R" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "${L}func[[:space:]]+halt$R" -e '/->[[:space:]]*Never([^A-Za-z0-9_]|$)/s/func/fn/g'
+}
+
+# SwOpenURL (rule 9: no link out of the app; KtIntent's Swift form; lead decision M6-6), under
+# mobile/ios: any .open( call (UIApplication.shared.open( and every other), openURL (SwiftUI's
+# environment action), canOpenURL, OpenURLAction, SwiftUI's Link(, the settings URLs
+# (openSettingsURLString, openNotificationSettingsURLString), Safari and web sign-in views
+# (SafariServices, SFSafariViewController, ASWebAuthenticationSession) and
+# UIDocumentInteractionController (another app opens the file), in every file but
+# mobile/ios/KeepCrypt/OpenSettings.swift (sw_open). There (sw_open_settings) the one call allowed is
+# UIApplication.shared.open(URL(string: UIApplication.openSettingsURLString)!, its argument the
+# settings URL itself (blanks around each part aside; options and a completion may follow), the
+# camera prompt's "Open Settings"; with that shape taken out, every other line naming one of those
+# names, the word URL or NSURL, URLComponents, an .init(string:, .init(fileURLWithPath: or
+# .init(filePath:, or a string literal that starts with a scheme and its : (a URL literal: "https:,
+# "app-settings:, "tel:; "Note: also hits), is a hit, so no other URL is built, taken as a
+# parameter or opened there.
+sw_open_ere="[.][[:space:]]*open[[:space:]]*[(]|${L}(openURL|canOpenURL|OpenURLAction)$R|${L}Link[[:space:]]*[(]|open[A-Za-z]*SettingsURLString|SafariServices|SFSafariViewController|ASWebAuthenticationSession|UIDocumentInteractionController"
+sw_open() {
+  grep -n -a -E -e "$sw_open_ere" -- "$1"
+}
+sw_open_settings_ere="$sw_open_ere|${L}(NS)?URL$R|URLComponents|[.][[:space:]]*init[[:space:]]*[(][[:space:]]*(string|fileURLWithPath|filePath)[[:space:]]*:|\"[A-Za-z][A-Za-z0-9+.-]*:"
+sw_open_settings() {
+  t=$(grep -n -a -E -e "$sw_open_settings_ere" -- "$1")
+  case $? in 0) ;; 1) return 1 ;; *) return 2 ;; esac
+  kept_hits "$sw_open_settings_ere" \
+    -e 's/UIApplication[[:space:]]*[.][[:space:]]*shared[[:space:]]*[.][[:space:]]*open[[:space:]]*[(][[:space:]]*URL[[:space:]]*[(][[:space:]]*string[[:space:]]*:[[:space:]]*UIApplication[[:space:]]*[.][[:space:]]*openSettingsURLString[[:space:]]*[)][[:space:]]*!//g'
+}
+
 # --- FFI (tasks/todo.md, M5 groups 3 and 7; Q53; Q66's keepcrypt-guard and, after Q73, M5-32: the
-# guard and the JNI boundary, keepcrypt-capi being M6's), .rs files under ffi/ ----------------------
+# guard and the JNI boundary; M6 item B4: keepcrypt-capi, the second boundary), .rs files under ffi/ -
 
 # One catch, one place, tied to every export: catch_unwind outside every comment and literal
 # (rust_code_match, so a doc line, a string and ffi/clippy.toml's ban entry are no site) anywhere
 # under ffi/ but ffi/guard/src/lib.rs. There every catch_unwind but one is a hit (ffi_guard_catch):
 # the one is the path call std::panic::catch_unwind( written in the body of the crate root's fn
-# guarded, the function every export calls as keepcrypt_guard::guarded (ffi_export_scan). So a use
+# guarded, the function every export of both boundaries calls as keepcrypt_guard::guarded
+# (ffi_export_scan). So a use
 # line naming it (pub or not, alone or in a group), a rename with as, a shorter path
 # (panic::catch_unwind), a leading ::, a turbofish, the function taken as a value, a second call,
 # and a call in any other function, in a macro_rules definition (inside fn guarded too) or in a fn
 # guarded that is not the crate root's (one in a mod or an impl, or nested in another fn) are each
 # a hit: an alias or wrapper exported by keepcrypt-guard would let the boundary catch and continue
-# (rule 3) with no catch_unwind of its own. Once ffi/jni/src/lib.rs declares an export
-# (ffi_export_ere), that one call is required (ffi_guard_site, checked after the scan and reported
-# at ffi/jni/src/lib.rs:1).
+# (rule 3) with no catch_unwind of its own. Once ffi/jni/src/lib.rs or ffi/capi/src/lib.rs declares
+# an export (ffi_export_ere), that one call is required (ffi_guard_site, checked after the scan and
+# reported at that boundary's lib.rs:1).
 ffi_catch_unwind() {
   rust_code_match '[^A-Za-z0-9_]catch_unwind[^A-Za-z0-9_]' "$1"
 }
@@ -2995,23 +3957,27 @@ ffi_guard_site() {
   ffi_guard_scan site "$1"
 }
 
-# Every export sits in ffi/jni/src/lib.rs and calls guarded(): outside every comment and literal,
+# Every export sits in one of the two boundaries' lib.rs, ffi/jni/src/lib.rs (Android) and
+# ffi/capi/src/lib.rs (iPhone, M6 item B4), and calls guarded(): outside every comment and literal,
 # no_mangle and export_name (bare or inside unsafe(...)) and the word extern, which starts an extern
 # fn with an ABI string ("system", "C", "C-unwind", any: rust_code_match leaves it as "") or without
-# one (which is "C"), are hits under ffi/ anywhere but ffi/jni/src/lib.rs (ffi_export). The word
+# one (which is "C"), are hits under ffi/ anywhere but those two files (ffi_export). The word
 # alone, whatever follows it, so an extern fn split from its fn over lines, one whose ABI a macro
 # takes as $abi, and an extern passed to a macro as tokens are hits too. An extern "C" and an extern
 # "system" function share an ABI on Android, and RegisterNatives can bind a native method to a
 # function that is not exported by name, so each form is one: in another file it would run outside
-# the reviewed boundary. keepcrypt-capi is M6's (Q73, M5-32), so ffi/capi/src/lib.rs is no boundary
-# in M5. In ffi/jni/src/lib.rs (ffi_export_scan) each export's own body calls
+# the reviewed boundary; and a staticlib exports every C-ABI function it defines. In each boundary's
+# lib.rs (ffi_export_scan) each export's own body calls
 # keepcrypt_guard::guarded(, written as that path (a leading :: or a longer path does not count), so
 # a panic under it halts and wipes instead of aborting the process before any destructor runs; a
-# helper that calls it does not count for the export. JNI_OnLoad alone is exempt: it runs at
-# System.loadLibrary, before any session exists, and returns the JNI version. The exemption is for
-# the real one only, the crate root's fn JNI_OnLoad marked no_mangle and not export_name, so a fn
-# of that name in a mod, an impl or another fn, one exported under another name (a Java_ symbol)
-# and an extern fn of that name that RegisterNatives could bind are each held to the tie. A hit is
+# helper that calls it does not count for the export. One export per boundary is exempt, by its
+# file: in ffi/jni/src/lib.rs JNI_OnLoad, which runs at System.loadLibrary, before any session
+# exists, and returns the JNI version; in ffi/capi/src/lib.rs kc_max_out, which returns the reply
+# bound, a constant (M6-1). The exemption is for the real one only, the crate root's fn of that name
+# marked no_mangle and not export_name, so a fn of that name in a mod, an impl or another fn, one
+# exported under another name (a Java_ symbol, or kc_call) and an extern fn of that name that
+# RegisterNatives could bind are each held to the tie, and neither name is exempt in the other
+# boundary's file. A hit is
 # reported at the function's fn line, and an export with no body (a no_mangle static, an extern fn
 # type) at its own line, so it is a hit too; an extern fn type in a helper's signature makes the
 # helper one, which fails closed. macro_rules is a hit of its own there: an export a macro writes
@@ -3025,7 +3991,12 @@ ffi_export() {
 }
 ffi_export_scan() {
   [ -f "$1" ] && [ -r "$1" ] || return 2
-  awk -v sq="'" "$rust_lex$rust_tokens"'
+  case $1 in
+    ffi/jni/src/lib.rs) exempt=JNI_OnLoad ;;
+    ffi/capi/src/lib.rs) exempt=kc_max_out ;;
+    *) return 2 ;;
+  esac
+  awk -v sq="'" -v exempt="$exempt" "$rust_lex$rust_tokens"'
     function out(l) {
       if (!(l in done)) print l ":" src[l]
       done[l] = 1
@@ -3055,7 +4026,7 @@ ffi_export_scan() {
           top++
           at[top] = bd
           ln[top] = wl
-          ok[top] = wname == "JNI_OnLoad" && nm && !ex && bd == 0
+          ok[top] = wname == exempt && nm && !ex && bd == 0
           want = 0
           wname = ""
           nm = ex = 0
@@ -3092,19 +4063,30 @@ ffi_export_scan() {
 
 # The JNI surface only in keepcrypt-jni: the JNI names (a Java_ function, JNI_OnLoad, JNIEnv, the
 # jni_sys crate), outside every comment and literal, are hits under ffi/ anywhere but ffi/jni/
-# (ffi_jni_names). In ffi/jni/src/lib.rs every extern fn names JNI's "system" ABI (ffi_jni_abi): the
-# file is read as tokens over lines (rust_tokens), as the compiler reads a signature, so an extern
-# followed by fn, or by one string and then fn, is an extern fn wherever its lines break and
-# whatever comments sit between its words, and it is a hit at the extern's line unless that
-# string's text is exactly system. So an extern "C" fn, an extern fn with no ABI string (which is
-# "C"), and either one split over lines (pub extern "C" on one line, fn Java_... on the next) are
-# hits; an escape in the string fails closed. An extern block or extern crate is no extern fn.
+# (ffi_jni_names), keepcrypt-capi's files included. Each boundary's lib.rs names one ABI on every
+# extern fn (ffi_abi_scan): JNI's "system" in ffi/jni/src/lib.rs (ffi_jni_abi), and "C" in
+# ffi/capi/src/lib.rs (ffi_capi_abi, M6 item B4), so no "C-unwind" lets a panic unwind into Swift
+# and every export there says its ABI. The file is read as tokens over lines (rust_tokens), as the
+# compiler reads a signature, so an extern followed by fn, or by one string and then fn, is an
+# extern fn wherever its lines break and whatever comments sit between its words, and it is a hit
+# at the extern's line unless that string's text is exactly the file's ABI. So in ffi/jni/src/lib.rs
+# an extern "C" fn, in ffi/capi/src/lib.rs an extern "system" or "C-unwind" fn, in either an extern
+# fn with no ABI string (which is "C"), and each one split over lines (pub extern "C" on one line,
+# fn Java_... on the next) are hits; an escape in the string fails closed. An extern block or extern
+# crate is no extern fn.
 ffi_jni_names() {
   rust_code_match '[^A-Za-z0-9_](Java_[A-Za-z0-9_]*|JNI_OnLoad|JNIEnv|jni_sys)[^A-Za-z0-9_]' "$1"
 }
 ffi_jni_abi() {
-  [ -f "$1" ] && [ -r "$1" ] || return 2
-  awk -v sq="'" "$rust_lex$rust_tokens"'
+  ffi_abi_scan system "$1"
+}
+ffi_capi_abi() {
+  ffi_abi_scan C "$1"
+}
+# ffi_abi_scan ABI FILE: each extern fn in FILE whose ABI string is not exactly ABI, or missing.
+ffi_abi_scan() {
+  [ -f "$2" ] && [ -r "$2" ] || return 2
+  awk -v sq="'" -v want="$1" "$rust_lex$rust_tokens"'
     # tok(t): st is 1 right after an extern, whose line is el, and 2 after its string, whose text
     # is abi; the next token settles it, fn making an extern fn. si counts the strings of the
     # line, so lits[si] is the text of the "" token just read.
@@ -3115,7 +4097,7 @@ ffi_jni_abi() {
         abi = lits[si]
         return
       }
-      if (st && t == "fn" && (st == 1 || abi != "system")) {
+      if (st && t == "fn" && (st == 1 || abi != want)) {
         if (!(el in done)) print el ":" src[el]
         done[el] = 1
         found = 1
@@ -3132,24 +4114,26 @@ ffi_jni_abi() {
       lex()
       tokens()
     }
-    END { exit !found }' "$1"
+    END { exit !found }' "$2"
 }
 
 # No export written by a macro (lead decision M5-35): macro_rules and macro_export, outside every
-# comment and literal, are hits in any .rs file under ffi/src/, ffi/guard/src/ and ffi/jni/src/
-# but ffi/jni/src/lib.rs (ffi_macros), whose macro_rules is the export scan's hit (ffi_export_scan).
+# comment and literal, are hits in any .rs file under ffi/src/, ffi/guard/src/, ffi/jni/src/ and
+# ffi/capi/src/ but the two boundaries' lib.rs (ffi_macros), whose macro_rules is the export scan's
+# hit (ffi_export_scan).
 # A macro that keepcrypt-ffi or keepcrypt-guard exported and keepcrypt-jni called, or one in
 # another of keepcrypt-jni's files, would split an export's tokens between two files, which the
 # export scan, reading ffi/jni/src/lib.rs alone, cannot see whole (an extern fn whose ABI comes in
 # as $abi, bound by RegisterNatives from JNI_OnLoad, ran outside the catch); so every export stays
-# written out in that file. The crates' tests may define macros.
+# written out in that file, and the same holds for keepcrypt-capi's files and its lib.rs. The
+# crates' tests may define macros.
 ffi_macros() {
   rust_code_match '[^A-Za-z0-9_](macro_rules|macro_export)[^A-Za-z0-9_]' "$1"
 }
 
 # keepcrypt-guard's surface is fn guarded alone (lead decision M5-35): keepcrypt-jni depends on
-# keepcrypt-guard and jni-sys only, so what keepcrypt-guard makes public is all of the safe layer the
-# boundary can reach, and a re-export (pub use keepcrypt_ffi as ffi;), a pub mod or a second pub fn
+# keepcrypt-guard and jni-sys only, and keepcrypt-capi on keepcrypt-guard alone (M6 item B1), so what
+# keepcrypt-guard makes public is all of the safe layer either boundary can reach, and a re-export (pub use keepcrypt_ffi as ffi;), a pub mod or a second pub fn
 # would let an export run it outside the catch, where a panic aborts before any destructor wipes
 # the session. So every pub (pub(crate) and the other restricted forms too), outside every comment
 # and literal, in any .rs file under ffi/guard/src/ is a hit (ffi_guard_pub), but the crate root's
@@ -3600,24 +4584,96 @@ EOF
       mobile/android/app/src/androidTest/* | scripts/android-age-check.py) ;;
       *) report KtTestChannel kt_test_channel "$rel" ;;
     esac
+    # Swift and the iPhone (tasks/todo.md, M6 item A1): every scanned file under mobile/ios/ gets every
+    # rule but where one of the allowed files ($sw_offline, $sw_secure, $sw_picker, $sw_modulemap,
+    # $sw_ceremony and $sw_opensettings, one path each) is named; the path rules (SwPackage's package files and module
+    # maps) are reported without a line. SwRoot: Swift, Objective-C, a module map and an Xcode
+    # project or workspace live under mobile/ios/, the one Xcode root, and nowhere else.
+    case $rel in
+      mobile/ios/*)
+        report RNG swrng "$rel"
+        report Network sw_network "$rel"
+        case $rel in
+          "$sw_offline") report Network sw_network_import_offline "$rel"; report Network sw_nw_offline "$rel" ;;
+          *) report Network sw_network_import "$rel"; report Network sw_nw "$rel" ;;
+        esac
+        report Clipboard swclipboard "$rel"
+        report SwLog swlog "$rel"
+        report SwStorage swstorage "$rel"
+        [ "$rel" = "$sw_picker" ] || report SwStorage swstorage_write "$rel"
+        report SwInput swinput "$rel"
+        case $rel in
+          "$sw_secure") report SwInput sw_secure_entry "$rel" ;;
+          *) report SwInput sw_uitextfield "$rel" ;;
+        esac
+        report SwPackage swpackage "$rel"
+        report SwPackage sw_sdk "$rel"
+        swpkg=
+        case ${rel##*/} in
+          Package.swift | Package.resolved | Podfile | Podfile.lock | Cartfile | Cartfile.resolved | Cartfile.private | *.podspec)
+            swpkg="a Swift package, CocoaPods or Carthage file (no third-party package, Q86 and Q91)"
+            ;;
+        esac
+        case $rel in
+          */.swiftpm/* | */swiftpm/* | */Pods/* | */Carthage/*)
+            swpkg="inside a Swift package, CocoaPods or Carthage directory (no third-party package, Q86 and Q91)"
+            ;;
+        esac
+        case $rel in
+          "$sw_modulemap") report SwPackage sw_module_lines "$rel" ;;
+          *.modulemap) swpkg="a module map other than $sw_modulemap, the one way C reaches Swift" ;;
+        esac
+        if [ -n "$swpkg" ]; then
+          echo "SwPackage: $rel: $swpkg"
+          hits=$((hits + 1))
+        fi
+        case $rel in
+          *.swift) ;;
+          *.pbxproj) report SwTestHook sw_hooks_pbxproj "$rel" ;;
+          *) report SwTestHook sw_hooks "$rel" ;;
+        esac
+        case $rel in
+          *.[Xx][Cc][Ss][Cc][Hh][Ee][Mm][Ee]) report SwTestHook sw_hooks_schemes "$rel" ;;
+        esac
+        report SwFailOpen swfailopen "$rel"
+        report SwFailOpen sw_catch "$rel"
+        case $rel in
+          "$sw_ceremony") report SwFailOpen sw_halt_decl "$rel" ;;
+          *) report SwFailOpen sw_ceremony_decl "$rel" ;;
+        esac
+        case $rel in
+          "$sw_opensettings") report SwOpenURL sw_open_settings "$rel" ;;
+          *) report SwOpenURL sw_open "$rel" ;;
+        esac
+        ;;
+      *.[Ss][Ww][Ii][Ff][Tt] | *.[Mm] | *.[Mm][Mm] | *.[Mm][Oo][Dd][Uu][Ll][Ee][Mm][Aa][Pp] | \
+        *.[Xx][Cc][Oo][Dd][Ee][Pp][Rr][Oo][Jj]/* | *.[Xx][Cc][Ww][Oo][Rr][Kk][Ss][Pp][Aa][Cc][Ee]/*)
+        echo "SwRoot: $rel: Swift, Objective-C, a module map or an Xcode project outside mobile/ios/, the one Xcode root (M6 item A1)"
+        hits=$((hits + 1))
+        ;;
+    esac
     # FFI: one catch_unwind, the path call in fn guarded in ffi/guard/src/lib.rs; exports only in
-    # ffi/jni/src/lib.rs, each calling keepcrypt_guard::guarded, JNI names only under ffi/jni/ and
-    # only the JNI ABI in its lib.rs; no macro_rules or macro_export in ffi/src, ffi/guard/src or
-    # ffi/jni/src; no pub in ffi/guard/src but fn guarded's line; one Session::new, in
+    # the two boundaries' lib.rs, ffi/jni/src/lib.rs and ffi/capi/src/lib.rs, each calling
+    # keepcrypt_guard::guarded, JNI names only under ffi/jni/, only the JNI ABI in its lib.rs and
+    # only "C" in capi's; no macro_rules or macro_export in ffi/src, ffi/guard/src, ffi/jni/src or
+    # ffi/capi/src; no pub in ffi/guard/src but fn guarded's line; one Session::new, in
     # ffi/src/ceremony.rs (comments count, as under pi/app/src); no thread or JoinHandle outside
     # ffi/tests/ (M5-8).
     case $rel in
       ffi/*.rs)
         case $rel in
           ffi/guard/src/lib.rs) report FFI ffi_guard_catch "$rel"; report FFI ffi_export "$rel" ;;
-          ffi/jni/src/lib.rs) report FFI ffi_catch_unwind "$rel"; report FFI ffi_export_scan "$rel" ;;
+          ffi/jni/src/lib.rs | ffi/capi/src/lib.rs) report FFI ffi_catch_unwind "$rel"; report FFI ffi_export_scan "$rel" ;;
           *) report FFI ffi_catch_unwind "$rel"; report FFI ffi_export "$rel" ;;
         esac
-        case $rel in ffi/jni/src/lib.rs) report FFI ffi_jni_abi "$rel" ;; esac
+        case $rel in
+          ffi/jni/src/lib.rs) report FFI ffi_jni_abi "$rel" ;;
+          ffi/capi/src/lib.rs) report FFI ffi_capi_abi "$rel" ;;
+        esac
         case $rel in ffi/jni/*) ;; *) report FFI ffi_jni_names "$rel" ;; esac
         case $rel in
-          ffi/jni/src/lib.rs) ;;
-          ffi/src/*.rs | ffi/guard/src/*.rs | ffi/jni/src/*.rs) report FFI ffi_macros "$rel" ;;
+          ffi/jni/src/lib.rs | ffi/capi/src/lib.rs) ;;
+          ffi/src/*.rs | ffi/guard/src/*.rs | ffi/jni/src/*.rs | ffi/capi/src/*.rs) report FFI ffi_macros "$rel" ;;
         esac
         case $rel in ffi/guard/src/*.rs) report FFI ffi_guard_pub "$rel" ;; esac
         case $rel in
@@ -3648,20 +4704,23 @@ EOF
     hits=$((hits + 1))
   fi
   # FFI: the one Session::new is required once ffi/src/ceremony.rs exists, and the one catch_unwind,
-  # the path call in fn guarded in ffi/guard/src/lib.rs, once ffi/jni/src/lib.rs exports a function
-  # (an export without the catch aborts on a panic before any destructor runs, so the session would
-  # not be wiped). An unreadable file was already exit 2 in the loop.
+  # the path call in fn guarded in ffi/guard/src/lib.rs, once either boundary's lib.rs,
+  # ffi/jni/src/lib.rs or ffi/capi/src/lib.rs, exports a function (an export without the catch
+  # aborts on a panic before any destructor runs, so the session would not be wiped), reported at
+  # each such lib.rs. An unreadable file was already exit 2 in the loop.
   on=ffi/src/ceremony.rs
   if [ -f ffi/src/ceremony.rs ] && ! found session_new ffi/src/ceremony.rs; then
     echo 'FFI: ffi/src/ceremony.rs:1: missing the one Session::new under ffi/'
     hits=$((hits + 1))
   fi
-  on=ffi/jni/src/lib.rs
-  if [ -f ffi/jni/src/lib.rs ] && found ffi_export ffi/jni/src/lib.rs &&
-    ! { [ -f ffi/guard/src/lib.rs ] && on=ffi/guard/src/lib.rs && found ffi_guard_site ffi/guard/src/lib.rs; }; then
-    echo 'FFI: ffi/jni/src/lib.rs:1: missing the one catch_unwind call site, std::panic::catch_unwind( in fn guarded in ffi/guard/src/lib.rs, which every export needs'
-    hits=$((hits + 1))
-  fi
+  for boundary in ffi/jni/src/lib.rs ffi/capi/src/lib.rs; do
+    on=$boundary
+    if [ -f "$boundary" ] && found ffi_export "$boundary" &&
+      ! { [ -f ffi/guard/src/lib.rs ] && on=ffi/guard/src/lib.rs && found ffi_guard_site ffi/guard/src/lib.rs; }; then
+      echo "FFI: $boundary:1: missing the one catch_unwind call site, std::panic::catch_unwind( in fn guarded in ffi/guard/src/lib.rs, which every export needs"
+      hits=$((hits + 1))
+    fi
+  done
   # KtSdk: once mobile/android exists, its root build file locks every configuration strictly
   # (group 4), each of the two lines whole on a line of its own, so a commented-out one is not
   # one. Without them Gradle resolves with no lock state, and the classpath allow-list, which reads
@@ -3672,6 +4731,14 @@ EOF
     found grep -q -a -x -E -e '[[:space:]]*lockAllConfigurations[(][)][[:space:]]*' "$kroot" &&
     found grep -q -a -x -E -e '[[:space:]]*lockMode[.]set[(]LockMode[.]STRICT[)][[:space:]]*' "$kroot"; }; then
     echo "KtSdk: $kroot:1: missing the lines lockAllConfigurations() and lockMode.set(LockMode.STRICT)"
+    hits=$((hits + 1))
+  fi
+  # SwInput (Q88): the secure-layer file, once it names UITextField, sets isSecureTextEntry = true in
+  # a statement of its own line (sw_secure_entry_line), so a commented-out one is not one.
+  on=$sw_secure
+  if [ -f "$sw_secure" ] && found grep -q -a -F -e UITextField "$sw_secure" &&
+    ! found grep -q -a -x -E -e "$sw_secure_entry_line" "$sw_secure"; then
+    echo "SwInput: $sw_secure:1: missing a line that sets isSecureTextEntry = true, which its UITextField needs (Q88)"
     hits=$((hits + 1))
   fi
   # Build: no tracked file under mobile/**/build/, mobile/**/.gradle/ or mobile/**/.konan/, read
@@ -3705,17 +4772,6 @@ EOF
       hits=$((hits + 1))
     done <<EOF
 $built
-EOF
-    # KtRoot (lead decision M5-25): mobile/ios/ stays empty in M5, so any tracked file under it is a
-    # hit, until M6's first gate commit brings the Swift and Xcode rules.
-    ios=$(printf '%s\n' "$tracked" | grep -E "${tab}mobile/ios/")
-    [ $? -le 1 ] || exit 2
-    while IFS= read -r e; do
-      [ -n "$e" ] || continue
-      echo "KtRoot: ${e#*"$tab"}: a tracked file under mobile/ios/, which stays empty in M5 (lead decision M5-25)"
-      hits=$((hits + 1))
-    done <<EOF
-$ios
 EOF
     # KtBinary: a tracked file (or link; not a submodule, the Build rule's) under mobile/ with a
     # binary extension, in any letter case: the plan's nine, every other code or archive extension
@@ -3865,7 +4921,7 @@ expect() {
       alsook=no
     fi
   fi
-  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell|Device|Build|KtLog|KtFailOpen|KtWindow|KtInput|KtStorage|KtIntent|KtDevice|KtSdk|KtBinary|KtManifest|KtTestChannel|KtSourceSet|KtIos|KtRoot|KtCinterop|FFI): '
+  cats='^(RNG|Network|Clipboard|Rule1|FailOpen|Include|Shell|Device|Build|KtLog|KtFailOpen|KtWindow|KtInput|KtStorage|KtIntent|KtDevice|KtSdk|KtBinary|KtManifest|KtTestChannel|KtSourceSet|KtIos|KtRoot|KtCinterop|FFI|SwLog|SwStorage|SwInput|SwPackage|SwTestHook|SwRoot|SwFailOpen|SwOpenURL): '
   hit=$(printf '%s\n' "$out" | grep -E "$cats")
   count=$(printf '%s\n' "$out" | grep -c -E "$cats")
   ok=no
@@ -3971,6 +5027,14 @@ selftest() {
       ktroot-*) want=KtRoot ;;
       ktcinterop-*) want=KtCinterop ;;
       ffi-*) want=FFI ;;
+      swlog-*) want=SwLog ;;
+      swstorage-*) want=SwStorage ;;
+      swinput-*) want=SwInput ;;
+      swpackage-*) want=SwPackage ;;
+      swtesthook-*) want=SwTestHook ;;
+      swroot-*) want=SwRoot ;;
+      swfailopen-*) want=SwFailOpen ;;
+      swopenurl-*) want=SwOpenURL ;;
       clean-*) want=clean ;;
       *) fail=$((fail + 1)); printf 'FAIL %s: unknown prefix\n' "$name"; continue ;;
     esac
@@ -4010,10 +5074,15 @@ selftest() {
     cp -R "$fx/." "$d/" || exit 2
     expect "$name" "$d" "$want" "$file"
     also=
+    # Network is skipped in registry/, so the same file there passes; a Swift or Objective-C one
+    # there is SwRoot's one hit instead (no Swift lives outside mobile/ios/), and no Network hit.
     if [ "$want" = Network ]; then
       fresh
       mkdir -p "$d/registry" && cp -R "$fx/." "$d/registry/" || exit 2
-      expect "$name under registry/" "$d" clean
+      case $file in
+        *.swift | *.m) expect "$name under registry/" "$d" SwRoot "registry/$file" ;;
+        *) expect "$name under registry/" "$d" clean ;;
+      esac
     fi
     # FailOpen covers core/, ffi/ and pi/app/ only, and Device covers pi/app/ only: the same file
     # in pi/sim/src/ passes.
@@ -4546,22 +5615,16 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
   echo 'kc.gate.canary=true' >"$d/tools/x.jar" || exit 2
   git -C "$d" add -f -- mobile/android/app/src tools || exit 2
   expect 'clean-ktbinary-untracked-image-outside-mobile' "$d" clean
-  # KtRoot's mobile/ios rule reads the index too (lead decision M5-25): any tracked file under
-  # mobile/ios/ is a hit, a Swift file, a plist and an Xcode project alike; the same file untracked
-  # is not.
-  for case in 'ios-swift:mobile/ios/KeepCrypt/SecureHostViewController.swift' \
-    'ios-plist:mobile/ios/KeepCrypt/Info.plist' 'ios-xcode-project:mobile/ios/KeepCrypt.xcodeproj/project.pbxproj'; do
-    x=${case#*:}
-    fresh
-    git init -q "$d" || exit 2
-    mkdir -p "$d/${x%/*}" && echo 'kc.gate.canary=true' >"$d/$x" || exit 2
-    git -C "$d" add -f -- "$x" || exit 2
-    expect "ktroot-tracked-${case%%:*}" "$d" KtRoot "$x"
-  done
+  # KtRoot's M5 clause for mobile/ios (lead decision M5-25: any tracked file there was a hit) was
+  # retired by M6's item C2 (M6-6): a tracked Swift file, plist and Xcode project under mobile/ios,
+  # each clean under the Swift rules, pass, as the iPhone app's real files do.
   fresh
   git init -q "$d" || exit 2
-  mkdir -p "$d/mobile/ios/KeepCrypt" && echo 'kc.gate.canary=true' >"$d/mobile/ios/KeepCrypt/App.swift" || exit 2
-  expect 'clean-ktroot-untracked-under-mobile-ios' "$d" clean
+  for x in mobile/ios/KeepCrypt/App.swift mobile/ios/KeepCrypt/Info.plist mobile/ios/KeepCrypt.xcodeproj/project.pbxproj; do
+    mkdir -p "$d/${x%/*}" && echo 'kc.gate.canary=true' >"$d/$x" || exit 2
+    git -C "$d" add -f -- "$x" || exit 2
+  done
+  expect 'clean-tracked-files-under-mobile-ios' "$d" clean
   # The FFI cases that need keepcrypt-guard beside the JNI boundary (a fixture holds one file): with
   # the one catch in fn guarded in ffi/guard/src/lib.rs, an extern "C" fn or an extern fn with no
   # ABI string in ffi/jni/src/lib.rs is a hit of its own (JNI's ABI is "system"), and a guard file
@@ -4761,6 +5824,106 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     'fn from_java(env: *mut JNIEnv, input: jbyteArray) -> Vec<u8> {' '    read_capped(env, input, MAX_IN)' '}' \
     >"$d/ffi/jni/src/lib.rs" || exit 2
   expect 'clean-ffi-jni-exports-each-calling-guarded' "$d" clean
+  # keepcrypt-capi's lib.rs, the second boundary (M6 item B4), beside that guard. Every extern fn
+  # there names the C ABI (ffi_capi_abi), so an extern "system", an extern "C-unwind" (a panic would
+  # unwind into Swift), an extern with no ABI string and an extern "system" split over lines are each
+  # a hit at the extern's line, with a body that calls guarded so the ABI is the only hit. Each
+  # export's own body calls keepcrypt_guard::guarded( (ffi_export_scan): one that calls the safe
+  # layer directly, the second of two exports when the first calls guarded, one that calls it
+  # through a helper, an export_name function, an extern "C" fn with no no_mangle, and a no_mangle
+  # static (at its attribute line) are hits at the line the case names. kc_max_out is exempt only as
+  # the crate root's no_mangle fn: in a mod, without no_mangle, exported as kc_call by export_name,
+  # or with JNI_OnLoad's name (whose exemption is jni's alone; the name is a JNI hit there too) it
+  # is held to the tie. macro_rules is a hit at its line. A real-shaped lib.rs (kc_max_out at the
+  # root, kc_call calling guarded and helpers that do not, an extern "C" split over lines) is clean,
+  # and so is the guard beside it.
+  cguarded='    keepcrypt_guard::guarded(op, request(input, len))[0] as i64'
+  cdirect='    keepcrypt_ffi::dispatch(op, &request(input, len))[0] as i64'
+  ccall='pub unsafe extern "C" fn kc_call(op: u32, input: *const u8, len: usize) -> i64 {'
+  for case in extern-system:2 extern-c-unwind:2 extern-no-abi:2 extern-system-split-over-lines:2 \
+    safe-layer-directly:2 second-export:6 guarded-in-a-helper:2 export-name:2 extern-c-without-no-mangle:1 \
+    no-mangle-static:1 max-out-in-a-mod:3 max-out-without-no-mangle:1 max-out-exported-as-kc-call:2 \
+    onload-name:2 macro-written-exports:1; do
+    capi=
+    also=
+    case ${case%%:*} in
+      extern-system) capi=$(printf '%s\n' '#[unsafe(no_mangle)]' \
+        'pub unsafe extern "system" fn kc_call(op: u32, input: *const u8, len: usize) -> i64 {' "$cguarded" '}') ;;
+      extern-c-unwind) capi=$(printf '%s\n' '#[unsafe(no_mangle)]' \
+        'pub unsafe extern "C-unwind" fn kc_call(op: u32, input: *const u8, len: usize) -> i64 {' "$cguarded" '}') ;;
+      extern-no-abi) capi=$(printf '%s\n' '#[unsafe(no_mangle)]' \
+        'pub unsafe extern fn kc_call(op: u32, input: *const u8, len: usize) -> i64 {' "$cguarded" '}') ;;
+      extern-system-split-over-lines) capi=$(printf '%s\n' '#[unsafe(no_mangle)]' 'pub unsafe extern' '    "system"' \
+        '    fn kc_call(op: u32, input: *const u8, len: usize) -> i64 {' "$cguarded" '}') ;;
+      safe-layer-directly) capi=$(printf '%s\n' '#[unsafe(no_mangle)]' "$ccall" "$cdirect" '}') ;;
+      second-export)
+        capi=$(printf '%s\n' '#[unsafe(no_mangle)]' "$ccall" "$cguarded" '}' '#[unsafe(no_mangle)]' \
+          'pub extern "C" fn kc_wipe_all() -> i64 {' '    keepcrypt_ffi::dispatch(OP_WIPE_ALL, &[])[0] as i64' '}')
+        ;;
+      guarded-in-a-helper)
+        capi=$(printf '%s\n' '#[unsafe(no_mangle)]' "$ccall" '    run(op, request(input, len))' '}' \
+          'fn run(op: u32, input: Vec<u8>) -> i64 {' '    keepcrypt_guard::guarded(op, input)[0] as i64' '}')
+        ;;
+      export-name)
+        capi=$(printf '%s\n' '#[unsafe(export_name = "kc_call")]' \
+          'pub fn call(op: u32, input: *const u8, len: usize) -> i64 {' "$cdirect" '}')
+        ;;
+      extern-c-without-no-mangle) capi=$(printf '%s\n' "$ccall" "$cdirect" '}') ;;
+      no-mangle-static) capi=$(printf '%s\n' '#[unsafe(no_mangle)]' 'pub static KC_MAX_OUT: usize = 65_536;') ;;
+      max-out-in-a-mod)
+        capi=$(printf '%s\n' 'mod bound {' '    #[unsafe(no_mangle)]' '    pub extern "C" fn kc_max_out() -> usize {' \
+          '        keepcrypt_ffi::dispatch(OP_WIPE_ALL, &[]).len()' '    }' '}')
+        ;;
+      max-out-without-no-mangle)
+        capi=$(printf '%s\n' 'pub extern "C" fn kc_max_out() -> usize {' '    keepcrypt_ffi::dispatch(OP_WIPE_ALL, &[]).len()' '}')
+        ;;
+      max-out-exported-as-kc-call)
+        capi=$(printf '%s\n' '#[unsafe(export_name = "kc_call")]' \
+          'pub unsafe extern "C" fn kc_max_out(op: u32, input: *const u8, len: usize) -> i64 {' "$cdirect" '}')
+        ;;
+      onload-name)
+        capi=$(printf '%s\n' '#[unsafe(no_mangle)]' 'pub extern "C" fn JNI_OnLoad() -> i64 {' "$cdirect" '}')
+        also='FFI: ffi/capi/src/lib.rs:2: pub extern "C" fn JNI_OnLoad() -> i64 {'
+        ;;
+      macro-written-exports)
+        capi=$(printf '%s\n' 'macro_rules! export {' '    ($n:ident, $body:block) => {' '        #[unsafe(no_mangle)]' \
+          '        pub extern "C" fn $n() -> u8 $body' '    }' '}' \
+          'export! { kc_call, { keepcrypt_guard::guarded(0, Vec::new())[0] } }' \
+          'export!(kc_wipe_all, { keepcrypt_ffi::dispatch(OP_WIPE_ALL, &[])[0] });')
+        ;;
+    esac
+    fresh
+    mkdir -p "$d/ffi/guard/src" "$d/ffi/capi/src" || exit 2
+    printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
+    printf '%s\n' "$capi" >"$d/ffi/capi/src/lib.rs" || exit 2
+    atline=${case#*:}
+    expect "ffi-capi-${case%%:*}-beside-the-guard" "$d" FFI ffi/capi/src/lib.rs
+    atline=
+    also=
+  done
+  fresh
+  mkdir -p "$d/ffi/guard/src" "$d/ffi/capi/src" || exit 2
+  printf '%s\n' "$guard" >"$d/ffi/guard/src/lib.rs" || exit 2
+  printf '%s\n' '//! keepcrypt-capi: an extern "system" fn or a "C-unwind" one in a comment is no hit.' \
+    'const NOTE: &str = "pub extern \"C-unwind\" fn kc_call";' '#[unsafe(no_mangle)]' \
+    'pub extern "C" fn kc_max_out() -> usize {' '    MAX_OUT' '}' '#[unsafe(no_mangle)]' 'pub unsafe extern' '    "C"' \
+    '    fn kc_call(op: u32, input: *const u8, len: usize, out: *mut u8, cap: usize) -> i64 {' \
+    '    let Ok(input) = (unsafe { request(input, len) }) else {' '        return halted();' '    };' \
+    '    let reply = keepcrypt_guard::guarded(op, input);' '    match unsafe { answer(&reply, out, cap) } {' \
+    '        Ok(len) => len,' '        Err(Failed) => halted(),' '    }' '}' \
+    'unsafe fn request(input: *const u8, len: usize) -> Result<Vec<u8>, Failed> {' '    Ok(Vec::new())' '}' \
+    'fn halted() -> i64 {' '    keepcrypt_guard::guarded(HALT, Vec::new());' '    -1' '}' \
+    >"$d/ffi/capi/src/lib.rs" || exit 2
+  expect 'clean-ffi-capi-exports-each-calling-guarded' "$d" clean
+  # Both boundaries at once beside a guard without the catch: each lib.rs that exports is a hit at
+  # its line 1, the capi one checked here (the jni one by ffi-jni-export-without-catch-unwind).
+  fresh
+  mkdir -p "$d/ffi/guard/src" "$d/ffi/capi/src" || exit 2
+  printf '%s\n' 'pub fn guarded(op: u32, input: Vec<u8>) -> Zeroizing<Vec<u8>> {' '    let input = Zeroizing::new(input);' \
+    '    keepcrypt_ffi::dispatch(op, &input)' '}' \
+    >"$d/ffi/guard/src/lib.rs" || exit 2
+  printf '%s\n' '#[unsafe(no_mangle)]' "$ccall" "$cguarded" '}' >"$d/ffi/capi/src/lib.rs" || exit 2
+  expect 'ffi-capi-export-beside-a-guard-without-catch-unwind' "$d" FFI ffi/capi/src/lib.rs
   # A macro in another of keepcrypt-jni's files (lead decision M5-35): beside that guard and lib.rs's
   # export that calls guarded, an extern fn the macro writes with the ABI it takes as $abi, or with
   # the extern and ABI a call passes as tokens, is bound by RegisterNatives in JNI_OnLoad and would
@@ -4853,8 +6016,26 @@ mod tests;' 'cfg-test-on-same-line:#[cfg(test)] mod tests;'; do
     also=
     atline=
   done
+  # A NUL byte earlier on a line of the project file ended it for the Mac's awk, so SwTestHook's reading
+  # of the project (sw_hooks_pbxproj) would not see the rest of it (kt_text): clean-sw-allowed's
+  # project with one line more in the app's Shipping configuration, a NUL in a quoted string before
+  # the condition, is a hit at that line. Built here, as a fixture in git would hold the byte where
+  # no diff shows it.
+  fresh
+  swp=mobile/ios/KeepCrypt.xcodeproj/project.pbxproj
+  mkdir -p "$d/${swp%/*}" || exit 2
+  swat=$(grep -n -x -F -e '				PRODUCT_BUNDLE_IDENTIFIER = com.keepcrypt.entropy;' "$here/testdata/banned-api/clean-sw-allowed/$swp") ||
+    exit 2
+  swat=${swat%%:*}
+  { sed -n "1,${swat}p" "$here/testdata/banned-api/clean-sw-allowed/$swp" &&
+    printf '\t\t\t\tOTHER_SWIFT_FLAGS = "\000"; SWIFT_ACTIVE_COMPILATION_CONDITIONS = KC_TEST_HOOKS;\n' &&
+    sed -n "$((swat + 1)),\$p" "$here/testdata/banned-api/clean-sw-allowed/$swp"; } >"$d/$swp" || exit 2
+  atline=$((swat + 1))
+  expect swtesthook-app-configuration-after-a-nul "$d" SwTestHook "$swp"
+  atline=
   for want in RNG Network Clipboard Rule1 FailOpen Include Shell Device Build KtLog KtFailOpen KtWindow KtInput KtStorage \
-    KtIntent KtDevice KtSdk KtBinary KtManifest KtTestChannel KtSourceSet KtIos KtRoot KtCinterop FFI clean; do
+    KtIntent KtDevice KtSdk KtBinary KtManifest KtTestChannel KtSourceSet KtIos KtRoot KtCinterop FFI SwLog SwStorage SwInput \
+    SwPackage SwTestHook SwRoot SwFailOpen SwOpenURL clean; do
     case "$seen " in *" $want "*) ;; *) fail=$((fail + 1)); echo "FAIL no $want fixture" ;; esac
   done
   # The shard option (M5-63): a shard past the last, a malformed value, a missing one, a further
@@ -8718,6 +9899,704 @@ STUB
   exit 0
 }
 
+# --- iPhone app mode -----------------------------------------------------------------------------
+
+# iosfail MESSAGE: --ios-app or --selftest-ios-app cannot run (exit 2).
+iosfail() {
+  printf 'banned-api-check: --ios-app: %s\n' "$1" >&2
+  exit 2
+}
+
+# ios_py MODE ARG...: the iPhone app mode's property-list reader (python3's plistlib, no other
+# module), so a binary plist (a device build's) reads as an XML one. Modes:
+#   info PLIST BUNDLE_ID SUMMARY EXEC   the app's Info.plist: its summary (every key but the ones
+#                                       the toolchain stamps: DT*, BuildMachineOSBuild and
+#                                       CFBundleSupportedPlatforms, the last the simulator's or the
+#                                       device's) as sorted JSON into SUMMARY, CFBundleExecutable into
+#                                       EXEC, and each hard rule's hit as a line on stdout
+#   privacy PLIST SUMMARY               the privacy manifest: its summary (every key) into SUMMARY,
+#                                       and each hard rule's hit on stdout
+#   check-info JSON BUNDLE_ID           the hard rules on a committed summary (the selftest's)
+#   check-privacy JSON                  the same for a committed privacy summary
+# A file that does not read as its format, or a value JSON cannot hold, is exit 2.
+ios_py() {
+  python3 -I - "$@" <<'IOS_PY'
+import json
+import plistlib
+import sys
+
+# Keys the build stamps (Xcode's and the SDK's versions, the build machine, the platform built
+# for), left out of the summary so a simulator and a device build, and two Xcode versions, give the
+# same one.
+STAMPED = ("BuildMachineOSBuild", "CFBundleSupportedPlatforms")
+# Keys that would open the app to the network, other apps or the system's storage (rules 8 and 9;
+# tasks/todo.md, M6 item C2): never in the app's Info.plist.
+FORBIDDEN = (
+    "NSAppTransportSecurity", "UIBackgroundModes", "CFBundleURLTypes", "CFBundleDocumentTypes",
+    "UTExportedTypeDeclarations", "LSApplicationQueriesSchemes", "NSBonjourServices",
+    "NSLocalNetworkUsageDescription", "NSUserActivityTypes", "UIFileSharingEnabled",
+    "LSSupportsOpeningDocumentsInPlace", "UISupportsDocumentBrowser", "NSUbiquitousContainers",
+    "BGTaskSchedulerPermittedIdentifiers", "NSUserTrackingUsageDescription",
+)
+# The two files the app may import (rule 8): an age backup and a registry snapshot.
+IMPORTS = [["age"], ["kcr"]]
+
+
+def info_hits(d, bundle_id):
+    hits = []
+    if d.get("CFBundleIdentifier") != bundle_id:
+        hits.append("CFBundleIdentifier is %s, not %s" % (json.dumps(d.get("CFBundleIdentifier")), bundle_id))
+    if d.get("MinimumOSVersion") != "17.0":
+        hits.append("MinimumOSVersion is %s, not 17.0" % json.dumps(d.get("MinimumOSVersion")))
+    camera = d.get("NSCameraUsageDescription")
+    if not isinstance(camera, str) or not camera.strip():
+        hits.append("no NSCameraUsageDescription (the camera is asked for at the scan alone)")
+    for key in FORBIDDEN:
+        if key in d:
+            hits.append("holds %s" % key)
+    types = d.get("UTImportedTypeDeclarations")
+    tags = []
+    if isinstance(types, list):
+        for t in types:
+            spec = t.get("UTTypeTagSpecification", {}) if isinstance(t, dict) else {}
+            ext = spec.get("public.filename-extension") if isinstance(spec, dict) else None
+            conforms = t.get("UTTypeConformsTo") if isinstance(t, dict) else None
+            if conforms != ["public.data"]:
+                hits.append("an imported type that does not conform to public.data alone: %s" % json.dumps(ext))
+            tags.append(ext)
+    if sorted(tags, key=json.dumps) != IMPORTS:
+        hits.append("imported types %s, not .age and .kcr alone" % json.dumps(tags))
+    exe = d.get("CFBundleExecutable")
+    if not isinstance(exe, str) or not exe or "/" in exe or exe.startswith("."):
+        hits.append("CFBundleExecutable is %s, not a file name" % json.dumps(exe))
+    return hits
+
+
+def privacy_hits(d):
+    hits = []
+    if d.get("NSPrivacyTracking") is not False:
+        hits.append("NSPrivacyTracking is not false")
+    for key in ("NSPrivacyTrackingDomains", "NSPrivacyCollectedDataTypes"):
+        if d.get(key) != []:
+            hits.append("%s is not an empty list" % key)
+    if not isinstance(d.get("NSPrivacyAccessedAPITypes"), list):
+        hits.append("NSPrivacyAccessedAPITypes is not a list")
+    return hits
+
+
+def load_plist(path):
+    try:
+        with open(path, "rb") as f:
+            d = plistlib.load(f)
+    except Exception as e:  # any reading failure is the gate's error, exit 2
+        sys.stderr.write("banned-api-check: --ios-app: %s does not read as a property list: %s\n" % (path, type(e).__name__))
+        sys.exit(2)
+    if not isinstance(d, dict):
+        sys.stderr.write("banned-api-check: --ios-app: %s is not a dictionary\n" % path)
+        sys.exit(2)
+    return d
+
+
+def load_json(path):
+    try:
+        with open(path, "rb") as f:
+            text = f.read().decode("utf-8")
+        d = json.loads(text)
+    except Exception as e:
+        sys.stderr.write("banned-api-check: --ios-app: %s does not read as JSON: %s\n" % (path, type(e).__name__))
+        sys.exit(2)
+    if not isinstance(d, dict):
+        sys.stderr.write("banned-api-check: --ios-app: %s is not a JSON object\n" % path)
+        sys.exit(2)
+    if text != summary(d):
+        print("not in the summary's own form (sorted keys, two-space indent, a final newline)")
+    return d
+
+
+def summary(d):
+    try:
+        return json.dumps(d, indent=2, sort_keys=True, ensure_ascii=True) + "\n"
+    except (TypeError, ValueError):
+        sys.stderr.write("banned-api-check: --ios-app: a value JSON cannot hold (a date or data)\n")
+        sys.exit(2)
+
+
+def write(path, text):
+    with open(path, "w", encoding="ascii") as f:
+        f.write(text)
+
+
+mode = sys.argv[1]
+if mode == "info":
+    d = load_plist(sys.argv[2])
+    kept = {k: v for k, v in d.items() if not k.startswith("DT") and k not in STAMPED}
+    write(sys.argv[4], summary(kept))
+    hits = info_hits(d, sys.argv[3])
+    exe = d.get("CFBundleExecutable")
+    write(sys.argv[5], exe + "\n" if isinstance(exe, str) and exe and "/" not in exe and not exe.startswith(".") else "")
+elif mode == "privacy":
+    d = load_plist(sys.argv[2])
+    write(sys.argv[3], summary(d))
+    hits = privacy_hits(d)
+elif mode == "check-info":
+    hits = info_hits(load_json(sys.argv[2]), sys.argv[3])
+elif mode == "check-privacy":
+    hits = privacy_hits(load_json(sys.argv[2]))
+else:
+    sys.stderr.write("banned-api-check: --ios-app: no ios_py mode %s\n" % mode)
+    sys.exit(2)
+for hit in hits:
+    print(hit)
+IOS_PY
+}
+
+# The app's networking, seen in its main Mach-O (rule 9): an undefined symbol of Foundation's URL
+# loading (NSURLSession, NSURLConnection, NSURLRequest and NSURLProtocol, and Swift's URLSession and
+# URLRequest), the Network framework's connections (NWConnection, NWListener, NWBrowser, NWEndpoint,
+# NWParameters, NWProtocol*, iOS 26's NetworkConnection, NetworkListener and NetworkBrowser) and its
+# C API (nw_*), CFNetwork's (CFNetwork*, CFHTTP*, CFHost*) and Core Foundation's sockets and streams
+# (CFSocket*, CFStream*, CFReadStream*, CFWriteStream*), WebKit's and Safari's views, Multipeer and
+# Bluetooth, and the BSD calls socket, connect, bind, listen, accept, sendto, recvfrom, getaddrinfo,
+# getnameinfo and gethostbyname*; and UIPasteboard (rule 5) and NSItemProvider (drag and drop).
+ios_net='NSURLSession|NSURLConnection|NSURLRequest|NSMutableURLRequest|NSURLProtocol|URLSession|URLRequest|NWConnection|NWListener|NWBrowser|NWEndpoint|NWParameters|NWProtocol|NetworkConnection|NetworkListener|NetworkBrowser|CFNetwork|CFHTTP|CFHost|CFSocket|CFStream|CFReadStream|CFWriteStream|WKWebView|SFSafariViewController|ASWebAuthenticationSession|MCSession|MCNearbyService|CBCentralManager|CBPeripheralManager|^_nw_|^_(socket|connect|bind|listen|accept|sendto|recvfrom|getaddrinfo|getnameinfo|gethostbyname[a-z0-9_]*)$'
+ios_clip='UIPasteboard|NSItemProvider'
+# Frameworks the app never links (rules 8 and 9): the network's, the web's, other devices' and
+# iCloud's, advertising, tracking and diagnostics. The Network framework is allowed only for the
+# offline check's monitor (C5): every symbol the app takes from it must be NWPathMonitor's or
+# NWPath's (its mangled names start so; the monitor's path handler, start, cancel, its path's
+# status and interfaces, and their type metadata, as a stand-in offline check built with
+# NWPathMonitor alone takes them).
+ios_denied_frameworks='CFNetwork|NetworkExtension|WebKit|SafariServices|AuthenticationServices|MultipeerConnectivity|CoreBluetooth|CloudKit|AdSupport|AppTrackingTransparency|MetricKit'
+ios_network_allowed='^_[$]s7Network(13NWPathMonitorC|6NWPathV)'
+ios_hooks_marker=KC_TEST_HOOKS_DO_NOT_SHIP
+
+# ios_app_scan CONFIG APP EXPECTED_DIR: the iPhone app mode (see "iPhone app mode" in the header).
+ios_app_scan() {
+  fail_closed
+  iconfig=$1
+  app=${2%/}
+  exp=${3%/}
+  case $iconfig in
+    Shipping) ibid=com.keepcrypt.entropy ;;
+    WithTestRegistry) ibid=com.keepcrypt.entropy.testregistry ;;
+    *) iosfail "CONFIG is Shipping or WithTestRegistry, not $iconfig" ;;
+  esac
+  case $app in
+    *.app) ;;
+    *) iosfail "APP is an .app bundle, not $2" ;;
+  esac
+  [ -d "$app" ] && [ ! -L "$app" ] || iosfail "APP $2 is not a directory"
+  [ -d "$exp" ] || iosfail "EXPECTED_DIR $3 is not a directory"
+  readable "$exp/$iconfig-Info.json" --ios-app
+  readable "$exp/$iconfig-PrivacyInfo.json" --ios-app
+  readable "$exp/secret-identifiers.txt" --ios-app
+  command -v python3 >/dev/null 2>&1 || iosfail 'no python3 on PATH'
+  toolchain_bin
+  [ -x "$bin/llvm-objdump" ] || iosfail "no llvm-objdump in $bin (rust-toolchain.toml lists llvm-tools-preview)"
+  on="the iPhone app scan's temporary directory"
+  atmp=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-ios-app.XXXXXX") || exit 2
+  trap 'artifact_cleanup' EXIT
+  trap 'exit 2' HUP INT TERM
+  artifact_rules aarch64-apple-ios
+  hits=0
+  linked=0
+  archives=0
+  echo "== banned-api-check --ios-app $iconfig $app"
+  # 1. The Info.plist: its hard rules, then its summary against the reviewed one.
+  readable "$app/Info.plist" --ios-app
+  ios_py info "$app/Info.plist" "$ibid" "$atmp/info.json" "$atmp/exec" >"$atmp/py" || exit 2
+  ios_hits IosPlist "$app/Info.plist" "$atmp/py"
+  echo "== Info.plist summary"
+  cat "$atmp/info.json" || exit 2
+  echo "=="
+  if ! cmp -s "$atmp/info.json" "$exp/$iconfig-Info.json"; then
+    ahit IosPlist "$exp/$iconfig-Info.json" "differs from the app's Info.plist summary (the diff is on stderr)"
+    show_diff "$exp/$iconfig-Info.json" "$atmp/info.json"
+  fi
+  # 2. The privacy manifest, the same way.
+  if [ -f "$app/PrivacyInfo.xcprivacy" ]; then
+    ios_py privacy "$app/PrivacyInfo.xcprivacy" "$atmp/privacy.json" >"$atmp/py" || exit 2
+    ios_hits IosPrivacy "$app/PrivacyInfo.xcprivacy" "$atmp/py"
+    echo "== privacy manifest summary"
+    cat "$atmp/privacy.json" || exit 2
+    echo "=="
+    if ! cmp -s "$atmp/privacy.json" "$exp/$iconfig-PrivacyInfo.json"; then
+      ahit IosPrivacy "$exp/$iconfig-PrivacyInfo.json" "differs from the app's privacy manifest summary (the diff is on stderr)"
+      show_diff "$exp/$iconfig-PrivacyInfo.json" "$atmp/privacy.json"
+    fi
+  else
+    ahit IosPrivacy "$app" 'no PrivacyInfo.xcprivacy, the privacy manifest'
+  fi
+  # 3. The bundle holds the app's own files alone: no embedded framework, library, plug-in or
+  # bundle (a Swift package's or an SDK's), no link.
+  exe=
+  IFS= read -r exe <"$atmp/exec" || :
+  (cd "$app" && find . -print) >"$atmp/entries" || exit 2
+  sort "$atmp/entries" >"$atmp/sorted" || exit 2
+  while IFS= read -r e; do
+    if [ -L "$app/$e" ]; then
+      ahit IosBundle "$app/${e#./}" 'a link'
+      continue
+    fi
+    case $e in
+      . | ./Info.plist | ./PkgInfo | ./PrivacyInfo.xcprivacy | ./_CodeSignature | ./_CodeSignature/CodeResources | \
+        ./embedded.mobileprovision) ;;
+      *)
+        [ -n "$exe" ] && [ "$e" = "./$exe" ] ||
+          ahit IosBundle "$app/${e#./}" "not one of the app's own files (no embedded framework, library, plug-in or bundle)"
+        ;;
+    esac
+  done <"$atmp/sorted"
+  if [ -z "$exe" ] || [ ! -f "$app/$exe" ]; then
+    trap - EXIT
+    artifact_cleanup
+    echo "banned-api-check --ios-app $iconfig $app: no main executable (CFBundleExecutable), so its binary cannot be checked; $hits hit(s)" >&2
+    exit 2
+  fi
+  # 4. The main Mach-O under the artifact rules (markers, the test key, RNG symbols, std's
+  # random-key path, a stripped file, the CCRandomGenerateBytes import), the registry marker and
+  # the test key required in the test-registry app and nowhere else, and the test hooks' marker
+  # (lead decision M6-5) in neither.
+  mo=$app/$exe
+  isym=yes
+  artifact_file "$mo" >"$atmp/afile" || isym=no
+  reg="Marker: $mo: KC_TEST_REGISTRY_DO_NOT_SHIP"
+  key="TestKey: $mo: the test registry public key $testkey"
+  if [ "$iconfig" = WithTestRegistry ]; then
+    if grep -q -x -F -e "$reg" "$atmp/afile"; then
+      hits=$((hits - 1))
+    else
+      ahit IosApp "$mo" 'no KC_TEST_REGISTRY_DO_NOT_SHIP: not the test-registry build'
+    fi
+    if grep -q -x -F -e "$key" "$atmp/afile"; then
+      hits=$((hits - 1))
+    else
+      ahit IosApp "$mo" 'no test registry public key: not the test-registry build'
+    fi
+    grep -v -x -F -e "$reg" -e "$key" "$atmp/afile" >"$atmp/kept"
+    [ $? -le 1 ] || exit 2
+  else
+    cp "$atmp/afile" "$atmp/kept" || exit 2
+  fi
+  cat "$atmp/kept" || exit 2
+  if bytes_found "$(hexbytes "$ios_hooks_marker")"; then
+    ahit Marker "$mo" "$ios_hooks_marker"
+  fi
+  # A secret node's identifier (M6-20): the TestHooks build's alone.
+  while IFS= read -r sid; do
+    case $sid in '' | '#'*) continue ;; esac
+    [ ${#sid} -ge 16 ] || iosfail "$exp/secret-identifiers.txt: $sid is under 16 bytes, which Swift keeps in its code, out of a byte scan's sight"
+    if bytes_found "$(hexbytes "$sid")"; then
+      ahit IosSecretId "$mo" "$sid: a secret node's identifier (the TestHooks build's alone)"
+    fi
+  done <"$exp/secret-identifiers.txt"
+  if [ "$isym" = yes ]; then
+    grep -E -e "$ios_net" "$atmp/undefined" >"$atmp/hits"
+    [ $? -le 1 ] || exit 2
+    from_list Network "$mo" 'undefined ' "$atmp/hits"
+    grep -E -e "$ios_clip" "$atmp/undefined" >"$atmp/hits"
+    [ $? -le 1 ] || exit 2
+    from_list Clipboard "$mo" 'undefined ' "$atmp/hits"
+    # The symbols taken from the Network framework (llvm-nm -m names each one's library).
+    if ! "$bin/llvm-nm" -m -u "$mo" >"$atmp/nm-m" 2>"$atmp/nm-err"; then
+      printf 'banned-api-check: llvm-nm cannot read %s:\n' "$mo" >&2
+      indented "$atmp/nm-err"
+      exit 2
+    fi
+    awk '$NF == "Network)" && $(NF - 1) == "(from" { print $(NF - 2) }' "$atmp/nm-m" >"$atmp/from-network" || exit 2
+    grep -v -E -e "$ios_network_allowed" "$atmp/from-network" >"$atmp/hits"
+    [ $? -le 1 ] || exit 2
+    from_list Network "$mo" "from the Network framework, not NWPathMonitor's or NWPath's: " "$atmp/hits"
+  fi
+  # The libraries it links: the system's alone, and none of the denied frameworks.
+  if ! "$bin/llvm-objdump" --macho --dylibs-used "$mo" >"$atmp/dylibs" 2>"$atmp/objdump-err"; then
+    printf 'banned-api-check: llvm-objdump cannot read %s:\n' "$mo" >&2
+    indented "$atmp/objdump-err"
+    exit 2
+  fi
+  awk 'NR > 1 { sub(/^[[:space:]]+/, ""); sub(/ \(compatibility version .*$/, ""); print }' "$atmp/dylibs" >"$atmp/libs" || exit 2
+  nlibs=0
+  while IFS= read -r lib; do
+    nlibs=$((nlibs + 1))
+    case $lib in
+      /System/Library/Frameworks/*.framework/* | /usr/lib/*) ;;
+      *) ahit IosLink "$mo" "links $lib, not a library of the system (an embedded framework or library)" ;;
+    esac
+    fw=${lib#/System/Library/Frameworks/}
+    [ "$fw" != "$lib" ] || continue
+    fw=${fw%%.framework/*}
+    if printf '%s\n' "$fw" | grep -q -x -E -e "$ios_denied_frameworks"; then
+      ahit Network "$mo" "links $fw.framework"
+    fi
+  done <"$atmp/libs"
+  [ "$nlibs" -gt 0 ] || iosfail "llvm-objdump listed no library for $mo"
+  trap - EXIT
+  artifact_cleanup
+  if [ "$hits" -ne 0 ]; then
+    echo "banned-api-check --ios-app $iconfig $app: $hits hit(s)"
+    exit 1
+  fi
+  case $iconfig in
+    Shipping) which='no registry marker or test key' ;;
+    *) which='its registry marker and the test key alone' ;;
+  esac
+  echo "banned-api-check --ios-app $iconfig $app: clean: Info.plist and the privacy manifest as $exp, the app's own files alone, $exe: $which, no other marker, no other RNG symbol, _CCRandomGenerateBytes imported, no network, clipboard or denied framework, $nlibs system libraries"
+  exit 0
+}
+
+# ios_hits CATEGORY NAME FILE: one hit per line of FILE.
+ios_hits() {
+  while IFS= read -r line; do
+    [ -n "$line" ] && ahit "$1" "$2" "$line"
+  done <"$3"
+}
+
+# --- iPhone app selftest mode --------------------------------------------------------------------
+
+# ios_selftest: --ios-app's refusals and rules on stand-in apps built here with the SDK's clang and
+# swiftc for the simulator (macOS with Xcode only; see "iPhone app selftest mode" in the header).
+ios_selftest() {
+  command -v xcrun >/dev/null 2>&1 || iosfail '--selftest-ios-app needs macOS with Xcode (xcrun)'
+  command -v python3 >/dev/null 2>&1 || iosfail 'no python3 on PATH'
+  st=$(mktemp -d "${TMPDIR:-/tmp}/banned-api-selftest-ios.XXXXXX") || exit 2
+  trap 'rm -rf "$st"' EXIT
+  trap 'exit 2' HUP INT TERM
+  committed=$here/../mobile/ios/expected
+  pass=0
+  fail=0
+  iexp=
+  # The test key's bytes as a C initializer.
+  ckey=
+  kx=$testkey
+  while [ -n "$kx" ]; do
+    ckey="$ckey${ckey:+,}0x${kx%"${kx#??}"}"
+    kx=${kx#??}
+  done
+  cat >"$st/main.c" <<'EOF'
+#include <stddef.h>
+#include <stdint.h>
+extern int CCRandomGenerateBytes(void *bytes, size_t count);
+#ifdef KC_ARC4
+extern uint32_t arc4random(void);
+#endif
+#ifdef KC_CFNET
+extern const void *CFNetworkCopySystemProxySettings(void);
+#endif
+#ifdef KC_PASTE
+extern char OBJC_CLASS_$_UIPasteboard;
+#endif
+#ifdef KC_LIB
+extern int kc_lib(void);
+#endif
+#ifdef KC_KEY
+static const unsigned char kc_key[] = { KC_KEY };
+#endif
+static const char kc_text[] = KC_TEXT;
+int main(void) {
+  unsigned char b[1] = { 0 };
+  volatile int r = kc_text[0] + b[0];
+#ifndef KC_NO_IMPORT
+  r += CCRandomGenerateBytes(b, 1);
+#endif
+#ifdef KC_ARC4
+  r += (int)arc4random();
+#endif
+#ifdef KC_CFNET
+  r += CFNetworkCopySystemProxySettings() != 0;
+#endif
+#ifdef KC_PASTE
+  r += (int)(uintptr_t)&OBJC_CLASS_$_UIPasteboard;
+#endif
+#ifdef KC_LIB
+  r += kc_lib();
+#endif
+#ifdef KC_KEY
+  r += kc_key[0];
+#endif
+  return r;
+}
+EOF
+  printf '%s\n' 'int kc_lib(void) { return 1; }' >"$st/lib.c" || exit 2
+  # The offline check's stand-in (NWPathMonitor alone) and a connection, each with the OS import.
+  cat >"$st/monitor.swift" <<'EOF'
+import CommonCrypto
+import Foundation
+import Network
+@main struct Main {
+  static func main() {
+    var b = [UInt8](repeating: 0, count: 1)
+    let r = CCRandomGenerateBytes(&b, 1)
+    let monitor = NWPathMonitor()
+    monitor.pathUpdateHandler = { path in _ = path.status != .unsatisfied || !path.availableInterfaces.isEmpty }
+    monitor.start(queue: .main)
+    monitor.cancel()
+    exit(Int32(r))
+  }
+}
+EOF
+  cat >"$st/connection.swift" <<'EOF'
+import CommonCrypto
+import Foundation
+import Network
+@main struct Main {
+  static func main() {
+    var b = [UInt8](repeating: 0, count: 1)
+    let r = CCRandomGenerateBytes(&b, 1)
+    let c = NWConnection(host: "example.invalid", port: 9, using: .tcp)
+    c.start(queue: .main)
+    exit(Int32(r))
+  }
+}
+EOF
+  sdk=iphonesimulator
+  triple=arm64-apple-ios17.0-simulator
+  # cbuild OUT FLAG...: main.c linked for the simulator with FLAGs.
+  cbuild() {
+    cout=$1
+    shift
+    xcrun --sdk "$sdk" clang -target "$triple" -Wall -Werror "$@" "$st/main.c" -o "$cout" 2>"$st/cc-err" || {
+      indented "$st/cc-err"
+      iosfail "the SDK's clang cannot build a stand-in app"
+    }
+  }
+  sbuild() {
+    xcrun --sdk "$sdk" swiftc -target "$triple" -parse-as-library -O "$2" -o "$1" 2>"$st/cc-err" || {
+      indented "$st/cc-err"
+      iosfail "the SDK's swiftc cannot build a stand-in app"
+    }
+  }
+  xcrun --sdk "$sdk" clang -target "$triple" -dynamiclib -install_name @rpath/libkc.dylib "$st/lib.c" -o "$st/libkc.dylib" \
+    2>"$st/cc-err" || { indented "$st/cc-err"; iosfail "the SDK's clang cannot build a stand-in library"; }
+  text='"kc stand-in"'
+  reg='"KC_TEST_REGISTRY_DO_NOT_SHIP"'
+  cbuild "$st/clean" -DKC_TEXT="$text"
+  cbuild "$st/registry" -DKC_TEXT="$reg" -DKC_KEY="$ckey"
+  cbuild "$st/registry-no-key" -DKC_TEXT="$reg"
+  cbuild "$st/hooks" -DKC_TEXT='"KC_TEST_HOOKS_DO_NOT_SHIP"'
+  cbuild "$st/secret-id" -DKC_TEXT='"kc_secret_passphrase_text"'
+  cbuild "$st/source" -DKC_TEXT='"KC_TEST_SOURCE_DO_NOT_SHIP"'
+  cbuild "$st/no-import" -DKC_TEXT="$text" -DKC_NO_IMPORT
+  cbuild "$st/arc4" -DKC_TEXT="$text" -DKC_ARC4
+  cbuild "$st/cfnetwork" -DKC_TEXT="$text" -DKC_CFNET -framework CFNetwork
+  cbuild "$st/paste" -DKC_TEXT="$text" -DKC_PASTE -framework UIKit
+  cbuild "$st/rpath" -DKC_TEXT="$text" -DKC_LIB "$st/libkc.dylib"
+  sbuild "$st/monitor" "$st/monitor.swift"
+  sbuild "$st/connection" "$st/connection.swift"
+  # The stand-in Info.plist (as the app's, with a stamped key the summary leaves out) and privacy
+  # manifest.
+  cat >"$st/Info.plist" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleExecutable</key>
+	<string>KeepCrypt</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.keepcrypt.entropy</string>
+	<key>DTXcode</key>
+	<string>2720</string>
+	<key>MinimumOSVersion</key>
+	<string>17.0</string>
+	<key>NSCameraUsageDescription</key>
+	<string>The camera reads the go-ahead QR code.</string>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array><string>public.data</string></array>
+			<key>UTTypeIdentifier</key>
+			<string>com.keepcrypt.entropy.age-backup</string>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>age</string></array></dict>
+		</dict>
+		<dict>
+			<key>UTTypeConformsTo</key>
+			<array><string>public.data</string></array>
+			<key>UTTypeIdentifier</key>
+			<string>com.keepcrypt.entropy.registry-snapshot</string>
+			<key>UTTypeTagSpecification</key>
+			<dict><key>public.filename-extension</key><array><string>kcr</string></array></dict>
+		</dict>
+	</array>
+</dict>
+</plist>
+EOF
+  cat >"$st/PrivacyInfo.xcprivacy" <<'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+</dict>
+</plist>
+EOF
+  # The expected summaries, from the stand-in files (the test-registry one with its bundle id).
+  mkdir "$st/expected" || exit 2
+  sed 's/<string>com.keepcrypt.entropy<\/string>/<string>com.keepcrypt.entropy.testregistry<\/string>/' "$st/Info.plist" \
+    >"$st/Info-registry.plist" || exit 2
+  ios_py info "$st/Info.plist" com.keepcrypt.entropy "$st/expected/Shipping-Info.json" "$st/x" >/dev/null || exit 2
+  ios_py info "$st/Info-registry.plist" com.keepcrypt.entropy.testregistry "$st/expected/WithTestRegistry-Info.json" "$st/x" \
+    >/dev/null || exit 2
+  ios_py privacy "$st/PrivacyInfo.xcprivacy" "$st/expected/Shipping-PrivacyInfo.json" >/dev/null || exit 2
+  cp "$st/expected/Shipping-PrivacyInfo.json" "$st/expected/WithTestRegistry-PrivacyInfo.json" || exit 2
+  printf '%s\n' '# the secret nodes' kc_secret_insert_word kc_secret_passphrase_text >"$st/expected/secret-identifiers.txt" || exit 2
+  # inew NAME BINARY [PLIST]: a stand-in app $c/KeepCrypt.app, BINARY as its executable, the
+  # stand-in Info.plist (or PLIST) and privacy manifest and a PkgInfo.
+  inew() {
+    c=$st/case-$1
+    a=$c/KeepCrypt.app
+    mkdir -p "$a" || exit 2
+    cp "$2" "$a/KeepCrypt" && cp "${3:-$st/Info.plist}" "$a/Info.plist" && cp "$st/PrivacyInfo.xcprivacy" "$a/" || exit 2
+    printf 'APPL????' >"$a/PkgInfo" || exit 2
+  }
+  # icase NAME CONFIG EXIT TEXT...: --ios-app CONFIG on $c's app against $st/expected exited EXIT and
+  # printed every TEXT.
+  icase() {
+    name=$1
+    cfg=$2
+    want=$3
+    shift 3
+    sh "$self" --ios-app "$cfg" "$a" "${iexp:-$st/expected}" >"$c/out" 2>&1
+    got=$?
+    ok=yes
+    [ "$got" = "$want" ] || ok=no
+    for t in "$@"; do
+      grep -q -F -e "$t" "$c/out" || ok=no
+    done
+    if [ "$ok" = yes ]; then
+      pass=$((pass + 1))
+      echo "PASS $name"
+    else
+      fail=$((fail + 1))
+      echo "FAIL $name (exit $got, wanted $want)"
+      sed 's/^/  | /' "$c/out"
+    fi
+  }
+  mo='KeepCrypt.app/KeepCrypt'
+  inew clean "$st/clean"
+  icase ios-clean-shipping Shipping 0 "--ios-app Shipping $a: clean"
+  inew registry "$st/registry" "$st/Info-registry.plist"
+  icase ios-clean-test-registry WithTestRegistry 0 "--ios-app WithTestRegistry $a: clean"
+  inew registry-in-shipping "$st/registry"
+  icase ios-registry-marker-and-key-in-shipping Shipping 1 "$mo: KC_TEST_REGISTRY_DO_NOT_SHIP" "TestKey: " ": 2 hit(s)"
+  inew registry-without-key "$st/registry-no-key" "$st/Info-registry.plist"
+  icase ios-test-registry-without-its-key WithTestRegistry 1 "IosApp: $a/KeepCrypt: no test registry public key: not the test-registry build" ": 1 hit(s)"
+  inew registry-without-marker "$st/clean" "$st/Info-registry.plist"
+  icase ios-test-registry-without-its-marker WithTestRegistry 1 "no KC_TEST_REGISTRY_DO_NOT_SHIP: not the test-registry build" ": 2 hit(s)"
+  inew hooks "$st/hooks"
+  icase ios-test-hooks-marker Shipping 1 "Marker: $a/KeepCrypt: KC_TEST_HOOKS_DO_NOT_SHIP" ": 1 hit(s)"
+  inew secret-id "$st/secret-id"
+  icase ios-secret-identifier Shipping 1 "IosSecretId: $a/KeepCrypt: kc_secret_passphrase_text: a secret node's identifier" ": 1 hit(s)"
+  inew secret-id-clean "$st/clean"
+  icase ios-secret-identifiers-none Shipping 0 "--ios-app Shipping $a: clean"
+  inew secret-id-short "$st/clean"
+  mkdir "$c/expected" && cp "$st/expected/"* "$c/expected/" && printf '%s\n' dice_pick >"$c/expected/secret-identifiers.txt" || exit 2
+  iexp=$c/expected
+  icase ios-secret-identifier-under-16-bytes Shipping 2 "secret-identifiers.txt: dice_pick is under 16 bytes"
+  iexp=
+  inew source "$st/source"
+  icase ios-test-source-marker Shipping 1 "Marker: $a/KeepCrypt: KC_TEST_SOURCE_DO_NOT_SHIP" ": 1 hit(s)"
+  inew no-import "$st/no-import"
+  icase ios-no-os-import Shipping 1 "OSImport: $a/KeepCrypt: no undefined _CCRandomGenerateBytes" ": 1 hit(s)"
+  inew arc4 "$st/arc4"
+  icase ios-arc4random-import Shipping 1 "Symbol: $a/KeepCrypt: undefined _arc4random" ": 1 hit(s)"
+  inew cfnetwork "$st/cfnetwork"
+  icase ios-cfnetwork Shipping 1 "Network: $a/KeepCrypt: undefined _CFNetworkCopySystemProxySettings" \
+    "Network: $a/KeepCrypt: links CFNetwork.framework" ": 2 hit(s)"
+  inew paste "$st/paste"
+  icase ios-pasteboard Shipping 1 "Clipboard: $a/KeepCrypt: undefined _OBJC_CLASS_\$_UIPasteboard" ": 1 hit(s)"
+  inew rpath "$st/rpath"
+  icase ios-embedded-library-linked Shipping 1 "IosLink: $a/KeepCrypt: links @rpath/libkc.dylib, not a library of the system" ": 1 hit(s)"
+  inew monitor "$st/monitor"
+  icase ios-clean-path-monitor Shipping 0 "--ios-app Shipping $a: clean"
+  inew connection "$st/connection"
+  icase ios-network-connection Shipping 1 "Network: $a/KeepCrypt: undefined _\$s7Network12NWConnectionC" \
+    "Network: $a/KeepCrypt: from the Network framework, not NWPathMonitor's or NWPath's: _\$s7Network12NWConnectionC"
+  inew framework "$st/clean"
+  mkdir -p "$a/Frameworks/Kit.framework" && echo kc >"$a/Frameworks/Kit.framework/Kit" || exit 2
+  icase ios-embedded-framework Shipping 1 "IosBundle: $a/Frameworks: not one of the app's own files" \
+    "IosBundle: $a/Frameworks/Kit.framework/Kit: " ": 3 hit(s)"
+  inew plugin "$st/clean"
+  mkdir "$a/PlugIns" || exit 2
+  icase ios-plug-ins-directory Shipping 1 "IosBundle: $a/PlugIns: " ": 1 hit(s)"
+  inew link "$st/clean"
+  ln -s Info.plist "$a/Other.plist" || exit 2
+  icase ios-a-link-in-the-bundle Shipping 1 "IosBundle: $a/Other.plist: a link" ": 1 hit(s)"
+  # iplist NAME SED: the stand-in Info.plist with SED applied, as $st/NAME.plist.
+  iplist() {
+    sed -e "$2" "$st/Info.plist" >"$st/$1.plist" || exit 2
+  }
+  iplist ats 's|<key>MinimumOSVersion</key>|<key>NSAppTransportSecurity</key><dict/><key>MinimumOSVersion</key>|'
+  inew ats "$st/clean" "$st/ats.plist"
+  icase ios-plist-app-transport-security Shipping 1 "IosPlist: $a/Info.plist: holds NSAppTransportSecurity" \
+    "IosPlist: $st/expected/Shipping-Info.json: differs from the app's Info.plist summary" ": 2 hit(s)"
+  iplist modes 's|<key>MinimumOSVersion</key>|<key>UIBackgroundModes</key><array><string>audio</string></array><key>MinimumOSVersion</key>|'
+  inew modes "$st/clean" "$st/modes.plist"
+  icase ios-plist-background-modes Shipping 1 "IosPlist: $a/Info.plist: holds UIBackgroundModes" ": 2 hit(s)"
+  iplist urls 's|<key>MinimumOSVersion</key>|<key>CFBundleURLTypes</key><array/><key>MinimumOSVersion</key>|'
+  inew urls "$st/clean" "$st/urls.plist"
+  icase ios-plist-url-types Shipping 1 "IosPlist: $a/Info.plist: holds CFBundleURLTypes" ": 2 hit(s)"
+  iplist camera 's|<key>NSCameraUsageDescription</key>|<key>NSOtherUsageDescription</key>|'
+  inew camera "$st/clean" "$st/camera.plist"
+  icase ios-plist-no-camera-string Shipping 1 "IosPlist: $a/Info.plist: no NSCameraUsageDescription" ": 2 hit(s)"
+  iplist zip 's|<string>kcr</string>|<string>zip</string>|'
+  inew zip "$st/clean" "$st/zip.plist"
+  icase ios-plist-another-imported-type Shipping 1 'imported types [["age"], ["zip"]], not .age and .kcr alone' ": 2 hit(s)"
+  iplist os 's|<string>17.0</string>|<string>16.0</string>|'
+  inew os "$st/clean" "$st/os.plist"
+  icase ios-plist-another-deployment-target Shipping 1 'MinimumOSVersion is "16.0", not 17.0' ": 2 hit(s)"
+  inew wrong-id "$st/clean"
+  icase ios-plist-shipping-id-in-test-registry WithTestRegistry 1 \
+    'CFBundleIdentifier is "com.keepcrypt.entropy", not com.keepcrypt.entropy.testregistry' ": 4 hit(s)"
+  iplist stamped 's|<string>2720</string>|<string>1640</string>|'
+  inew stamped "$st/clean" "$st/stamped.plist"
+  icase ios-plist-stamped-key-left-out Shipping 0 "--ios-app Shipping $a: clean"
+  inew tracking "$st/clean"
+  sed 's|<false/>|<true/>|' "$st/PrivacyInfo.xcprivacy" >"$a/PrivacyInfo.xcprivacy" || exit 2
+  icase ios-privacy-tracking Shipping 1 "IosPrivacy: $a/PrivacyInfo.xcprivacy: NSPrivacyTracking is not false" \
+    "IosPrivacy: $st/expected/Shipping-PrivacyInfo.json: differs" ": 2 hit(s)"
+  inew no-privacy "$st/clean"
+  rm "$a/PrivacyInfo.xcprivacy" || exit 2
+  icase ios-no-privacy-manifest Shipping 1 "IosPrivacy: $a: no PrivacyInfo.xcprivacy" ": 1 hit(s)"
+  # The refusals.
+  inew refusals "$st/clean"
+  icase ios-refuses-another-config Release 2 'CONFIG is Shipping or WithTestRegistry, not Release'
+  a=$c/Not.bundle
+  mkdir "$a" || exit 2
+  icase ios-refuses-a-bundle-that-is-no-app Shipping 2 'APP is an .app bundle'
+  inew no-expected "$st/clean"
+  iexp=$c
+  icase ios-refuses-a-missing-expected-summary Shipping 2 "--ios-app: cannot read $c/Shipping-Info.json"
+  iexp=
+  inew no-executable "$st/clean"
+  rm "$a/KeepCrypt" || exit 2
+  icase ios-refuses-an-app-with-no-executable Shipping 2 'no main executable (CFBundleExecutable)'
+  # The committed summaries: each in the summary's own form and keeping every hard rule.
+  for cfg in Shipping WithTestRegistry; do
+    case $cfg in Shipping) cid=com.keepcrypt.entropy ;; *) cid=com.keepcrypt.entropy.testregistry ;; esac
+    out=$(ios_py check-info "$committed/$cfg-Info.json" "$cid") || exit 2
+    out=$out$(ios_py check-privacy "$committed/$cfg-PrivacyInfo.json") || exit 2
+    if [ -z "$out" ]; then
+      pass=$((pass + 1))
+      echo "PASS ios-committed-$cfg-summaries"
+    else
+      fail=$((fail + 1))
+      echo "FAIL ios-committed-$cfg-summaries"
+      printf '%s\n' "$out" | sed 's/^/  | /'
+    fi
+  done
+  echo "selftest-ios-app: $pass passed, $fail failed"
+  [ "$fail" -eq 0 ] || exit 1
+  exit 0
+}
+
 case ${1-} in
   --artifact) shift; [ $# -ge 1 ] || { usage >&2; exit 2; }; artifact "$@" ;;
   --workflows) shift; [ $# -eq 1 ] || { usage >&2; exit 2; }; workflows "$1" ;;
@@ -8727,6 +10606,8 @@ case ${1-} in
   --os-config) shift; [ $# -eq 1 ] || { usage >&2; exit 2; }; os_config "$1" ;;
   --apk) shift; [ $# -eq 6 ] || { usage >&2; exit 2; }; apk_scan "$1" "$2" "$3" "$4" "$5" "$6" ;;
   --selftest-apk) shift; [ $# -eq 0 ] || { usage >&2; exit 2; }; apk_selftest ;;
+  --ios-app) shift; [ $# -eq 3 ] || { usage >&2; exit 2; }; ios_app_scan "$1" "$2" "$3" ;;
+  --selftest-ios-app) shift; [ $# -eq 0 ] || { usage >&2; exit 2; }; ios_selftest ;;
 esac
 
 case $# in

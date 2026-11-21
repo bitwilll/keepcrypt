@@ -108,7 +108,16 @@ tools='awk basename cmp dirname find git grep mktemp od rm rustc sed sort tr'
 # kt_canary and kept_hits from each caller; the near misses' offline.py names PowerShell's
 # clipboard aliases as variables, so psline's second grep runs; and the app's GoAheadScanner.kt
 # with a task name and a package mention on one line takes kt_tasks_scanner to
-# kt_tasks_and_packages' awk.
+# kt_tasks_and_packages' awk. The Swift rules' allowed files (M6 item A1): the offline check, whose
+# import and monitor take sw_network_import_offline and sw_nw_offline to kept_hits, the secure
+# layer, whose isSecureTextEntry takes sw_secure_entry there and whose UITextField runs the scan's
+# second grep after the loop, the module map, and the project file, whose KC_TEST_HOOKS takes
+# sw_hooks_pbxproj to kt_text and its awk; and a file outside the offline check naming an NW type,
+# which takes sw_nw to kept_hits. A2's: the halt file and the settings file, whose func halt and
+# open call take sw_halt_decl and sw_open_settings to kept_hits, and a file with a catch, which
+# takes sw_catch to kt_text and its awk. C5's (lead decision M6-5): the UI-test scheme, whose
+# TestHooks takes sw_hooks_schemes to kt_text and its awk, and another scheme naming TestHooks, which
+# takes it to its second grep.
 fixtures='clean-kt-shipping-allowed/mobile/android/secure-ui/src/main/kotlin/com/keepcrypt/entropy/secure/SecureActivity.kt
 clean-kt-shipping-allowed/mobile/android/app/src/main/kotlin/com/keepcrypt/app/MainActivity.kt
 clean-kt-shipping-allowed/mobile/android/app/src/main/kotlin/com/keepcrypt/app/Screens.kt
@@ -123,6 +132,7 @@ clean-device-allowed/pi/app/src/device/usb.rs
 clean-device-allowed/pi/app/src/device/usb/tests.rs
 clean-ffi/ffi/guard/src/lib.rs
 clean-ffi/ffi/jni/src/lib.rs
+clean-ffi/ffi/capi/src/lib.rs
 clean-ffi/ffi/src/ceremony.rs
 clean-release-probe-call-after-closed-comments/core/examples/release_probe.rs
 clean-near-misses/tools/verify/offline.py
@@ -137,7 +147,17 @@ shell-games-add-extra/pi/app/src/games/snake.rs
 ktsdk-settings-canary-comment-mixed-case/mobile/android/settings.gradle.kts
 ktsdk-app-src-dirs-build-path/mobile/android/app/build.gradle.kts
 ktmanifest-main-provider/mobile/android/app/src/main/AndroidManifest.xml
-ktfailopen-catch-task-fork-join-pool-qualified-in-scanner/mobile/android/app/src/main/kotlin/com/keepcrypt/entropy/camera/GoAheadScanner.kt'
+ktfailopen-catch-task-fork-join-pool-qualified-in-scanner/mobile/android/app/src/main/kotlin/com/keepcrypt/entropy/camera/GoAheadScanner.kt
+clean-sw-allowed/mobile/ios/KeepCrypt/OfflineCheck.swift
+clean-sw-allowed/mobile/ios/KeepCrypt/SecureLayer.swift
+clean-sw-allowed/mobile/ios/KeepCryptCore/module.modulemap
+clean-sw-allowed/mobile/ios/KeepCrypt.xcodeproj/project.pbxproj
+network-ios-nwparameters-outside-offline-check/mobile/ios/KeepCrypt/Transport.swift
+clean-sw-allowed/mobile/ios/KeepCrypt/Ceremony.swift
+clean-sw-allowed/mobile/ios/KeepCrypt/OpenSettings.swift
+clean-sw-allowed/mobile/ios/KeepCrypt/Core.swift
+clean-sw-allowed/mobile/ios/KeepCrypt.xcodeproj/xcshareddata/xcschemes/KeepCrypt-TestHooks.xcscheme
+swtesthook-testhooks-in-the-shipping-scheme/mobile/ios/KeepCrypt.xcodeproj/xcshareddata/xcschemes/KeepCrypt-Shipping.xcscheme'
 # The workflow fixtures' files in the workflows directory, FIXTURE/FILE, found as the tree's were
 # (2026-10-28): the one whose lenient dependency verification is a bootstrap hit that kept_hits
 # reads too, so kt_bootstrap runs its sed and its sort.

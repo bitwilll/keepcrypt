@@ -224,13 +224,13 @@ fun CheckQrScreen(
         screenId(Screen.CheckQr),
         testRegistry,
         actions = {
-            Row {
-                KitButton("Scan go-ahead QR", "scan_qr", modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onScan)
-                KitButton("Type go-ahead code", "type_code", modifier = Modifier.weight(1f).padding(start = 6.dp), onClick = onTypeCode)
+            KitPair("Scan go-ahead QR", "Type go-ahead code") {
+                KitButton("Scan go-ahead QR", "scan_qr", onClick = onScan)
+                KitButton("Type go-ahead code", "type_code", onClick = onTypeCode)
             }
-            Row {
-                KitButton("Match found", "match_found", modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onMatchFound)
-                KitButton("Cannot check", "cannot_check", modifier = Modifier.weight(1f).padding(start = 6.dp), onClick = onCannotCheck)
+            KitPair("Match found", "Cannot check") {
+                KitButton("Match found", "match_found", onClick = onMatchFound)
+                KitButton("Cannot check", "cannot_check", onClick = onCannotCheck)
             }
         },
     ) {
@@ -317,15 +317,15 @@ fun CodeEntry(
             if (state.codeRefused) {
                 KitText(CODE_REFUSED, KitType.body.copy(color = KitColors.warning), tag = "code_refused", live = true)
             }
-            BasicText(
+            WholeLines(
                 codeShown(code),
                 Modifier.padding(vertical = 6.dp).testTag("code"),
-                style = KitType.large.copy(fontFamily = FontFamily.Monospace),
+                KitType.large.copy(fontFamily = FontFamily.Monospace),
             )
             CrockfordPad(onKey)
-            Row {
-                KitButton("Delete", "code_delete", enabled = code.length > 0, modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onDelete)
-                KitButton("Done", "code_done", enabled = code.isFull, modifier = Modifier.weight(1f).padding(start = 6.dp), onClick = onDone)
+            KitPair("Delete", "Done") {
+                KitButton("Delete", "code_delete", enabled = code.length > 0, onClick = onDelete)
+                KitButton("Done", "code_done", enabled = code.isFull, onClick = onDone)
             }
             KitButton("Back", "back", onClick = onBack)
         },

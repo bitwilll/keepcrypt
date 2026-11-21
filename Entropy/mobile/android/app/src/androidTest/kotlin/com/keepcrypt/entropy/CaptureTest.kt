@@ -802,6 +802,16 @@ class CaptureTest {
         )
         val overflowing = laid.filter { it.any { node -> node.overflow } }
         assertTrue("$name: " + overflowing.size + " of its texts overflow their box: " + overflowing.joinToString { described(it.first()) }, overflowing.isEmpty())
+        // Q97 (U3h): no line break inside a word on a button or in a large secret text (the insert's word), and no
+        // soft wrap of the code, C, or a monospaced secret text (the letters typed, D, the overview, the choices).
+        val whole = laid.filter { seen ->
+            seen.any { node ->
+                val secret = node.tag == SECRET_TAG
+                ((node.control || (secret && node.large)) && node.brokenWord) ||
+                    ((node.tag == "code" || node.tag == "commitment_hex" || (secret && node.monospace)) && node.wrapped)
+            }
+        }
+        assertTrue("$name: " + whole.size + " of its texts break a word or a group across lines (Q97): " + whole.joinToString { described(it.first()) }, whole.isEmpty())
         val scale = onMain { activity.resources.configuration.fontScale }
         probe(
             "$name: " + controls.size + " controls of 48 dp or more (" + target + " px at density " + density + "), " + shown +

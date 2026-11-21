@@ -1,0 +1,1 @@
+let parameters = NWParameters.tcp

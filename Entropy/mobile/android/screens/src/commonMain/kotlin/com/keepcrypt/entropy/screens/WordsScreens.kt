@@ -185,7 +185,7 @@ private fun InsertWord(insert: WordPage) {
         append(word.take(LIGHTER_FROM))
         withStyle(SpanStyle(color = KitColors.muted)) { append(word.drop(LIGHTER_FROM)) }
     }
-    BasicText(text, Modifier.padding(vertical = 6.dp).secret(), style = KitType.large)
+    WholeLines(text, Modifier.padding(vertical = 6.dp).secret(), KitType.large)
 }
 
 /**
@@ -222,9 +222,9 @@ fun WordsInsert(
                     if (state.reviewing) {
                         KitButton("Back to the read-back", "back_to_readback", onClick = onBackToReadback)
                     } else {
-                        Row {
-                            KitButton("Previous", "previous", enabled = state.page > 0, modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onPrevious)
-                            KitButton("Next", "next", enabled = !last, modifier = Modifier.weight(1f).padding(start = 6.dp), onClick = onNext)
+                        KitPair("Previous", "Next") {
+                            KitButton("Previous", "previous", enabled = state.page > 0, onClick = onPrevious)
+                            KitButton("Next", "next", enabled = !last, onClick = onNext)
                         }
                         KitButton("Overview", "overview", onClick = onOverview)
                         if (last && state.opened != null) {
@@ -274,9 +274,9 @@ fun WordsOverview(
                 screenId(Screen.WordsOverview),
                 testRegistry,
                 actions = {
-                    Row {
-                        KitButton("Previous", "previous", enabled = state.page > 0, modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onPrevious)
-                        KitButton("Next", "next", enabled = more, modifier = Modifier.weight(1f).padding(start = 6.dp), onClick = onNext)
+                    KitPair("Previous", "Next") {
+                        KitButton("Previous", "previous", enabled = state.page > 0, onClick = onPrevious)
+                        KitButton("Next", "next", enabled = more, onClick = onNext)
                     }
                     KitButton("Insert view", "insert_view", onClick = onInsertView)
                 },
@@ -284,7 +284,7 @@ fun WordsOverview(
                 Heading("Seed words: overview")
                 KitText(overviewHeader(inserts.first(), inserts.last()), KitType.small, tag = "overview_header")
                 for (insert in inserts) {
-                    BasicText(overviewLine(insert), Modifier.padding(vertical = 6.dp).secret(), style = KitType.hex)
+                    WholeLines(overviewLine(insert), Modifier.padding(vertical = 6.dp).secret(), KitType.hex)
                 }
                 KitText("For the paper copy: each word with its position and SeedBook number.", KitType.small)
             }
@@ -341,25 +341,23 @@ fun ReadbackEntry(
                     if (state.matched) {
                         KitButton("Next", "readback_next", onClick = onNext)
                     } else {
-                        BasicText(
+                        WholeLines(
                             typedFaces(letters),
                             Modifier.padding(vertical = 6.dp).secret(),
-                            style = KitType.large.copy(fontFamily = FontFamily.Monospace),
+                            KitType.large.copy(fontFamily = FontFamily.Monospace),
                         )
                         LetterPad(onKey)
-                        Row {
+                        KitPair("Delete", "Done") {
                             KitButton(
                                 "Delete",
                                 "letters_delete",
                                 enabled = letters.length > 0,
-                                modifier = Modifier.weight(1f).padding(end = 6.dp),
                                 onClick = onDelete,
                             )
                             KitButton(
                                 "Done",
                                 "letters_done",
                                 enabled = letters.length >= READBACK_MIN_LETTERS,
-                                modifier = Modifier.weight(1f).padding(start = 6.dp),
                                 onClick = onDone,
                             )
                         }

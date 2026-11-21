@@ -1,0 +1,1 @@
+@Model final class Entry {}

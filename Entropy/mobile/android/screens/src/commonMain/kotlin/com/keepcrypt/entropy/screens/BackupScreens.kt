@@ -203,9 +203,9 @@ fun BackupPassphrase(
                 screenId(Screen.BackupPassphrase),
                 testRegistry,
                 actions = {
-                    Row {
-                        KitButton("Previous", "previous", enabled = last, modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onPrevious)
-                        KitButton("Next", "next", enabled = !last, modifier = Modifier.weight(1f).padding(start = 6.dp), onClick = onNext)
+                    KitPair("Previous", "Next") {
+                        KitButton("Previous", "previous", enabled = last, onClick = onPrevious)
+                        KitButton("Next", "next", enabled = !last, onClick = onNext)
                     }
                     if (last) {
                         KitButton("I wrote it down", "passphrase_written", onClick = onConfirm)
@@ -264,7 +264,7 @@ fun BackupConfirm(
                 for (pair in question.choices.chunked(2)) {
                     Row(Modifier.fillMaxWidth()) {
                         for (choice in pair) {
-                            BasicText(choiceText(choice), Modifier.weight(1f).padding(vertical = 4.dp).secret(), style = KitType.hex)
+                            WholeLines(choiceText(choice), Modifier.weight(1f).padding(vertical = 4.dp).secret(), KitType.hex)
                         }
                     }
                 }
@@ -289,15 +289,14 @@ private fun LetterEntry(
     onDone: () -> Unit,
     canDelete: Boolean = letters.length > 0,
 ) {
-    BasicText(typedFaces(letters), Modifier.padding(vertical = 6.dp).secret(), style = KitType.large.copy(fontFamily = FontFamily.Monospace))
+    WholeLines(typedFaces(letters), Modifier.padding(vertical = 6.dp).secret(), KitType.large.copy(fontFamily = FontFamily.Monospace))
     LetterPad(onKey)
-    Row {
-        KitButton("Delete", "letters_delete", enabled = canDelete, modifier = Modifier.weight(1f).padding(end = 6.dp), onClick = onDelete)
+    KitPair("Delete", "Done") {
+        KitButton("Delete", "letters_delete", enabled = canDelete, onClick = onDelete)
         KitButton(
             "Done",
             done,
             enabled = letters.length >= READBACK_MIN_LETTERS,
-            modifier = Modifier.weight(1f).padding(start = 6.dp),
             onClick = onDone,
         )
     }

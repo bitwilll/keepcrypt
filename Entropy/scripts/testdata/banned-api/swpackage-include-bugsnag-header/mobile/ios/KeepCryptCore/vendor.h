@@ -1,0 +1,1 @@
+#include <Bugsnag/Bugsnag.h>

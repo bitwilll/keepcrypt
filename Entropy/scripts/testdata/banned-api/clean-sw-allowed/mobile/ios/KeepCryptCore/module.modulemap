@@ -1,0 +1,4 @@
+module KeepCryptCore {
+    header "keepcrypt.h"
+    export *
+}

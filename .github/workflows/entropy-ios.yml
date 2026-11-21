@@ -1,0 +1,653 @@
+# KeepCrypt-Entropy iPhone (Entropy/tasks/todo.md, M6 item C4; Q90, Q91): the iPhone app,
+# Entropy/mobile/ios, built and tested on two macOS runners side by side, one leg each: macos-26 with
+# Xcode 26.6 and an iOS 26.5 simulator, and macos-15 with Xcode 16.4 and an iOS 18.6 simulator. The
+# deployment target stays iOS 17.0 (docs/build-plan.md's iOS row); no runner image has an iOS 17
+# simulator, so iOS 17 itself is untested here and named in the gate report.
+#
+# Each leg is jobs of its own (M6 item U5), as Entropy Android's legs are, each building what it needs on
+# its own runner: the runner's facts and its Xcode, chosen by DEVELOPER_DIR for every step (xcode-select
+# is never changed); the pinned toolchain; the Rust library from scripts/ios-rust.sh (keepcrypt-capi's
+# libkeepcrypt_capi.a for aarch64-apple-ios and aarch64-apple-ios-sim with plain cargo, as
+# entropy-ci.yml's iOS cross legs build it, copied into mobile/ios/build/rust/), built in the job from
+# the checked-out sources, never carried from another job; and a simulator of the leg's device and
+# runtime, found by name in simctl's list and booted.
+#
+# - The unit job (one a leg): both configurations' libraries; the iPhone app scan's selftest
+#   (scripts/banned-api-check.sh --selftest-ios-app, stand-in apps built with the SDK's clang and
+#   swiftc); for each scheme (KeepCrypt-Shipping in its Shipping configuration, KeepCrypt-WithTestRegistry
+#   in WithTestRegistry), xcodebuild build-for-testing and test-without-building on the simulator (the
+#   unit tests over the real kc_call and vectors/, and the UI test of the start-up self-test), and the
+#   app scan of the built simulator app (scripts/banned-api-check.sh --ios-app against
+#   mobile/ios/expected/); the UI-test scheme, KeepCrypt-TestHooks in its TestHooks configuration (the
+#   UI tests' hooks compiled into the app, M6-5), built for testing and tested the same way with the
+#   journeys left out (KC_JOURNEYS), its app required to hold the hooks' marker and the secret nodes'
+#   identifiers (M6-20; --ios-app refuses each in the shipped apps) and never scanned as a shipped one; a device build of Shipping (generic iOS, unsigned), scanned the same way; and the check
+#   that the journeys jobs' groups are KC_JOURNEYS, each class once a leg, each a file of
+#   KeepCryptUITests, so a class runs in exactly one job of each leg (one not named runs here).
+# - The journeys jobs (a group of the TestHooks UI tests, the user journeys, a job, on each leg): the
+#   test-registry library alone (the TestHooks app links it, M6-7); KeepCrypt-TestHooks built for testing
+#   and its group's classes alone tested (-only-testing), the app holding the hooks' marker.
+#
+# Every build passes CODE_SIGNING_ALLOWED=NO: nothing is signed here, no certificate or profile exists,
+# and nothing is uploaded or passed between jobs. Xcode resolves no Swift package (the project has none,
+# and the gate refuses one). The crate registry (the downloaded sources, which Cargo.lock's checksums
+# verify on every build) is the one thing cached, keyed on the toolchain and Cargo.lock; no built
+# library or app is.
+#
+# Not one of the 14 required checks (Q91), so path filters are safe, as in entropy-android.yml: a
+# skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that touches
+# these paths merges without a green run of this workflow on its final head. They name every input of
+# the app: the project and its Swift, the Rust library's crates, manifests and toolchain, the vectors
+# and the shared screen table the tests read, the Android screens' sources whose texts they pin (D3),
+# the scripts it runs and this file.
+#
+# Hardening, as in entropy-ci.yml, whose gates job checks this file too (banned-api-check.sh
+# --workflows): read-only token and no secret; only actions/checkout and actions/cache, pinned by
+# commit SHA; no event data inside run scripts (it reaches them through env, as the matrix values do).
+# Every job checks out a PR's head commit, never GitHub's merge commit, or the pushed, scheduled or
+# dispatched commit, and prints the commit it checked out.
+
+name: Entropy iPhone
+
+on:
+  pull_request:
+    paths:
+      - 'Entropy/mobile/ios/**'
+      - 'Entropy/mobile/screens.json'
+      - 'Entropy/mobile/android/screens/src/commonMain/**'
+      - 'Entropy/ffi/**'
+      - 'Entropy/core/**'
+      - 'Entropy/Cargo.toml'
+      - 'Entropy/Cargo.lock'
+      - 'Entropy/rust-toolchain.toml'
+      - 'Entropy/vectors/**'
+      - 'Entropy/scripts/banned-api-check.sh'
+      - 'Entropy/scripts/ios-rust.sh'
+      - '.github/workflows/entropy-ios.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'Entropy/mobile/ios/**'
+      - 'Entropy/mobile/screens.json'
+      - 'Entropy/mobile/android/screens/src/commonMain/**'
+      - 'Entropy/ffi/**'
+      - 'Entropy/core/**'
+      - 'Entropy/Cargo.toml'
+      - 'Entropy/Cargo.lock'
+      - 'Entropy/rust-toolchain.toml'
+      - 'Entropy/vectors/**'
+      - 'Entropy/scripts/banned-api-check.sh'
+      - 'Entropy/scripts/ios-rust.sh'
+      - '.github/workflows/entropy-ios.yml'
+  schedule:
+    # Weekly (Mondays, 06:17 UTC): main still builds and passes on the runners' current images.
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  # A newer PR run cancels the older one; any other run always finishes, as in entropy-ci.yml.
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # The journeys (M6 item U5): the TestHooks UI test classes the journeys jobs run, in groups, and the
+  # unit job leaves out. The unit job checks this list against the journeys matrix below.
+  KC_JOURNEYS: >-
+    ScanUITests WordsUITests CheckBackupUITests MatchFoundJourneyUITests TwentyFourWordJourneyUITests
+    MixedJourneyUITests CannotCheckJourneyUITests SnapshotJourneyUITests LifecycleUITests CheckEdgesUITests
+    DynamicTypeUITests
+
+defaults:
+  run:
+    # Explicit bash runs with -eo pipefail: any failing command fails the step.
+    shell: bash
+    working-directory: Entropy
+
+jobs:
+  unit:
+    name: iphone unit (${{ matrix.os }}, Xcode ${{ matrix.xcode }}, ${{ matrix.device }} iOS ${{ matrix.ios }})
+    runs-on: ${{ matrix.os }}
+    # Budget (lead decision M5-30's rule): the measured whole job plus 25%, rounded up. The first green
+    # run, 44049143630 at ab3e8ab0, took 826 s on macos-26 and 857 s on macos-15: 857 s x 1.25 is
+    # 1071 s, so 18 minutes (tasks/todo.md, M6 item C4). A commit that adds tests re-measures it: M6
+    # item C5 adds a third scheme's build and UI tests: run 44064121639 at b870ecd5 took 578 s on
+    # macos-26 and 874 s on macos-15, so 874 s x 1.25 is 1093 s, 19 minutes. M6 items D1-D2 grow each
+    # scheme's unit bundle from 18 to 76 tests: run 44091376732 at ac11013e took 1117 s on macos-26 and
+    # 1036 s on macos-15, so 1117 s x 1.25 is 1397 s, 24 minutes. M6 item D3 adds the start screens and
+    # 23 unit tests (99 per scheme): run 44101856909 at 7b6eff87 took 1382 s on macos-26 and 1060 s on
+    # macos-15, so 1382 s x 1.25 is 1728 s, 29 minutes. M6 items D4-D5 add the scan's and the words' UI
+    # tests: run 44138018119 at 9e34caee took 1442 s on macos-26 and 1225 s on macos-15, so 1442 s x 1.25
+    # is 1803 s, 31 minutes. M6 item D6 adds the exports' tests (121 per scheme): run 44148124454 at
+    # fed382ff took 1622 s on macos-26 and 1513 s on macos-15, so 1622 s x 1.25 is 2028 s, 34 minutes.
+    # M6 item U5 moves the journeys to their own jobs. First budget, from run 44153504614 at 3a13ac60
+    # (1620 s on macos-26 and 1364 s on macos-15, the one job then): its macos-26 job less its three
+    # journeys' test cases (ScanUITests 68 s, WordsUITests 85 s, CheckBackupUITests 59 s) is 1408 s, and
+    # 1408 s x 1.25 is 1760 s, 30 minutes. D8's run 44159274507 at 61b24aec took 1836 s on macos-26 (its
+    # journeys' cases 89 s, 93 s and 67 s): less those, 1587 s, x 1.25 is 1984 s, 34 minutes, kept until
+    # the first green run of this layout re-measures it: run 44167434703 at 427e0dc1 took 1139 s on
+    # macos-26 and 1279 s on macos-15, so 1279 s x 1.25 is 1599 s, 27 minutes. U1's run 44173357483 at
+    # 4c2d9859 took 1538 s on macos-26 and 1181 s on macos-15, so 1538 s x 1.25 is 1923 s, 33 minutes.
+    # U1's first all-green run 44197752716 at c52342ef took 1639 s on macos-26 and 797 s on macos-15; the
+    # slower of the two runs' slower legs, 1639 s x 1.25, is 2049 s, 35 minutes.
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            xcode: '26.6'
+            ios: '26.5'
+            device: iPhone 17
+          - os: macos-15
+            xcode: '16.4'
+            ios: '18.6'
+            device: iPhone 16
+    env:
+      KC_XCODE: ${{ matrix.xcode }}
+      KC_IOS: ${{ matrix.ios }}
+      KC_DEVICE: ${{ matrix.device }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      # The leg's Xcode by DEVELOPER_DIR, for this and every later step; a missing one fails here.
+      - name: Runner facts and Xcode
+        run: |
+          fail() { echo "FAIL: runner facts: $1" >&2; exit 1; }
+          echo "commit: $(git rev-parse HEAD)"
+          echo "ImageOS: ${ImageOS:-}"
+          echo "ImageVersion: ${ImageVersion:-}"
+          sw_vers
+          df -h /
+          echo "== the image's Xcodes"
+          ls -d /Applications/Xcode*.app
+          dev=/Applications/Xcode_$KC_XCODE.app/Contents/Developer
+          [ -d "$dev" ] || fail "no Xcode $KC_XCODE ($dev)"
+          echo "DEVELOPER_DIR=$dev" >> "$GITHUB_ENV"
+          export DEVELOPER_DIR=$dev
+          # Read once into a variable: grep -q stops at its match and closes the pipe, and xcodebuild then
+          # aborts on SIGPIPE (Abort trap: 6), which pipefail made a failure (run 44046032987, macos-15).
+          version=$(xcodebuild -version) || fail "xcodebuild -version failed"
+          printf '%s\n' "$version"
+          printf '%s\n' "$version" | grep -x "Xcode $KC_XCODE" > /dev/null || fail "$dev is not Xcode $KC_XCODE"
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphonesimulator --show-sdk-version
+      - name: Install the pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+      - name: The crate registry from the cache (keyed on the toolchain and Cargo.lock)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+          key: ${{ runner.os }}-${{ runner.arch }}-ios-rust-${{ hashFiles('Entropy/rust-toolchain.toml', 'Entropy/Cargo.lock') }}
+      # Every class of the journeys runs in exactly one journeys job of each leg: the journeys matrix's
+      # groups are KC_JOURNEYS, each class once a leg, each a test class file of KeepCryptUITests, and
+      # every row has its budget. A class the list leaves out runs in this job, so none runs nowhere.
+      - name: UI test groups (KC_JOURNEYS against the journeys matrix)
+        run: |
+          python3 -I - ../.github/workflows/entropy-ios.yml mobile/ios/KeepCryptUITests <<'PY'
+          import os, re, sys
+          journeys = os.environ["KC_JOURNEYS"].split()
+          lines = open(sys.argv[1]).read().split("\n")
+          job, rows, row = None, [], None
+          for line in lines:
+              if re.match(r"^  [^ #]", line):
+                  job = line.strip()
+              if job != "journeys:":
+                  continue
+              m = re.match(r"^          - os: (\S+)$", line)
+              if m:
+                  row = {"os": m.group(1)}
+                  rows.append(row)
+              m = re.match(r"^            (group|classes|timeout): (.+)$", line)
+              if m and row is not None:
+                  row[m.group(1)] = m.group(2).strip("'")
+          bad = []
+          if len(set(journeys)) != len(journeys):
+              bad.append("KC_JOURNEYS names a class twice")
+          for os_name in sorted({r["os"] for r in rows}):
+              named = [c for r in rows if r["os"] == os_name for c in r.get("classes", "").split()]
+              if sorted(named) != sorted(journeys):
+                  bad.append("%s: its groups run %s, not KC_JOURNEYS %s" % (os_name, sorted(named), sorted(journeys)))
+          if {r["os"] for r in rows} != {"macos-26", "macos-15"}:
+              bad.append("the journeys rows are not on both legs")
+          for r in rows:
+              if not re.fullmatch(r"[1-9][0-9]*", r.get("timeout", "")) or not r.get("group"):
+                  bad.append("a journeys row without a group or a budget: %s" % r)
+          for c in journeys:
+              if not os.path.isfile(os.path.join(sys.argv[2], c + ".swift")):
+                  bad.append("no %s.swift in %s" % (c, sys.argv[2]))
+          for b in bad:
+              print("FAIL: UI test groups: " + b, file=sys.stderr)
+          if bad:
+              sys.exit(1)
+          print("UI test groups: %d journeys rows; %s run in the journeys jobs, every other class here" % (len(rows), " ".join(journeys)))
+          PY
+      # M6 item C1: both configurations' libkeepcrypt_capi.a for the device and the simulator, each
+      # SHA-256 printed, copied into mobile/ios/build/rust/, from which the project links them.
+      - name: Rust libraries (scripts/ios-rust.sh, both configurations)
+        run: |
+          sh scripts/ios-rust.sh shipping
+          sh scripts/ios-rust.sh withTestRegistry
+      # The app scan's own cases, on stand-in apps built with this Xcode's SDK.
+      - name: iPhone app scan selftest (banned-api-check.sh --selftest-ios-app)
+        run: sh scripts/banned-api-check.sh --selftest-ios-app
+      # The leg's simulator: the device of that name on the runtime of that version, from simctl's
+      # list (none created), booted and waited for.
+      - name: Simulator (by device name and runtime)
+        run: |
+          xcrun simctl list runtimes
+          xcrun simctl list devices available -j > "$RUNNER_TEMP/devices.json"
+          udid=$(python3 -I - "$RUNNER_TEMP/devices.json" <<'PY'
+          import json, os, sys
+          runtime = "com.apple.CoreSimulator.SimRuntime.iOS-" + os.environ["KC_IOS"].replace(".", "-")
+          name = os.environ["KC_DEVICE"]
+          devices = json.load(open(sys.argv[1]))["devices"].get(runtime, [])
+          found = [d["udid"] for d in devices if d.get("name") == name and d.get("isAvailable")]
+          if len(found) != 1:
+              sys.stderr.write("no single available %s on %s: %d found\n" % (name, runtime, len(found)))
+              sys.exit(1)
+          print(found[0])
+          PY
+          )
+          echo "simulator: $KC_DEVICE, iOS $KC_IOS, $udid"
+          echo "KC_SIM=$udid" >> "$GITHUB_ENV"
+          fail() { echo "FAIL: simulator $udid ($KC_DEVICE, iOS $KC_IOS): $1" >&2; exit 1; }
+          xcrun simctl boot "$udid" || fail "simctl boot failed"
+          xcrun simctl bootstatus "$udid" -b || fail "simctl bootstatus failed (exit $?)"
+          # Fail closed (run 44185394720: bootstatus printed Status=4294967295 and exited 0): the device's own
+          # state, from simctl's list, must be Booted. Not a retry: a failed boot is the runner's, and stays a
+          # visible failure.
+          xcrun simctl list devices -j > "$RUNNER_TEMP/booted.json" || fail "simctl list failed"
+          state=$(python3 -I - "$RUNNER_TEMP/booted.json" "$udid" <<'PY'
+          import json, sys
+          devices = json.load(open(sys.argv[1]))["devices"]
+          found = [d.get("state", "") for runtime in devices.values() for d in runtime if d.get("udid") == sys.argv[2]]
+          print(found[0] if len(found) == 1 else "missing")
+          PY
+          ) || fail "its state could not be read"
+          [ "$state" = Booted ] || fail "its state is $state, not Booted"
+          echo "simulator: $udid Booted"
+      # Each scheme: built for testing, tested on the simulator, and its simulator app scanned.
+      - name: Shipping (build-for-testing, test-without-building, --ios-app)
+        run: |
+          dd=$RUNNER_TEMP/dd
+          for verb in build-for-testing test-without-building; do
+            xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-Shipping -configuration Shipping \
+              -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO "$verb"
+          done
+          sh scripts/banned-api-check.sh --ios-app Shipping "$dd/Build/Products/Shipping-iphonesimulator/KeepCrypt.app" mobile/ios/expected
+      - name: WithTestRegistry (build-for-testing, test-without-building, --ios-app)
+        run: |
+          dd=$RUNNER_TEMP/dd
+          for verb in build-for-testing test-without-building; do
+            xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-WithTestRegistry -configuration WithTestRegistry \
+              -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO "$verb"
+          done
+          sh scripts/banned-api-check.sh --ios-app WithTestRegistry "$dd/Build/Products/WithTestRegistry-iphonesimulator/KeepCrypt.app" mobile/ios/expected
+      # The UI tests' hooks (M6 item C5, lead decision M6-5): the KeepCrypt-TestHooks scheme builds the app
+      # in its TestHooks configuration, the one that compiles the hooks in (KC_TEST_HOOKS), and runs the UI
+      # tests on it, here all but the journeys (KC_JOURNEYS, the journeys jobs' own). That app must hold the
+      # hooks' marker, so the shipped apps' scans, which refuse it, are known to look for something every
+      # hooks build holds; it is never scanned as a shipped app.
+      - name: TestHooks (build-for-testing, test-without-building but the journeys, the hooks' marker)
+        run: |
+          dd=$RUNNER_TEMP/dd
+          xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
+            -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO build-for-testing
+          skip=()
+          for class in $KC_JOURNEYS; do skip+=("-skip-testing:KeepCryptUITests/$class"); done
+          xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
+            -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO "${skip[@]}" test-without-building
+          exe=$dd/Build/Products/TestHooks-iphonesimulator/KeepCrypt.app/KeepCrypt
+          n=$(grep -c -a KC_TEST_HOOKS_DO_NOT_SHIP "$exe") || { echo "FAIL: no KC_TEST_HOOKS_DO_NOT_SHIP in $exe" >&2; exit 1; }
+          echo "$exe: KC_TEST_HOOKS_DO_NOT_SHIP on $n line(s)"
+          # The secret nodes' identifiers (lead decision M6-20): in this app, and refused by --ios-app in the two
+          # shipped ones.
+          while IFS= read -r sid; do
+            case $sid in '' | '#'*) continue ;; esac
+            grep -q -a -e "$sid" "$exe" || { echo "FAIL: no secret node identifier $sid in $exe" >&2; exit 1; }
+          done < mobile/ios/expected/secret-identifiers.txt
+          echo "$exe: every identifier of mobile/ios/expected/secret-identifiers.txt"
+      # The device build of the shipping app (generic iOS, unsigned), scanned the same way.
+      - name: Shipping for the device (build, --ios-app)
+        run: |
+          dd=$RUNNER_TEMP/dd
+          xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-Shipping -configuration Shipping \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO build
+          sh scripts/banned-api-check.sh --ios-app Shipping "$dd/Build/Products/Shipping-iphoneos/KeepCrypt.app" mobile/ios/expected
+
+  journeys:
+    name: iphone journeys ${{ matrix.group }} (${{ matrix.os }}, Xcode ${{ matrix.xcode }}, ${{ matrix.device }} iOS ${{ matrix.ios }})
+    runs-on: ${{ matrix.os }}
+    # Each row's budget (timeout, read here; M5-30's rule): its measured job plus 25%, rounded up, from the
+    # slower leg. Run 44173357483 at 4c2d9859 measured the journeys (macos-26 / macos-15, seconds):
+    # ScanUITests 79 / 59, WordsUITests 94 / 72, CheckBackupUITests 110 / 71, MatchFoundJourneyUITests 412 / 281,
+    # TwentyFourWordJourneyUITests 362 / 363, MixedJourneyUITests 424 / 383, CannotCheckJourneyUITests 440 / 398,
+    # SnapshotJourneyUITests 221 on macos-15 (macos-26's failed at a lost dice press; estimated at 287 s, 1.3
+    # times macos-15's, as the other classes ran), and each job's fixed part about 570 s. M6 commit U1d awaits each
+    # pad press's effect (one look at the screen, estimated at 0.12 s a press): ScanUITests 91 s,
+    # WordsUITests 107 s, CheckBackupUITests 114 s, MatchFoundJourneyUITests 454 s, TwentyFourWordJourneyUITests
+    # 398 s, MixedJourneyUITests 448 s, CannotCheckJourneyUITests 494 s, SnapshotJourneyUITests 305 s. Rows:
+    # journeys-1 CannotCheck and Scan, 570 s + 585 s is 1155 s, x 1.25 is 1444 s, 25 minutes; journeys-2
+    # MatchFound and Words, 570 s + 561 s is 1131 s, x 1.25 is 1414 s, 24 minutes; journeys-3 Mixed and
+    # CheckBackup, 570 s + 562 s is 1132 s, x 1.25 is 1415 s, 24 minutes; journeys-4 TwentyFourWord and Snapshot
+    # (the five long classes in four rows put two together), 570 s + 703 s is 1273 s, x 1.25 is 1592 s, 27
+    # minutes. Re-measured (M5-30, the slower of two runs' slower legs; the macOS runners vary by up to a
+    # third between runs) from runs 44185394720 at 8112f0d5 and 44197752716 at c52342ef, all green at
+    # c52342ef (macos-26 / macos-15, seconds): journeys-1 1455 / 973 and 1158 / 1185, so 1455 s x 1.25 is
+    # 1819 s, 31 minutes; journeys-2 1392 / 1012 and 1309 / 1043, 1392 s x 1.25 is 1740 s, 29 minutes;
+    # journeys-3 1402 / 947 and 1278 / 1071, 1402 s x 1.25 is 1753 s, 30 minutes; journeys-4 1471 / 1381
+    # and 1393 / 1401, 1471 s x 1.25 is 1839 s, 31 minutes; then run 44206258298 at 928234d7 took 1618 s on
+    # macos-15's journeys-4, so 1618 s x 1.25 is 2023 s, 34 minutes. M6 item U2 adds journeys-5, its edge cases,
+    # estimated from those classes' measured presses (the TestHooks launch to Home about 17 s, 0.7 s a press
+    # with its effect awaited on macos-26, 1 s a screen): LifecycleUITests 325 s (six launches and their few
+    # presses), CheckEdgesUITests 230 s (WordsUITests' 50 rolls and read-back with two misreads, a save),
+    # DynamicTypeUITests 60 s; 570 s + 615 s is 1185 s, x 1.25 is 1481 s, 25 minutes, re-measured from its
+    # first green run. Five rows a leg; more come only with the lead's word. Run 44212919474 at f5a1e15a
+    # measured the passing classes (macos-26 / macos-15, seconds): LifecycleUITests' five green tests 70 / 68,
+    # 44 / 46, 23 / 25, the kill 95 on macos-15 and the idle 28 on macos-15; its trip home and CheckEdgesUITests
+    # and DynamicTypeUITests failed (iOS's camera prompt left unanswered, U2d), and the row ran past its 25
+    # minutes. U2d splits it, with the lead's word, from macos-26's figures and the fixes' estimates:
+    # journeys-5 LifecycleUITests 350 s (its six tests) and CheckEdgesUITests 230 s, 570 s + 580 s is 1150 s,
+    # x 1.25 is 1438 s, 24 minutes; journeys-6 DynamicTypeUITests 70 s on the leg's device and again on the
+    # narrowest iPhone the image has for the leg's runtime (a second simulator, its boot about 200 s and the
+    # test about 70 s), 570 s + 340 s is 910 s, x 1.25 is 1138 s, 19 minutes, 21 for the second boot's spread.
+    # Run 44237883463 at 63bb375c ran past both: macos-15's journeys-5 was cancelled at its 24 minutes with
+    # LifecycleUITests unfinished, macos-26's journeys-6 at its 21 with the narrow iPhone's test failed after
+    # 153 s. PROVISIONAL (U2g, the lead's figures: a full run's estimate plus 25%): journeys-5 34 minutes,
+    # journeys-6 30, until two green runs give M5-30's measurements. journeys-6 PROVISIONAL at 45 (U2i, the lead's
+    # word): macos-26's ran past 30 minutes in runs 44306763928 and 44326338905, its narrow iPhone's
+    # test-without-building waiting 922 s and then 14 minutes (15:38:42 to 15:52:49) before "Running tests" on
+    # a freshly made iOS 26.5 simulator; macos-15's whole job took 1245 s. M5-30 re-measures from two green runs.
+    timeout-minutes: ${{ matrix.timeout }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-26
+            xcode: '26.6'
+            ios: '26.5'
+            device: iPhone 17
+            group: journeys-1
+            classes: CannotCheckJourneyUITests ScanUITests
+            timeout: 31
+          - os: macos-26
+            xcode: '26.6'
+            ios: '26.5'
+            device: iPhone 17
+            group: journeys-2
+            classes: MatchFoundJourneyUITests WordsUITests
+            timeout: 29
+          - os: macos-26
+            xcode: '26.6'
+            ios: '26.5'
+            device: iPhone 17
+            group: journeys-3
+            classes: MixedJourneyUITests CheckBackupUITests
+            timeout: 30
+          - os: macos-26
+            xcode: '26.6'
+            ios: '26.5'
+            device: iPhone 17
+            group: journeys-4
+            classes: TwentyFourWordJourneyUITests SnapshotJourneyUITests
+            timeout: 34
+          - os: macos-26
+            xcode: '26.6'
+            ios: '26.5'
+            device: iPhone 17
+            group: journeys-5
+            classes: LifecycleUITests CheckEdgesUITests
+            timeout: 34
+          - os: macos-26
+            xcode: '26.6'
+            ios: '26.5'
+            device: iPhone 17
+            group: journeys-6
+            classes: DynamicTypeUITests
+            timeout: 45
+          - os: macos-15
+            xcode: '16.4'
+            ios: '18.6'
+            device: iPhone 16
+            group: journeys-1
+            classes: CannotCheckJourneyUITests ScanUITests
+            timeout: 31
+          - os: macos-15
+            xcode: '16.4'
+            ios: '18.6'
+            device: iPhone 16
+            group: journeys-2
+            classes: MatchFoundJourneyUITests WordsUITests
+            timeout: 29
+          - os: macos-15
+            xcode: '16.4'
+            ios: '18.6'
+            device: iPhone 16
+            group: journeys-3
+            classes: MixedJourneyUITests CheckBackupUITests
+            timeout: 30
+          - os: macos-15
+            xcode: '16.4'
+            ios: '18.6'
+            device: iPhone 16
+            group: journeys-4
+            classes: TwentyFourWordJourneyUITests SnapshotJourneyUITests
+            timeout: 34
+          - os: macos-15
+            xcode: '16.4'
+            ios: '18.6'
+            device: iPhone 16
+            group: journeys-5
+            classes: LifecycleUITests CheckEdgesUITests
+            timeout: 34
+          - os: macos-15
+            xcode: '16.4'
+            ios: '18.6'
+            device: iPhone 16
+            group: journeys-6
+            classes: DynamicTypeUITests
+            timeout: 45
+    env:
+      KC_XCODE: ${{ matrix.xcode }}
+      KC_IOS: ${{ matrix.ios }}
+      KC_DEVICE: ${{ matrix.device }}
+      KC_CLASSES: ${{ matrix.classes }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      # The leg's Xcode by DEVELOPER_DIR, for this and every later step; a missing one fails here.
+      - name: Runner facts and Xcode
+        run: |
+          fail() { echo "FAIL: runner facts: $1" >&2; exit 1; }
+          echo "commit: $(git rev-parse HEAD)"
+          echo "ImageOS: ${ImageOS:-}"
+          echo "ImageVersion: ${ImageVersion:-}"
+          sw_vers
+          df -h /
+          echo "== the image's Xcodes"
+          ls -d /Applications/Xcode*.app
+          dev=/Applications/Xcode_$KC_XCODE.app/Contents/Developer
+          [ -d "$dev" ] || fail "no Xcode $KC_XCODE ($dev)"
+          echo "DEVELOPER_DIR=$dev" >> "$GITHUB_ENV"
+          export DEVELOPER_DIR=$dev
+          # Read once into a variable: grep -q stops at its match and closes the pipe, and xcodebuild then
+          # aborts on SIGPIPE (Abort trap: 6), which pipefail made a failure (run 44046032987, macos-15).
+          version=$(xcodebuild -version) || fail "xcodebuild -version failed"
+          printf '%s\n' "$version"
+          printf '%s\n' "$version" | grep -x "Xcode $KC_XCODE" > /dev/null || fail "$dev is not Xcode $KC_XCODE"
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphonesimulator --show-sdk-version
+      - name: Install the pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+      - name: The crate registry from the cache (keyed on the toolchain and Cargo.lock)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+          key: ${{ runner.os }}-${{ runner.arch }}-ios-rust-${{ hashFiles('Entropy/rust-toolchain.toml', 'Entropy/Cargo.lock') }}
+      # The group's classes: each one of KC_JOURNEYS (the unit job leaves them out) and a test class file.
+      - name: The group's classes
+        run: |
+          fail() { echo "FAIL: the group's classes: $1" >&2; exit 1; }
+          [ -n "$KC_CLASSES" ] || fail "none"
+          for class in $KC_CLASSES; do
+            case " $KC_JOURNEYS " in *" $class "*) ;; *) fail "$class is not one of KC_JOURNEYS ($KC_JOURNEYS)" ;; esac
+            [ -f "mobile/ios/KeepCryptUITests/$class.swift" ] || fail "no mobile/ios/KeepCryptUITests/$class.swift"
+          done
+          echo "classes: $KC_CLASSES"
+      # The TestHooks app links the test-registry library alone (lead decision M6-7), built here from this
+      # checkout as the unit job builds it.
+      - name: Rust library (scripts/ios-rust.sh withTestRegistry)
+        run: sh scripts/ios-rust.sh withTestRegistry
+      # The leg's simulator: the device of that name on the runtime of that version, from simctl's
+      # list (none created), booted and waited for.
+      - name: Simulator (by device name and runtime)
+        run: |
+          xcrun simctl list runtimes
+          xcrun simctl list devices available -j > "$RUNNER_TEMP/devices.json"
+          udid=$(python3 -I - "$RUNNER_TEMP/devices.json" <<'PY'
+          import json, os, sys
+          runtime = "com.apple.CoreSimulator.SimRuntime.iOS-" + os.environ["KC_IOS"].replace(".", "-")
+          name = os.environ["KC_DEVICE"]
+          devices = json.load(open(sys.argv[1]))["devices"].get(runtime, [])
+          found = [d["udid"] for d in devices if d.get("name") == name and d.get("isAvailable")]
+          if len(found) != 1:
+              sys.stderr.write("no single available %s on %s: %d found\n" % (name, runtime, len(found)))
+              sys.exit(1)
+          print(found[0])
+          PY
+          )
+          echo "simulator: $KC_DEVICE, iOS $KC_IOS, $udid"
+          echo "KC_SIM=$udid" >> "$GITHUB_ENV"
+          fail() { echo "FAIL: simulator $udid ($KC_DEVICE, iOS $KC_IOS): $1" >&2; exit 1; }
+          xcrun simctl boot "$udid" || fail "simctl boot failed"
+          xcrun simctl bootstatus "$udid" -b || fail "simctl bootstatus failed (exit $?)"
+          # Fail closed (run 44185394720: bootstatus printed Status=4294967295 and exited 0): the device's own
+          # state, from simctl's list, must be Booted. Not a retry: a failed boot is the runner's, and stays a
+          # visible failure.
+          xcrun simctl list devices -j > "$RUNNER_TEMP/booted.json" || fail "simctl list failed"
+          state=$(python3 -I - "$RUNNER_TEMP/booted.json" "$udid" <<'PY'
+          import json, sys
+          devices = json.load(open(sys.argv[1]))["devices"]
+          found = [d.get("state", "") for runtime in devices.values() for d in runtime if d.get("udid") == sys.argv[2]]
+          print(found[0] if len(found) == 1 else "missing")
+          PY
+          ) || fail "its state could not be read"
+          [ "$state" = Booted ] || fail "its state is $state, not Booted"
+          echo "simulator: $udid Booted"
+      # The group's journeys on the TestHooks app (M6-5), its classes alone; the app holds the hooks' marker.
+      - name: TestHooks (build-for-testing, the group's journeys, the hooks' marker)
+        run: |
+          dd=$RUNNER_TEMP/dd
+          xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
+            -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO build-for-testing
+          only=()
+          for class in $KC_CLASSES; do only+=("-only-testing:KeepCryptUITests/$class"); done
+          xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
+            -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO "${only[@]}" test-without-building
+          exe=$dd/Build/Products/TestHooks-iphonesimulator/KeepCrypt.app/KeepCrypt
+          n=$(grep -c -a KC_TEST_HOOKS_DO_NOT_SHIP "$exe") || { echo "FAIL: no KC_TEST_HOOKS_DO_NOT_SHIP in $exe" >&2; exit 1; }
+          echo "$exe: KC_TEST_HOOKS_DO_NOT_SHIP on $n line(s)"
+          # The secret nodes' identifiers (lead decision M6-20): in this app, and refused by --ios-app in the two
+          # shipped ones.
+          while IFS= read -r sid; do
+            case $sid in '' | '#'*) continue ;; esac
+            grep -q -a -e "$sid" "$exe" || { echo "FAIL: no secret node identifier $sid in $exe" >&2; exit 1; }
+          done < mobile/ios/expected/secret-identifiers.txt
+          echo "$exe: every identifier of mobile/ios/expected/secret-identifiers.txt"
+      # The narrowest iPhone the image has for the leg's runtime (U2: Dynamic Type at the largest size on a
+      # narrow phone): iPhone SE (3rd generation), 375 points, else iPhone SE (2nd generation), else iPhone 16e
+      # (390), each narrower than the leg's own device; a second simulator made from that device type (none is
+      # installed or downloaded), booted and checked as the first is. None for the runtime is logged and said,
+      # and the narrow run is then skipped by name.
+      - name: Narrow iPhone (journeys-6, a device type of the image's)
+        if: matrix.group == 'journeys-6'
+        run: |
+          fail() { echo "FAIL: narrow iPhone: $1" >&2; exit 1; }
+          echo "== the image's device types"
+          xcrun simctl list devicetypes
+          runtime=com.apple.CoreSimulator.SimRuntime.iOS-${KC_IOS//./-}
+          narrow=
+          for name in "iPhone SE (3rd generation)" "iPhone SE (2nd generation)" "iPhone 16e"; do
+            type=$(xcrun simctl list devicetypes -j | python3 -I -c 'import json, sys; t = [d["identifier"] for d in json.load(sys.stdin)["devicetypes"] if d["name"] == sys.argv[1]]; print(t[0] if t else "")' "$name") || fail "simctl list devicetypes failed"
+            [ -n "$type" ] || { echo "no $name device type on this image"; continue; }
+            if udid=$(xcrun simctl create "KC narrow" "$type" "$runtime" 2>"$RUNNER_TEMP/create.err"); then
+              narrow=$udid
+              echo "narrow: $name ($type) on $runtime: $udid"
+              break
+            fi
+            echo "no $name on $runtime: $(cat "$RUNNER_TEMP/create.err")"
+          done
+          if [ -z "$narrow" ]; then
+            echo "narrow iPhone: none of the image's device types narrower than $KC_DEVICE runs $runtime; DynamicTypeUITests runs on $KC_DEVICE alone"
+            exit 0
+          fi
+          xcrun simctl boot "$narrow" || fail "simctl boot failed"
+          xcrun simctl bootstatus "$narrow" -b || fail "simctl bootstatus failed (exit $?)"
+          xcrun simctl list devices -j > "$RUNNER_TEMP/narrow.json" || fail "simctl list failed"
+          state=$(python3 -I -c 'import json, sys; f = [d.get("state", "") for r in json.load(open(sys.argv[1]))["devices"].values() for d in r if d.get("udid") == sys.argv[2]]; print(f[0] if len(f) == 1 else "missing")' "$RUNNER_TEMP/narrow.json" "$narrow") || fail "its state could not be read"
+          [ "$state" = Booted ] || fail "its state is $state, not Booted"
+          echo "KC_NARROW=$narrow" >> "$GITHUB_ENV"
+      - name: DynamicTypeUITests on the narrow iPhone
+        if: matrix.group == 'journeys-6'
+        run: |
+          if [ -z "${KC_NARROW:-}" ]; then
+            echo "narrow iPhone: none for this runtime (the step before says why); not run"
+            exit 0
+          fi
+          # U3n: the app's main thread sampled every 20 s while the test runs (an unresponsive app leaves no crash
+          # report; run 44836559071 at b167f155 timed out its UI queries on iOS 26.5 at the largest text size).
+          # Function names of the TestHooks app on test values; printed only if the step fails.
+          mkdir -p "$RUNNER_TEMP/samples"
+          (
+            while :; do
+              pid=$(pgrep -x KeepCrypt | head -n 1)
+              if [ -n "$pid" ]; then
+                sample "$pid" 2 -mayDie -file "$RUNNER_TEMP/samples/$(date +%s).txt" > /dev/null 2>&1 || true
+              fi
+              sleep 20
+            done
+          ) &
+          sampler=$!
+          status=0
+          xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
+            -destination "id=$KC_NARROW" -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO \
+            -only-testing:KeepCryptUITests/DynamicTypeUITests test-without-building || status=$?
+          kill "$sampler" 2> /dev/null || true
+          if [ "$status" -ne 0 ]; then
+            for f in $(ls "$RUNNER_TEMP/samples" | tail -n 4); do
+              echo "== sample $f (the main thread's heaviest frames)"
+              sed -n '/^Call graph:/,/^Total number in stack/p' "$RUNNER_TEMP/samples/$f" | head -n 120
+            done
+          fi
+          exit "$status"
+      # On a failure, the simulators' crash and hang reports for the app (U3l: an app lost on iOS 18.6 left
+      # nothing but "not running"). Thread backtraces of the TestHooks app on test values; no artifact.
+      - name: The app's crash reports (on a failure)
+        if: failure()
+        run: |
+          found=0
+          for f in "$HOME"/Library/Logs/DiagnosticReports/KeepCrypt*; do
+            [ -f "$f" ] || continue
+            found=1
+            echo "== $f"
+            head -c 20000 "$f"
+            echo
+          done
+          [ "$found" = 1 ] || echo "no KeepCrypt crash or hang report on this runner"

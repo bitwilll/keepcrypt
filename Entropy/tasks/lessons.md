@@ -106,3 +106,24 @@ scripts that read the changed one (grep for its name and its markers) and run th
   the gate's reach, which it is not (KtInput, KtLog and others scan androidTest too).
 - Rule: before every push that touches any source, scripts/banned-api-check.sh runs clean locally, and canaries.sh
   too when hit counts could move. A gate hit is fixed in the code, never by relaxing or dodging the rule.
+
+
+## 2026-11-18: a push went out after a failing canary run, its exit code hidden by a pipe
+- Mistake: before pushing U2f (63bb375c) the lead chained `scripts/canaries.sh 2>&1 | tail -1 && git push`; the
+  canaries printed "FAIL: 92 checks ran; scripts/canaries.sh pins 102" and the push went ahead anyway. The failure was
+  the lead's shell (no keg-only rustup on PATH); rerun with the toolchain PATH, all 102 checks ran.
+- Root cause: a pipeline's exit status is its last command's (`tail`), so `&&` never saw the canaries fail; and the
+  pre-push shell skipped the toolchain PATH prefix the local environment needs.
+- Rule: a pre-push check's exit code is tested directly (no pipe after it, or `set -o pipefail`), and its output is
+  read before the push; pre-push shells start with the toolchain PATH prefix. A push that slipped past a red check
+  is reported to the owner as such, the check rerun, and the cause recorded here.
+
+## 2026-11-21: a UI-test helper change broke the Shipping test build; only the hooks build was compiled
+- Mistake: U3o (953746d2) made UITestSupport.swift's launchedToGoOffline, compiled in every configuration, call
+  pressUntil, which JourneySupport.swift defines under `#if KC_TEST_HOOKS` alone. Both unit jobs failed at
+  build-for-testing of KeepCrypt-Shipping ("cannot find 'pressUntil' in scope"); every journey job, a TestHooks build,
+  was green.
+- Root cause: the change was made for the journeys and checked against their build only; the UI-test target is
+  compiled three times (Shipping, WithTestRegistry, TestHooks) and the pre-push checks build none of them.
+- Rule: before pushing a change to any iOS source, UI tests included, build-for-testing runs locally for all three
+  schemes (KeepCrypt-Shipping, -WithTestRegistry, -TestHooks) and each exit code is read.

@@ -1,0 +1,1 @@
+sigaction(SIGSEGV, &action, NULL);
