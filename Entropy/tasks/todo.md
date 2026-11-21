@@ -20633,17 +20633,45 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
      checks once Stage H's pins land (a settings change only the owner can make); (b) owner item 13 is drawn from a
      committed script in Stage H unless a source file arrives. Otherwise: keep them optional; a hand-drawn figure.
 
+### The owner's answers (2026-11-21)
+- Q100-Q108: "approve all as recommended" (2026-11-21). So: minisign with the owner's offline key, CI never signs
+  (Q100); `0.1.0` first, `1.0.0` after the audit's fixes (Q101); the owner engages the auditor, I prepare the packet
+  (Q102); one outside builder reproduces the Pi image and APK, F-Droid's rebuild counting for the APK (Q103); Buildroot
+  2026.08 with the newest 6.12.y LTS kernel for `0.1.0`, 2027.02 LTS before `1.0.0` (Q104); GitHub releases and
+  F-Droid, Play later (Q105); the iPhone as source and build steps (Q106); no dm-verity in `0.1.0` (Q107); the owner
+  adds the three workflows as required checks after Stage H, and owner item 13 is drawn by a committed script (Q108).
+
+### Lead decisions (M7-n, dated; each for the owner's review at the gate)
+- M7-1 (2026-11-21): the canary runs 2^16 sessions at 24 and 28 bits, not 10^6 at 32 and 36. A session costs about
+  5 ms (200 real phone sessions in 1.06 s, release build, the owner's Mac), so 10^6 stub sessions per width would
+  double the nightly job twice over. n^2 / 2^(k+1) gives about 128 and 8 expected pairs, the same regime as 116 and 7.
+  The canary also asserts more than "some": the commitments repeat exactly as often as the narrowed states do.
+- M7-2 (2026-11-21): core's tests cannot print (core/clippy.toml bans println!, eprintln! and std::io::stdout and
+  stderr, forbid, rule 5), so A1's children hand their commitments to the parent through files of their own under
+  cargo's CARGO_TARGET_TMPDIR, which the parent reads and removes. The values are public C, never D. The other way, a
+  harness crate that may print (as pi/sim does), would add an eighth workspace member and change the pins in
+  scripts/check-path-deps.sh, scripts/canaries.sh and deny.toml; not worth it for a test. The counts live in the
+  assertions, so a run shows only pass or fail and libtest's time.
+
 ### Stage A: the birthday-collision job (BP:320; design.md:198)
-- [ ] A1 `core/tests/birthday.rs` (ignored by default, so `cargo test` stays fast): with the dice fixed, each child
-      process makes 1,000 real sessions from `getrandom` (no `test-sources`) and records each commitment C; the parent
+- [x] A1 `core/tests/birthday.rs` (ignored by default, so `cargo test` stays fast): with the dice fixed, each child
+      process makes 1,000 real sessions from `getrandom` (no `test-sources`) and writes each commitment C (M7-2); the parent
       runs 1,000 child processes (1,000,000 legs in all, across process restarts) and fails on any repeated C. C is
       SHA256("KCE/v1/commit" || D), public, and equal for equal D, so the test never handles D and needs no new API.
       Proof: a local run's count and wall time.
-- [ ] A2 The test proves it would fire: a `test-sources` variant feeds a stub narrowed to 32 bits of state and must
-      report collisions (about 116 expected in 10^6, design.md:198); one narrowed to 36 bits, about 7. Proof: both
-      counts.
-- [ ] A3 `entropy-ci.yml` gains a `schedule:` nightly job running A1 on ubuntu-24.04 (and A2's canary), not a required
-      check; its name and run land in the Review. The approved actions only, pinned by SHA.
+      Proof (2026-11-21, the owner's Mac, 16 CPUs, release): `cargo test --release --locked -p keepcrypt-core --test
+      birthday -- --ignored --exact one_million_real_device_legs_never_repeat`: "test result: ok. 1 passed; 0 failed;
+      0 ignored; 0 measured; 2 filtered out; finished in 439.90s" (1,000,000 legs, no repeat); no `birthday-*.bin`
+      left under target/. The default run: 1 passed, 2 ignored.
+- [x] A2 The test proves it would fire (M7-1): `test-sources` stub sessions whose OS bytes come from a 24- or 28-bit
+      state, 2^16 of each; the commitments must repeat exactly as often as the states, more than zero, and more at 24
+      bits than at 28. Proof: a local and a CI pass.
+      Proof (2026-11-21, local, release, `--features test-sources`): "test result: ok. 1 passed; ... finished in
+      58.64s". An earlier draft that printed its counts gave 138 repeated pairs at 24 bits and 10 at 28 (expected
+      about 128 and 8). Clippy clean with and without test-sources. The CI pass lands with A3.
+- [ ] A3 A new workflow, `entropy-nightly.yml` ("Entropy nightly"), runs A1 and A2 as two jobs every night at 03:41
+      UTC, on a manual dispatch, and on a pull request that changes the test or the workflow. It is not a required
+      check, and entropy-ci.yml's 14 checks are untouched. Only checkout and cache, pinned by SHA, as entropy-ci.yml.
 
 ### Stage B: the release form (BP:335-346)
 - [ ] B1 Version `0.1.0` (Q101) through every crate, both apps, the Pi image name and `created-by`; one script checks
