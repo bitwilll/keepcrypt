@@ -127,3 +127,14 @@ scripts that read the changed one (grep for its name and its markers) and run th
   compiled three times (Shipping, WithTestRegistry, TestHooks) and the pre-push checks build none of them.
 - Rule: before pushing a change to any iOS source, UI tests included, build-for-testing runs locally for all three
   schemes (KeepCrypt-Shipping, -WithTestRegistry, -TestHooks) and each exit code is read.
+
+## 2026-11-21: a CI diagnostic sampler died at its first tick and hid that it took nothing
+- Mistake: U3n's sampler loop in entropy-ios.yml (journeys-6, the narrow iPhone) ran as `( while ...; done ) &` in a
+  step whose shell is `bash -e -o pipefail`, and discarded sample's output. When the iOS 26.5 hang came back (run
+  44925400647) the step printed no sample: the subshell had exited at the first `pgrep` that found no app.
+- Root cause: a background subshell inherits errexit and pipefail; a command expected to fail (pgrep before the app
+  starts) ended the loop, and with its output thrown away nothing said so. It was never run locally under the
+  step's flags.
+- Rule: a background loop in a CI step that tolerates failing commands sets `set +e` itself, logs each tick, and
+  prints that log when the step fails; it is run locally under `bash -e -o pipefail` before it is pushed.
+

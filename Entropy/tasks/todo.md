@@ -20652,6 +20652,18 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   harness crate that may print (as pi/sim does), would add an eighth workspace member and change the pins in
   scripts/check-path-deps.sh, scripts/canaries.sh and deny.toml; not worth it for a test. The counts live in the
   assertions, so a run shows only pass or fail and libtest's time.
+- M7-3 (2026-11-21): run 44925400647 (iPhone, at 42e469a2, which touches no iOS file) failed two jobs.
+  (a) macos-26 journeys-6: DynamicTypeUITests on the narrow iPhone, iOS 26.5, timed out its UI queries at the largest
+  text size ("Timed out while fetching attributes 'XC_kAXXCAttributeFocusedApplications'", 144 s after a drag), the
+  iOS 26 hang U3n set out to sample, now seen twice. U3n's sampler printed nothing: the step runs `bash -e -o
+  pipefail`, the background subshell inherits it, and `pgrep -x KeepCrypt` exits 1 until the app starts, so the
+  first tick ended the sampler (reproduced locally: the subshell dies at once, exit 1). It has never taken a sample.
+  Fix: `set +e` in the subshell, every tick logged (no process, or the pid and sample's exit), the log printed on a
+  failure; checked locally under the same flags (two ticks with no process, then three samples taken). The hang's
+  cause stays open until a sample shows it. (b) macos-15 journeys-1: cancelled at its 31-minute timeout with every
+  test it finished green; the runner was slow throughout (7 min 15 s from launch to "Running tests", CannotCheck
+  1048 s against 494 s measured), about 1.6 times the job's measured 1185 s, outside the third M5-30 allows for.
+  The timeout stays: one outlier; it changes only if the next runs repeat it.
 
 ### Stage A: the birthday-collision job (BP:320; design.md:198)
 - [x] A1 `core/tests/birthday.rs` (ignored by default, so `cargo test` stays fast): with the dice fixed, each child
@@ -20669,9 +20681,13 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       Proof (2026-11-21, local, release, `--features test-sources`): "test result: ok. 1 passed; ... finished in
       58.64s". An earlier draft that printed its counts gave 138 repeated pairs at 24 bits and 10 at 28 (expected
       about 128 and 8). Clippy clean with and without test-sources. The CI pass lands with A3.
-- [ ] A3 A new workflow, `entropy-nightly.yml` ("Entropy nightly"), runs A1 and A2 as two jobs every night at 03:41
+- [x] A3 A new workflow, `entropy-nightly.yml` ("Entropy nightly"), runs A1 and A2 as two jobs every night at 03:41
       UTC, on a manual dispatch, and on a pull request that changes the test or the workflow. It is not a required
       check, and entropy-ci.yml's 14 checks are untouched. Only checkout and cache, pinned by SHA, as entropy-ci.yml.
+      Proof (2026-11-21, PR #12 at 42e469a2, run 44925401107, ubuntu-24.04, 4 CPUs): "birthday (1,000,000 real
+      device legs)" success in 2953 s, "birthday canary (24- and 28-bit states)" success in 452 s, each step's grep
+      for "test result: ok. 1 passed;" passing. Entropy CI 44925400691 (14 checks), Android 44925400613 and Pi image
+      44925400714 green at the same head; iPhone 44925400647 red in two jobs, neither touched by this diff (M7-3).
 
 ### Stage B: the release form (BP:335-346)
 - [ ] B1 Version `0.1.0` (Q101) through every crate, both apps, the Pi image name and `created-by`; one script checks

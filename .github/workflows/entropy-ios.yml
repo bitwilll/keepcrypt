@@ -614,12 +614,22 @@ jobs:
           # U3n: the app's main thread sampled every 20 s while the test runs (an unresponsive app leaves no crash
           # report; run 44836559071 at b167f155 timed out its UI queries on iOS 26.5 at the largest text size).
           # Function names of the TestHooks app on test values; printed only if the step fails.
+          # M7-3: the loop runs with errexit off. The step's `bash -e -o pipefail` reaches the subshell, and pgrep
+          # exits 1 until the app starts, so the first tick ended the sampler and run 44925400647's failure (the
+          # same hang, again on iOS 26.5) left no sample. Every tick is logged, and the log is printed on a failure,
+          # so a sampler that takes nothing says why.
           mkdir -p "$RUNNER_TEMP/samples"
+          log="$RUNNER_TEMP/sampler.log"
           (
+            set +e
             while :; do
+              t=$(date +%s)
               pid=$(pgrep -x KeepCrypt | head -n 1)
               if [ -n "$pid" ]; then
-                sample "$pid" 2 -mayDie -file "$RUNNER_TEMP/samples/$(date +%s).txt" > /dev/null 2>&1 || true
+                sample "$pid" 2 -mayDie -file "$RUNNER_TEMP/samples/$t.txt" >> "$log" 2>&1
+                echo "$t: pid $pid, sample exit $?" >> "$log"
+              else
+                echo "$t: no KeepCrypt process" >> "$log"
               fi
               sleep 20
             done
@@ -631,6 +641,8 @@ jobs:
             -only-testing:KeepCryptUITests/DynamicTypeUITests test-without-building || status=$?
           kill "$sampler" 2> /dev/null || true
           if [ "$status" -ne 0 ]; then
+            echo "== the sampler's log (last 40 lines)"
+            tail -n 40 "$log" || echo "no sampler log"
             for f in $(ls "$RUNNER_TEMP/samples" | tail -n 4); do
               echo "== sample $f (the main thread's heaviest frames)"
               sed -n '/^Call graph:/,/^Total number in stack/p' "$RUNNER_TEMP/samples/$f" | head -n 120
