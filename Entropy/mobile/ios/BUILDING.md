@@ -10,7 +10,8 @@ only.
 What *can* be checked: the Rust core inside the app is the same source as every other artifact's,
 built with the same pinned toolchain, and `scripts/banned-api-check.sh --ios-app` checks any built
 app against the reviewed `mobile/ios/expected/` (its Info.plist and privacy manifest, its own files
-alone, `_CCRandomGenerateBytes` as its one RNG import, no network or clipboard API, no test marker).
+alone, the one OS randomness call core makes as its only RNG import, no network or clipboard API,
+no test marker).
 
 ## Tools (as CI, .github/workflows/entropy-ios.yml)
 
