@@ -269,7 +269,7 @@ scripts/banned-api-check.sh --ios-app CONFIG APP mobile/ios/expected   # CONFIG 
                                      # .app's Info.plist and privacy manifest against expected/, its own files alone, its
                                      # binary under the artifact rules (no hooks marker; the registry marker and test key
                                      # in WithTestRegistry alone), no network, clipboard or embedded library (macOS)
-scripts/banned-api-check.sh --selftest-ios-app   # 36 cases on stand-in apps built with the SDK's clang and swiftc
+scripts/banned-api-check.sh --selftest-ios-app   # 37 cases on stand-in apps built with the SDK's clang and swiftc
                                      # (macOS with Xcode only; entropy-ios.yml runs it, the gates job cannot)
 # The Android app (mobile/android; CI: .github/workflows/entropy-android.yml, not a required check; needs the
 # Android SDK, NDK and JDK the workflow pins). Rust libraries for both flavours, then the strict Gradle build:

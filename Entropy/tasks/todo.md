@@ -20801,9 +20801,17 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
 - [ ] D5 graphics-path's native library reviewed, rebuilt from source or removed (a finding in the Review).
 
 ### Stage E: the iPhone, release-shaped (BP:343; :1395)
-- [ ] E1 The release scan's expected-symbol list for the iPhone app (`_CCRandomGenerateBytes`, nothing else).
-- [ ] E2 `mobile/ios/BUILDING.md`: the exact Xcode, SDK and simulator versions, the build steps and what cannot be
+- [x] E1 The release scan's expected-symbol list for the iPhone app (`_CCRandomGenerateBytes`, nothing else).
+      Found met by M6: `--ios-app`'s artifact rules for *-apple-ios require the undefined _CCRandomGenerateBytes and
+      refuse libc's draws and seeders, arc4random* and SecRandomCopyBytes, on the simulator apps and the device
+      build (entropy-ios.yml). The self-test had no case for SecRandomCopyBytes, Security's generator and the one an
+      iOS developer reaches for first: added (a stand-in linked with Security.framework, "undefined
+      _SecRandomCopyBytes", 1 hit). Proof (local): `--selftest-ios-app` 37 passed, 0 failed (36 before).
+- [x] E2 `mobile/ios/BUILDING.md`: the exact Xcode, SDK and simulator versions, the build steps and what cannot be
       reproduced, as MA:197 says.
+      Proof (2026-11-22, local): BUILDING.md written from entropy-ios.yml's legs (macos-26 Xcode 26.6 iOS 26.5,
+      macos-15 Xcode 16.4 iOS 18.6, target iOS 17.0); its device-build commands run as written: ios-rust.sh 0,
+      the unsigned generic-iOS build 0, `--ios-app Shipping` on it clean.
 
 ### Stage F: the verifier's release (:4759-4766)
 - [ ] F1 A release scan of verify.py reusing check 12's static and audit rules.
