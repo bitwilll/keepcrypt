@@ -20866,6 +20866,17 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   `vm.legacy_va_layout=1` on the arm64 runner (a global sysctl, so BuildKit's processes get it; the runner is
   discarded after) and fails closed unless it reads back 1. Address layout is not an input to the image, which
   a = b = arm64 checks. Reported at the gate.
+- M7-12 (2026-11-22): the Android build job's budget. D2a and D2b put lint and R8 into the build job without
+  re-measuring it, as its budget comment requires; run 44990020002 at 752cb9ef stopped at its 17 minutes (1032 s,
+  in android-emulator.sh's selftest, the last steps). Against 0f492397's green run (695 s): the Gradle build 487 s
+  (232 s), the canary's R8 build 89 s (29 s), android-rust.sh 244 s (184 s, the runner). The whole job comes to about
+  1080 s; lead decision: 23 minutes, the measured time with 25%, as the comment's rule gives; the next run re-measures
+  it. In the same push, the iPhone run 44990020044 failed one job: journeys-6 on macos-26, DynamicTypeUITests on the
+  narrow iPhone, "Failed to launch ... via Xcode: Timed out while launching application via Xcode" at 65 s, before
+  the app ran a line; the same test had passed on the iPhone 17 in that job (171 s), no iOS app file changed since
+  0f492397's green run, and no earlier run records this error. Recorded as a runner launch timeout, not rerun on its
+  own; the next push runs it again, and a second occurrence is a defect to chase (a warm launch on the fresh narrow
+  simulator first).
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.

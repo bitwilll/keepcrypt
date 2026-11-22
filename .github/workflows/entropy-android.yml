@@ -197,8 +197,11 @@ jobs:
     # and ran every leg (M5-44, M5-52, M5-57, M5-69): 35.2 min at efc0575 (run 39783747240), past 44
     # with commit 19's tests (run 40624645994), 53.4 min at e5109bc (run 40681107802) and 58 min at
     # d99e80b (run 40749608448). A slower run stops here and the lead re-plans; a commit that adds
-    # steps or tests re-measures it.
-    timeout-minutes: 17
+    # steps or tests re-measures it. M7 D2 (lint, R8) did not: run 44990020002 at 752cb9ef stopped at
+    # the 17 minutes (1032 s, in the last selftests), the Gradle build 487 s against 232 s at 0f492397
+    # (run 44965014669, 695 s in all) and the canary's R8 build 89 s against 29 s; the whole job comes to
+    # about 1080 s, so 23 minutes with 25% (M7-12).
+    timeout-minutes: 23
     env:
       # The SDK pieces the build uses (mobile/android/gradle/libs.versions.toml), checked below.
       KC_BUILD_TOOLS: 36.0.0
