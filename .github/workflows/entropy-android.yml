@@ -55,10 +55,12 @@
 # around the kills and CrashTest); and, from
 # commit 14, the 16 KB-page
 # system-images;android-36;google_apis_ps16k;x86_64 (the ARM and 16 KB leg) after API 34's capture
-# part, in its job. Each leg job installs the emulator and the three images with sdkmanager into
-# their own SDK root ($HOME/kc-sdk; the runner's SDK is left as it is), with the SDK licence
-# accepted (Q54), cached by actions/cache under a key made of the four revisions sdkmanager offers
-# (the Gradle distribution is cached too, keyed on its pin). KVM comes from a udev rule.
+# part, in its job. Each leg job installs the emulator and the three images at their pinned
+# revisions (M7 D4: mobile/android/expected/emulator-pins.txt, each zip by URL, size, SHA-1 and
+# SHA-256, through scripts/android-sdk-install.py, no sdkmanager) into their own SDK root
+# ($HOME/kc-sdk; the runner's SDK is left as it is), under the SDK licence (Q54); actions/cache keeps
+# the checked zips, keyed on the pins file (the Gradle distribution is cached too, keyed on its pin).
+# KVM comes from a udev rule.
 # scripts/android-emulator.sh runs each part: a headless AVD, a boot that may be re-run once
 # (logged; a test failure is never re-run), the platform probe's facts as "probe:" lines, the
 # instrumented tests through scripts/android-instrument.sh (one am instrument per class, judged from
@@ -930,63 +932,28 @@ jobs:
           sudo udevadm settle
           ls -l /dev/kvm
           [ -r /dev/kvm ] && [ -w /dev/kvm ] || { echo "FAIL: /dev/kvm is not usable" >&2; exit 1; }
-      # The emulator and the two system images come from sdkmanager, into their own SDK root. The
-      # revisions it offers now make the cache key, so a new revision is a fresh download, and the
-      # install below must end with exactly these revisions. Every leg job installs all four packages
-      # under the one key, as the one job did, so all eight share one cache entry.
-      - name: Emulator and system image revisions (sdkmanager --list)
-        run: |
-          fail() { echo "FAIL: emulator revisions: $1" >&2; exit 1; }
-          sdk=$HOME/kc-sdk
-          mkdir -p "$sdk"
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$sdk" --list > "$RUNNER_TEMP/sdk-list.txt"
-          rev() {
-            awk -v FS='|' -v p="$1" '{ n = $1; v = $2; gsub(/[[:space:]]/, "", n); gsub(/[[:space:]]/, "", v); if (n == p && v != "") { print v; exit } }' \
-              "$RUNNER_TEMP/sdk-list.txt"
-          }
-          emu=$(rev emulator)
-          i34=$(rev 'system-images;android-34;default;x86_64')
-          i36=$(rev 'system-images;android-36;default;x86_64')
-          i16k=$(rev 'system-images;android-36;google_apis_ps16k;x86_64')
-          [ -n "$emu" ] && [ -n "$i34" ] && [ -n "$i36" ] && [ -n "$i16k" ] || fail "sdkmanager --list does not offer all four"
-          echo "emulator $emu; system-images;android-34;default;x86_64 $i34; system-images;android-36;default;x86_64 $i36; system-images;android-36;google_apis_ps16k;x86_64 $i16k"
-          {
-            echo "KC_EMULATOR_REV=$emu"
-            echo "KC_IMAGE_34_REV=$i34"
-            echo "KC_IMAGE_36_REV=$i36"
-            echo "KC_IMAGE_16K_REV=$i16k"
-            echo "KC_EMULATOR_KEY=emulator-$emu-android-34-$i34-android-36-$i36-ps16k-$i16k"
-          } >> "$GITHUB_ENV"
-      - name: The emulator and system images from the cache (keyed on their revisions)
+      # The emulator and the three system images, pinned (M7 D4): mobile/android/expected/emulator-pins.txt
+      # names each package's revision, its zip on dl.google.com and the zip's size, SHA-1 (Google's
+      # repository index) and SHA-256. scripts/android-sdk-install.py checks each zip, a cached one
+      # too, before unpacking it into the legs' own SDK root ($HOME/kc-sdk), and each package's
+      # source.properties must give its pinned revision; sdkmanager is not used, so no newer revision
+      # can arrive unreviewed. The cache holds the zips alone, keyed on the pins file, so all eight leg
+      # jobs share one entry. The SDK licence covers these packages (Q54: the owner accepted it for CI,
+      # 2026-10-17).
+      - name: The pinned emulator and system images from the cache (keyed on the pins)
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            ~/kc-sdk/emulator
-            ~/kc-sdk/system-images
-          key: ${{ runner.os }}-${{ runner.arch }}-android-emulator-${{ env.KC_EMULATOR_KEY }}
-      # The SDK licence (Q54: the owner accepted it for CI, 2026-10-17), written into the new SDK
-      # root by sdkmanager --licenses, answering yes; then the four packages (nothing to fetch on a
-      # cache hit), and their installed revisions checked against the key's.
-      - name: Emulator install (sdkmanager, the SDK licence accepted, Q54)
+          path: ~/kc-sdk-zips
+          key: ${{ runner.os }}-${{ runner.arch }}-android-emulator-zips-${{ hashFiles('Entropy/mobile/android/expected/emulator-pins.txt') }}
+      - name: Emulator install (scripts/android-sdk-install.py, the pinned zips)
         id: emulator-install
         run: |
           fail() { echo "FAIL: emulator install: $1" >&2; exit 1; }
           sdk=$HOME/kc-sdk
-          sdkmanager=$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager
-          { yes || :; } | "$sdkmanager" --sdk_root="$sdk" --licenses > /dev/null
-          ls "$sdk/licenses"
-          "$sdkmanager" --sdk_root="$sdk" --install emulator 'system-images;android-34;default;x86_64' \
-            'system-images;android-36;default;x86_64' 'system-images;android-36;google_apis_ps16k;x86_64' \
-            > "$RUNNER_TEMP/sdk-install.txt" || { tail -n 40 "$RUNNER_TEMP/sdk-install.txt"; fail "sdkmanager --install failed"; }
-          "$sdkmanager" --sdk_root="$sdk" --list_installed | tee "$RUNNER_TEMP/sdk-installed.txt"
-          installed() {
-            awk -v FS='|' -v p="$1" '{ n = $1; v = $2; gsub(/[[:space:]]/, "", n); gsub(/[[:space:]]/, "", v); if (n == p) print v }' \
-              "$RUNNER_TEMP/sdk-installed.txt"
-          }
-          [ "$(installed emulator)" = "$KC_EMULATOR_REV" ] || fail "the emulator installed is not $KC_EMULATOR_REV"
-          [ "$(installed 'system-images;android-34;default;x86_64')" = "$KC_IMAGE_34_REV" ] || fail "the API 34 image is not $KC_IMAGE_34_REV"
-          [ "$(installed 'system-images;android-36;default;x86_64')" = "$KC_IMAGE_36_REV" ] || fail "the API 36 image is not $KC_IMAGE_36_REV"
-          [ "$(installed 'system-images;android-36;google_apis_ps16k;x86_64')" = "$KC_IMAGE_16K_REV" ] || fail "the 16 KB-page image is not $KC_IMAGE_16K_REV"
+          python3 -I scripts/android-sdk-install.py --selftest > "$RUNNER_TEMP/sdk-install-selftest.txt" \
+            || { cat "$RUNNER_TEMP/sdk-install-selftest.txt"; fail "the installer's selftest failed"; }
+          tail -n 1 "$RUNNER_TEMP/sdk-install-selftest.txt"
+          python3 -I scripts/android-sdk-install.py install "$sdk" mobile/android/expected/emulator-pins.txt "$HOME/kc-sdk-zips"
           # The emulator's qemu links Ubuntu's PulseAudio client library, which the runner image lacks
           # (run 39282207714: "libpulse.so.0: cannot open shared object file"). It comes from the
           # image's own apt archive, as age and dosfstools do in entropy-ci.yml; CI only, never in an

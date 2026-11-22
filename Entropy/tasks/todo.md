@@ -20902,6 +20902,11 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       PlatformImplementations names it. Library code is not judged (Q59 (b)); it goes on the audit list as a
       library residual (no request code is a secret or reaches the pool). The dex scan already reads every dex of
       the APK, now the shrunk one. Proof owed: CI's emulator legs on the shrunk APKs, and a = b with R8.
+      D2c, resources shrunk (2026-11-22): with R8 on, lint fails on isShrinkResources = false
+      (NotShrinkingResources), which D2b's commit missed because its local check built without lint. Resource
+      shrinking is on: aapt2's dump of either APK falls from 3,221 lines to 1,109, and the app's own resources
+      (app_name, "KeepCrypt TEST REGISTRY" in the test-registry APK, Theme.KeepCrypt, data_extraction_rules) stay.
+      Locally both flavours build and lint clean.
 - [ ] D3 F-Droid metadata (reproducible build recipe) and the release-signing steps (Q105); Data safety text.
       Done in part (2026-11-22): mobile/android/fdroid/com.keepcrypt.entropy.yml, a draft recipe for fdroiddata
       (the tag, the rustup srclib, NDK r30, android-rust.sh and android-gradle.sh as CI runs them, the unsigned
@@ -20912,7 +20917,24 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       the release certificate's SHA-256 and the launcher icon (owner items).
 - [ ] D4 Emulator system images and the AVD's packages pinned; an API 35 leg with MediaProjection automation for the
       recording callback.
+      D4a, pinned (2026-11-22): the leg jobs no longer run sdkmanager, which installs the newest revision of the day.
+      mobile/android/expected/emulator-pins.txt pins emulator 37.3.10 and the API 34 r4, API 36 r2 and API 36 ps16k
+      r7 x86_64 images (the revisions run 44955420386 installed), each by URL, size, SHA-1 (Google's repository index,
+      fetched 2026-11-22: each matched our download) and SHA-256 (computed from that download: 3,764,461,225 bytes in
+      all). scripts/android-sdk-install.py (install, --selftest: 23 cases, run in each leg before the install) checks
+      every zip, a cached one too, before unpacking it; refuses entries outside the zip's top directory, absolute
+      names and ".."; and requires each source.properties to give the pinned revision. actions/cache keeps the zips
+      alone, keyed on the pins file. Proof owed: the leg jobs' first run on the pins.
 - [ ] D5 graphics-path's native library reviewed, rebuilt from source or removed (a finding in the Review).
+      Removed (2026-11-22): androidx.graphics:graphics-path 1.0.1 (from Compose ui-graphics) ships
+      libandroidx.graphics.path.so, a native path iterator for Android 13 and lower; from API 34, the minSdk, Compose
+      uses the platform's android.graphics.PathIterator. In the shrunk APK no class outside graphics-path names it:
+      only its own PathIteratorImpl, PathIteratorPreApi34Impl and ConicConverter remain (kept by the library's
+      keep rule for classes with native methods), and the System.loadLibrary("androidx.graphics.path") is in
+      PathIteratorImpl's class initializer, which nothing reaches. packaging.jniLibs.excludes drops the three
+      copies; expected/native-libs.txt lists libkeepcrypt.so alone, so no prebuilt native code ships. A load would
+      throw UnsatisfiedLinkError into the crash path (fail closed). Locally the APK's lib/ holds the three
+      libkeepcrypt.so alone. Proof owed: the emulator legs, which draw every screen.
 
 ### Stage E: the iPhone, release-shaped (BP:343; :1395)
 - [x] E1 The release scan's expected-symbol list for the iPhone app (`_CCRandomGenerateBytes`, nothing else).
