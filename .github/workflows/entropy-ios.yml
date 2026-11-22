@@ -611,6 +611,10 @@ jobs:
       # (390), each narrower than the leg's own device; a second simulator made from that device type (none is
       # installed or downloaded), booted and checked as the first is. None for the runtime is logged and said,
       # and the narrow run is then skipped by name.
+      # M7-12: the leg's own simulator is shut down first; no later step uses it. Runs 44990020044, 45006519588
+      # and 45030614911 (macos-26, iOS 26.5) lost the narrow run to a simulator process that stopped answering
+      # (the app's launch timed out; an accessibility IPC timeout on pid 1102 while the app was 38484): two
+      # iOS 26.5 simulators booted at once on the runner's three cores, where macos-15's iOS 18.6 pair passes.
       - name: Narrow iPhone (journeys-6, a device type of the image's)
         if: matrix.group == 'journeys-6'
         run: |
@@ -633,6 +637,7 @@ jobs:
             echo "narrow iPhone: none of the image's device types narrower than $KC_DEVICE runs $runtime; DynamicTypeUITests runs on $KC_DEVICE alone"
             exit 0
           fi
+          xcrun simctl shutdown "$KC_SIM" || fail "the leg's own simulator $KC_SIM did not shut down"
           xcrun simctl boot "$narrow" || fail "simctl boot failed"
           xcrun simctl bootstatus "$narrow" -b || fail "simctl bootstatus failed (exit $?)"
           xcrun simctl list devices -j > "$RUNNER_TEMP/narrow.json" || fail "simctl list failed"
@@ -676,6 +681,9 @@ jobs:
             -only-testing:KeepCryptUITests/DynamicTypeUITests test-without-building || status=$?
           kill "$sampler" 2> /dev/null || true
           if [ "$status" -ne 0 ]; then
+            echo "== the runner's memory and booted simulators at the failure"
+            memory_pressure -Q || echo "memory_pressure failed"
+            xcrun simctl list devices booted || echo "simctl list failed"
             echo "== the sampler's log (last 40 lines)"
             tail -n 40 "$log" || echo "no sampler log"
             for f in $(ls "$RUNNER_TEMP/samples" | tail -n 4); do

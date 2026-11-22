@@ -32,8 +32,8 @@ import java.util.regex.Pattern
  * android-emulator.sh's registry part, made on API 36 (lead decision M7-11; on API 34, which has no such callback, it
  * only says so). The callback fires only for a MediaProjection (adb's screenrecord never fires it), so the test
  * starts SystemUI's own screen recorder, a MediaProjection of the whole screen, from its Quick Settings tile: no
- * recorder of our own, so no service or notification in any APK (rule 9's gate). The tile is put first in Quick
- * Settings for the test (the shell's settings command) and the tile list restored in a finally.
+ * recorder of our own, so no service or notification in any APK (rule 9's gate). The tile is found by paging
+ * Quick Settings with the shell's input swipe (tapTile says why).
  * The recording starts before the app does, since leaving the app on a Protected screen discards the session and
  * Quick Settings may count as leaving. The app's words page, past the privacy gate, must then show the redacted
  * placeholder (REDACTED_LINE) and the model must hold the recording. Once the recording is stopped from its tile the
@@ -51,9 +51,7 @@ class RecordingTest {
             pass("the screen-recording callback is Android 15's; not made at API " + Build.VERSION.SDK_INT)
             return
         }
-        val tiles = shellText("settings get secure $QS_TILES")
         try {
-            recorderTileFirst(tiles)
             Capture.whileOffline {
                 startRecorder()
                 val activity = toWords()
@@ -92,41 +90,28 @@ class RecordingTest {
                 finish(activity)
             }
         } finally {
-            try {
-                stopRecorder()
-            } finally {
-                restoreTiles(tiles)
-            }
+            stopRecorder()
         }
     }
 
     /**
-     * SystemUI's screen-record tile put first in Quick Settings for the test, the other tiles after it in their
-     * order: on CI's API 36 image (AOSP's SystemUI) it is on the second page, and run 45016186578's swipe did not
-     * turn the page (the tiles showed "Page 1 of 2"). An image whose SystemUI follows the setting shows the tile on
-     * the first page; one that ignores it (kc37's) still has tapTile's paging. The shell may write the setting;
-     * restoreTiles puts it back.
-     */
-    private fun recorderTileFirst(tiles: String) {
-        val rest = if (tiles.isEmpty() || tiles == "null") emptyList() else tiles.split(",").filter { it != RECORD_SPEC }
-        shellText("settings put secure $QS_TILES " + (listOf(RECORD_SPEC) + rest).joinToString(","))
-        probe("recorder: the screen-record tile put first in Quick Settings (it was " + (if (tiles == "null" || tiles.isEmpty()) "the image's default list" else tiles) + ")")
-        SystemClock.sleep(1_000)
-    }
-
-    /** The tile list as it was before the test (none set: the setting deleted, the image's default list again). */
-    private fun restoreTiles(tiles: String) {
-        if (tiles.isEmpty() || tiles == "null") shellText("settings delete secure $QS_TILES")
-        else shellText("settings put secure $QS_TILES $tiles")
-    }
-
-    /**
      * SystemUI's own screen recorder started: its Quick Settings tile (on whichever page of the image's default
-     * tiles holds it), then the dialog's Start (the whole screen, its default); a MediaProjection of SystemUI's must
-     * then run.
+     * tiles holds it), then the dialog's Start for the whole screen; a MediaProjection of SystemUI's must then run.
+     * The API 36 image's dialog opens on "Record one app" (Cancel, Next; kc36 locally): where the dialog has that mode
+     * spinner, the whole screen is chosen in it first, and its button then reads "Record screen".
      */
     private fun startRecorder() {
         tapTile()
+        val mode = device.wait(Until.findObject(By.res(MODES)), 5_000)
+        if (mode != null) {
+            mode.click()
+            val whole = device.wait(Until.findObject(By.text(WHOLE)), 5_000)
+                ?: throw AssertionError("the recorder's mode spinner offered no whole-screen choice; SystemUI shows: " + systemUiLabels())
+            whole.click()
+            if (device.wait(Until.hasObject(By.res(MODES).hasDescendant(By.text(WHOLE))), 5_000) != true) {
+                throw AssertionError("the recorder's mode spinner did not take the whole screen; SystemUI shows: " + systemUiLabels())
+            }
+        }
         val start = device.wait(Until.findObject(By.text(START).clickable(true)), 10_000)
             ?: device.findObject(By.desc(START).clickable(true))
             ?: device.findObject(By.text(START))
@@ -148,24 +133,60 @@ class RecordingTest {
     }
 
     /**
-     * Quick Settings opened and the screen-record tile pressed, found by its label or description on the first page
-     * or, swiping the tiles to the left, on up to PAGES more.
+     * Quick Settings opened in full and the screen-record tile pressed, found by its label or description on the
+     * first page or, turning the tile pager a page at a time, on up to PAGES more. Run 45030614916 and kc36 locally
+     * (the API 36 image's SystemUI): writing sysui_qs_tiles does nothing there (SystemUI writes its own list back at
+     * once), and UI Automator's swipe never turned the pager, where the shell's input swipe across the same pager
+     * does (on kc37 too); a first expand may also open only the shade's top tiles, with no pager. So the full panel
+     * is awaited (expanded again if it is not there), the swipe made inside the pager's own bounds, and each page
+     * turn checked by the pager's labels, which must change.
      */
     private fun tapTile() {
-        shellText("cmd statusbar expand-settings")
-        SystemClock.sleep(1_000)
+        expandedSettings()
         for (page in 0..PAGES) {
             val tile = device.wait(Until.findObject(By.desc(TILE)), 3_000) ?: device.findObject(By.text(TILE))
             if (tile != null) {
                 tile.click()
                 return
             }
-            val w = device.displayWidth
-            val h = device.displayHeight
-            device.swipe(w * 4 / 5, h * 2 / 5, w / 5, h * 2 / 5, 20)
-            SystemClock.sleep(1_000)
+            val pager = device.findObjects(By.pkg(SYSTEMUI).scrollable(true)).map { it.visibleBounds }
+                .minByOrNull { it.width() * it.height() }
+                ?: throw AssertionError("Quick Settings has no scrollable tile pager; SystemUI shows: " + systemUiLabels())
+            val before = systemUiLabels()
+            shellText(
+                "input swipe " + (pager.left + pager.width() * 17 / 20) + " " + pager.centerY() + " " +
+                    (pager.left + pager.width() * 3 / 20) + " " + pager.centerY() + " 300",
+            )
+            var after = before
+            val deadline = SystemClock.uptimeMillis() + 3_000
+            while (after == before && SystemClock.uptimeMillis() < deadline) {
+                SystemClock.sleep(250)
+                device.waitForIdle()
+                after = systemUiLabels()
+            }
+            if (after == before) {
+                throw AssertionError("a swipe across Quick Settings' tile pager (" + pager.toShortString() + ") did not turn it in 3 s; SystemUI shows: " + after)
+            }
+            probe("recorder: Quick Settings' tile pager turned a page")
         }
         throw AssertionError("Quick Settings showed no screen-record tile on " + (PAGES + 1) + " pages; SystemUI shows: " + systemUiLabels())
+    }
+
+    /**
+     * Quick Settings expanded in full, told by its Edit control (the shade's top tiles alone have none, on kc36 and
+     * kc37; kc37 has no page indicator), collapsed and expanded again up to three times.
+     */
+    private fun expandedSettings() {
+        repeat(3) {
+            shellText("cmd statusbar expand-settings")
+            if (device.wait(Until.hasObject(By.pkg(SYSTEMUI).desc(FULL)), 5_000) == true) {
+                SystemClock.sleep(500)
+                return
+            }
+            shellText("cmd statusbar collapse")
+            SystemClock.sleep(1_000)
+        }
+        throw AssertionError("Quick Settings never opened in full (no Edit control); SystemUI shows: " + systemUiLabels())
     }
 
     /** Every text and description SystemUI's windows show (the window hierarchy's), for a tile that is not found. */
@@ -215,17 +236,23 @@ class RecordingTest {
     private companion object {
         const val SYSTEMUI = "com.android.systemui"
 
-        /** The secure setting holding Quick Settings' tile list, and the screen recorder's tile in it. */
-        const val QS_TILES = "sysui_qs_tiles"
-        const val RECORD_SPEC = "screenrecord"
-
         /** The Quick Settings pages past the first that are searched for the tile. */
         const val PAGES = 3
+
+        /** The full Quick Settings panel's Edit control, by its description ("Edit order of Quick Settings."). */
+        val FULL: Pattern = Pattern.compile("(?i)edit order of quick settings.*")
 
         /** The screen recorder's tile, by its label. */
         val TILE: Pattern = Pattern.compile("(?i)screen record.*")
 
-        /** The system dialog's button: "Start" or "Start recording" from Android 14, "Start now" before. */
-        val START: Pattern = Pattern.compile("(?i)start( now| recording)?")
+        /** The recorder dialog's mode spinner (one app or the whole screen), and its whole-screen choice. */
+        const val MODES = "com.android.systemui:id/screen_share_mode_options"
+        val WHOLE: Pattern = Pattern.compile("(?i)record (this|entire) screen")
+
+        /**
+         * The system dialog's button: "Start" or "Start recording" from Android 14, "Start now" before, "Record
+         * screen" once the API 36 image's spinner has the whole screen.
+         */
+        val START: Pattern = Pattern.compile("(?i)start( now| recording)?|record screen")
     }
 }

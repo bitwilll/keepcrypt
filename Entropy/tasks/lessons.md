@@ -170,3 +170,13 @@ scripts that read the changed one (grep for its name and its markers) and run th
   case of an unreadable line, and the patterns are written from the format's grammar (a dex member name is anything
   but whitespace, ":" and "("), not from the names seen so far.
 
+## 2026-11-22: a fix for one image's failure was pushed without running it on that image
+- Mistake: 478b30c5 put the screen-record tile first through sysui_qs_tiles to fix RecordingTest on CI's API 36
+  image, proven only on kc37 (API 37, Play), where the paging fallback, not the setting, found the tile. On API 36
+  SystemUI writes its own list back over the setting, and UI Automator's swipe never turns its pager: run
+  45030614916 failed the same way.
+- Root cause: no API 36 image was on the Mac, so the fix rested on how SystemUI was assumed to behave, and the
+  local pass on another image was read as proof for this one.
+- Rule: a failure seen on one emulator or simulator image is reproduced on that image (installed locally under the
+  owner's emulator approval) before a fix is pushed, and the fix's local proof names that image. A pass on another
+  image proves nothing about it.

@@ -20933,6 +20933,38 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   Recorded as a runner fault; the next push (the pin fix) runs it again. A third occurrence goes to the owner at
   the gate with two options: the test split so each launch at the largest size is its own test, or the job given
   its own simulator boot and a warm launch first.
+  Run at 478b30c5 (link check, keep, helper fixes): CI 45030615032, release 45030614902, Pi 45030614915 (a 1950 s,
+  b 1977 s, arm64 skipped), nightly 45030614981 green. Android 45030614916: build 880 s; CaptureTest passed on API 34
+  and 36 (the capture jobs green, 1061 s and 1021 s), journeys and UI-alone green on both; API 36's registry part
+  failed in RecordingTest alone, "Quick Settings showed no screen-record tile on 4 pages" though the probe said the
+  tile was put first. iPhone 45030614911: every job green but journeys-6 on macos-26, the narrow iPhone a third time.
+  RecordingTest chased on the API 36 image itself (owner Q76/2026-11-16's emulator approval: arm64-v8a-36_r02.zip,
+  810,736,863 B, SHA-1 62ad6714... as sys-img2-3.xml gives, Pkg.Revision 2 as CI's x86_64 r02; AVD kc36, CI's screen):
+  SystemUI writes its own tile list back over sysui_qs_tiles at once (read back unchanged), so the setting does
+  nothing on any image the test runs on (API 34 returns early; kc37 ignores it too); UI Automator's device.swipe
+  never turned the tile pager, while the shell's `input swipe` across the same pager did ("Page 2 of 2", "Screen
+  record, Start"); a first expand-settings after boot can open only the shade's four tiles, with no pager; and the
+  API 36 dialog opens on "Record one app" (Cancel, Next), its spinner (screen_share_mode_options) offering "Record
+  this screen", whose button reads "Record screen". Fixed: the setting write and its restore removed; Quick Settings
+  awaited in full by its Edit control ("Edit order of Quick Settings.", which the shade's top tiles lack; a first form
+  waited for the page indicator, and kc37's panel has none: android-local's registry part failed there, "never
+  opened in full"), collapsed and expanded again up to three times; each page turned by the shell's input swipe inside
+  the smallest scrollable SystemUI node (the pager) and checked by SystemUI's labels changing within 3 s (read at 1 s,
+  kc37's hierarchy was still the old page's, though the page had turned); where the dialog has the mode spinner, the
+  whole screen chosen and checked before Start ("Record screen" added to START).
+  Local proof (the shipping app and its test APK built with R8, link check 0 missing in both flavours, RecordingTest
+  alone): kc36 (API 36 AOSP image, freshly booted) OK (1 test), the pager turned, the projection running, "recording
+  on: screen words, placeholder shown (redacted)", then "the page shown again, the session kept"; kc37 OK (1 test),
+  the same, then "the session discarded (Quick Settings over the app left it), Home saying why".
+  And android-local.sh --part registry on kc37 (its own build and boot): rc 0, all twelve runs PASS, RecordingTest
+  among them.
+  journeys-6 chased: in all three failures since 0f492397 (44990020044: the app's launch timed out; 45006519588 and
+  45030614911: kAXErrorIPCTimeout for pid 1102 while the app was 38484) the process that stopped answering was the
+  simulator's, never the app's, on the same image (20261111.635 by its job log) where four runs passed; the iOS tree
+  between them changed only the H3 job gating. The narrow step booted a second iOS 26.5 simulator with the leg's own
+  still booted, on a three-core runner. Changed: the leg's simulator is shut down before the narrow one boots (no
+  later step uses it), and a failure prints memory_pressure and the booted simulators. A pass or a fourth failure on
+  the next run is reported at the gate with the two options above.
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.
