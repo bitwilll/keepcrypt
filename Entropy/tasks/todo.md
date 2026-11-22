@@ -21029,7 +21029,7 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       Ticked at the gate with the owner's review of the findings.
 
 ### Stage H: docs and CI
-- [ ] H1 The user guide shared by all platforms (MA:168); owner item 13's figure from a committed script (Q108 (b)).
+- [x] H1 The user guide shared by all platforms (MA:168); owner item 13's figure from a committed script (Q108 (b)).
       Figure done (2026-11-22): `tools/figures/seed_pipeline.py` (stdlib) draws `docs/img/seed-pipeline.svg`, the old
       PNG's layout and text, its numbers computed: the three roll quotas read from core/src/dice.rs (each must appear
       once), log2(6) = 2.585 bits per roll, 50 rolls 129.2 bits, 99 rolls 255.9 (the PNG said 256; design.md:262's
@@ -21038,7 +21038,16 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       runs `--check`, which fails unless the committed SVG is byte for byte what the script draws (lessons.md,
       2026-10-09: CI re-runs every computed number). Proof (local): `--check` passes on 3.9.6 and Homebrew's 3.x;
       a hand edit (255.9 to 256) fails it, rc 1; a bad flag rc 2; the gate clean; the rendering looked at.
-      The guide itself: still to write.
+      The guide (2026-11-22): `docs/user-guide.md`, 421 lines, one guide for the Pi, Android and iPhone in the shared
+      screen order (MA:170-186), with "On the Pi:" / "On Android:" / "On iPhone:" notes where they differ: before you
+      start (verifying a download, offline, the Pi's image and first-boot checklist), the ceremony, the collision check,
+      recording (words, SeedBook, read-back, `.age` backup), watch-only, the verifier, never offered and failures. A
+      subagent drafted it from the docs and screens.json alone; I checked its sources and resolved its 1 disagreement
+      and 6 gaps from the shipped code: the check button is "Check now (recommended)" on all three (pi-firmware.md:93
+      shortens it), dice-only skips Device entropy, Commitment and Reveal D on phones too (CeremonyModel.start), the
+      phones' dice end on Done at the minimum, Device swap says "Words 13-24 go on device 2 of 2" with Continue, the
+      iPhone's stop screen is the same (Close app), iPhone 0.1.0 is source and build steps (Q106). It holds no seed,
+      roll, passphrase or vector value. For the owner's review at the gate; not yet linked from the README.
 - [x] H2 design.md:278's "Gate" line and BP:320 agree on where the birthday test runs (Q42 (b) already decided).
       Proof (2026-11-22): no edit. design.md:278 is phase 1's gate, "birthday-collision ... pass in CI"; BP:320 runs the
       test nightly on core in CI (Stage A, entropy-nightly.yml) and leaves the Pi's reboots to M8's bench image. Q42 (b)
