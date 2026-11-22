@@ -34,9 +34,10 @@
 # verify on every build) is the one thing cached, keyed on the toolchain and Cargo.lock; no built
 # library or app is.
 #
-# Not one of the 14 required checks (Q91), so path filters are safe, as in entropy-android.yml: a
-# skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that touches
-# these paths merges without a green run of this workflow on its final head. They name every input of
+# Required through its last job, "iphone result" (M7 H3; Q108 (a), once the owner adds it to main's
+# ruleset; until then Q38 (b)'s rule: no PR that touches these paths merges without a green run of
+# this workflow on its final head). So no paths: filter on pull_request: the changes job compares a
+# PR with these paths and the other jobs run or are skipped by its answer. They name every input of
 # the app: the project and its Swift, the Rust library's crates, manifests and toolchain, the vectors
 # and the shared screen table the tests read, the Android screens' sources whose texts they pin (D3),
 # the scripts it runs and this file.
@@ -50,20 +51,8 @@
 name: Entropy iPhone
 
 on:
+  # No paths: filter on pull_request (M7 H3): the changes job below decides which jobs run.
   pull_request:
-    paths:
-      - 'Entropy/mobile/ios/**'
-      - 'Entropy/mobile/screens.json'
-      - 'Entropy/mobile/android/screens/src/commonMain/**'
-      - 'Entropy/ffi/**'
-      - 'Entropy/core/**'
-      - 'Entropy/Cargo.toml'
-      - 'Entropy/Cargo.lock'
-      - 'Entropy/rust-toolchain.toml'
-      - 'Entropy/vectors/**'
-      - 'Entropy/scripts/banned-api-check.sh'
-      - 'Entropy/scripts/ios-rust.sh'
-      - '.github/workflows/entropy-ios.yml'
   push:
     branches: [main]
     paths:
@@ -107,8 +96,52 @@ defaults:
     working-directory: Entropy
 
 jobs:
+  changes:
+    # Did this PR change what this workflow tests (tasks/todo.md, M7 H3; Q108 (a))? The workflow
+    # starts on every PR, as entropy-ci.yml does, because a required check on a path-filtered
+    # workflow stays pending on every PR it skips; every other job needs this one and is skipped
+    # when it says no. The pathspecs are the push trigger's paths, in git's spelling (a directory
+    # for its "/**"). A pull request's checkout is its merge commit, whose first parent is the
+    # base branch; any other event (push, tag, schedule, dispatch) runs every job. The answer is git
+    # diff's exit code, never a text match (entropy-ci.yml's changes job says why); a range that
+    # cannot be read counts as a change.
+    name: iphone changes (its paths or this workflow)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      needed: ${{ steps.diff.outputs.needed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          top=$(git rev-parse --show-toplevel)
+          cd "$top"
+          if [ "$EVENT" != pull_request ]; then
+            echo "a $EVENT run: every job runs"
+            run=true
+          else
+            rc=0
+            git diff --quiet --no-renames HEAD^1 HEAD -- 'Entropy/mobile/ios/' 'Entropy/mobile/screens.json' 'Entropy/mobile/android/screens/src/commonMain/' 'Entropy/ffi/' 'Entropy/core/' 'Entropy/Cargo.toml' 'Entropy/Cargo.lock' 'Entropy/rust-toolchain.toml' 'Entropy/vectors/' 'Entropy/scripts/banned-api-check.sh' 'Entropy/scripts/ios-rust.sh' '.github/workflows/entropy-ios.yml' 2>/dev/null || rc=$?
+            case $rc in
+              0) run=false ;;
+              1) run=true ;;
+              *) echo "cannot read HEAD^1..HEAD (git diff exit $rc); every job runs"; run=true ;;
+            esac
+            if [ "$rc" -le 1 ]; then
+              git -c core.quotePath=false diff --name-only --no-renames HEAD^1 HEAD -- 'Entropy/mobile/ios/' 'Entropy/mobile/screens.json' 'Entropy/mobile/android/screens/src/commonMain/' 'Entropy/ffi/' 'Entropy/core/' 'Entropy/Cargo.toml' 'Entropy/Cargo.lock' 'Entropy/rust-toolchain.toml' 'Entropy/vectors/' 'Entropy/scripts/banned-api-check.sh' 'Entropy/scripts/ios-rust.sh' '.github/workflows/entropy-ios.yml' | sed -n '1,50s/^/changed here: /p'
+            fi
+          fi
+          echo "needed=$run" | tee -a "$GITHUB_OUTPUT"
+
   unit:
     name: iphone unit (${{ matrix.os }}, Xcode ${{ matrix.xcode }}, ${{ matrix.device }} iOS ${{ matrix.ios }})
+    needs: changes
+    if: ${{ needs.changes.outputs.needed == 'true' }}
     runs-on: ${{ matrix.os }}
     # Budget (lead decision M5-30's rule): the measured whole job plus 25%, rounded up. The first green
     # run, 44049143630 at ab3e8ab0, took 826 s on macos-26 and 857 s on macos-15: 857 s x 1.25 is
@@ -327,6 +360,8 @@ jobs:
 
   journeys:
     name: iphone journeys ${{ matrix.group }} (${{ matrix.os }}, Xcode ${{ matrix.xcode }}, ${{ matrix.device }} iOS ${{ matrix.ios }})
+    needs: changes
+    if: ${{ needs.changes.outputs.needed == 'true' }}
     runs-on: ${{ matrix.os }}
     # Each row's budget (timeout, read here; M5-30's rule): its measured job plus 25%, rounded up, from the
     # slower leg. Run 44173357483 at 4c2d9859 measured the journeys (macos-26 / macos-15, seconds):
@@ -663,3 +698,34 @@ jobs:
             echo
           done
           [ "$found" = 1 ] || echo "no KeepCrypt crash or hang report on this runner"
+
+  result:
+    # The one check of this workflow that main's ruleset requires (tasks/todo.md, M7 H3; Q108 (a)).
+    # It runs always, a cancelled run too, so a cancelled or skipped job can never read as passing:
+    # it fails unless the changes job succeeded and then either every job succeeded (a change) or
+    # every job was skipped (none). Job names elsewhere in this file may change; this one may not.
+    name: iphone result
+    needs: [changes, unit, journeys]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job succeeded, or none was needed
+        working-directory: .
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RUN: ${{ needs.changes.outputs.needed }}
+          RESULTS: unit=${{ needs.unit.result }} journeys=${{ needs.journeys.result }}
+        run: |
+          fail() { echo "FAIL: $*" >&2; exit 1; }
+          [ "$CHANGES" = success ] || fail "the changes job's result is $CHANGES, not success"
+          case $RUN in
+            true) want=success ;;
+            false) want=skipped ;;
+            *) fail "the changes job said run=$RUN" ;;
+          esac
+          for r in $RESULTS; do
+            echo "$r"
+            [ "${r#*=}" = "$want" ] || fail "${r%%=*} is ${r#*=}, not $want (run=$RUN)"
+          done
+          echo "run=$RUN: every job $want"

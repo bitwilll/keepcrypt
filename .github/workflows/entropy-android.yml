@@ -78,9 +78,10 @@
 # legs, as android-control-captures-api34 and android-control-captures-api36, the owner's screen
 # review of the positive control (M5-68 (f)).
 #
-# Not one of the 14 required checks (Q55), so path filters are safe, as in entropy-pi-image.yml:
-# a skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that
-# touches these paths merges without a green run of this workflow on its final head. They name
+# Required through its last job, "android result" (M7 H3; Q108 (a), once the owner adds it to main's
+# ruleset; until then Q38 (b)'s rule: no PR that touches these paths merges without a green run of
+# this workflow on its final head). So no paths: filter on pull_request: the changes job compares
+# a PR with these paths and the other jobs run or are skipped by its answer. The paths name
 # every input of the APKs, the Rust library's too: Entropy/Cargo.toml holds the release profile
 # libkeepcrypt.so is built with (panic = "unwind", the FFI crates' overflow checks).
 #
@@ -98,23 +99,8 @@
 name: Entropy Android
 
 on:
+  # No paths: filter on pull_request (M7 H3): the changes job below decides which jobs run.
   pull_request:
-    paths:
-      - 'Entropy/mobile/**'
-      - 'Entropy/ffi/**'
-      - 'Entropy/core/**'
-      - 'Entropy/Cargo.toml'
-      - 'Entropy/Cargo.lock'
-      - 'Entropy/rust-toolchain.toml'
-      - 'Entropy/vectors/**'
-      - 'Entropy/scripts/banned-api-check.sh'
-      - 'Entropy/scripts/android-*'
-      - 'Entropy/scripts/age-interop.py'
-      - 'Entropy/tools/verify/**'
-      - 'Entropy/scripts/testdata/android-deps-review/**'
-      - 'Entropy/scripts/testdata/android-canary-lib/**'
-      - 'Entropy/deny.toml'
-      - '.github/workflows/entropy-android.yml'
   push:
     branches: [main]
     # A release tag (Entropy/tasks/todo.md, M7 B3, Q110): GitHub applies no path filter to a tag push.
@@ -157,8 +143,52 @@ defaults:
     working-directory: Entropy
 
 jobs:
+  changes:
+    # Did this PR change what this workflow tests (tasks/todo.md, M7 H3; Q108 (a))? The workflow
+    # starts on every PR, as entropy-ci.yml does, because a required check on a path-filtered
+    # workflow stays pending on every PR it skips; every other job needs this one and is skipped
+    # when it says no. The pathspecs are the push trigger's paths, in git's spelling (a directory
+    # for its "/**"). A pull request's checkout is its merge commit, whose first parent is the
+    # base branch; any other event (push, tag, schedule, dispatch) runs every job. The answer is git
+    # diff's exit code, never a text match (entropy-ci.yml's changes job says why); a range that
+    # cannot be read counts as a change.
+    name: android changes (its paths or this workflow)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      needed: ${{ steps.diff.outputs.needed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          top=$(git rev-parse --show-toplevel)
+          cd "$top"
+          if [ "$EVENT" != pull_request ]; then
+            echo "a $EVENT run: every job runs"
+            run=true
+          else
+            rc=0
+            git diff --quiet --no-renames HEAD^1 HEAD -- 'Entropy/mobile/' 'Entropy/ffi/' 'Entropy/core/' 'Entropy/Cargo.toml' 'Entropy/Cargo.lock' 'Entropy/rust-toolchain.toml' 'Entropy/vectors/' 'Entropy/scripts/banned-api-check.sh' 'Entropy/scripts/android-*' 'Entropy/scripts/age-interop.py' 'Entropy/tools/verify/' 'Entropy/scripts/testdata/android-deps-review/' 'Entropy/scripts/testdata/android-canary-lib/' 'Entropy/deny.toml' '.github/workflows/entropy-android.yml' 2>/dev/null || rc=$?
+            case $rc in
+              0) run=false ;;
+              1) run=true ;;
+              *) echo "cannot read HEAD^1..HEAD (git diff exit $rc); every job runs"; run=true ;;
+            esac
+            if [ "$rc" -le 1 ]; then
+              git -c core.quotePath=false diff --name-only --no-renames HEAD^1 HEAD -- 'Entropy/mobile/' 'Entropy/ffi/' 'Entropy/core/' 'Entropy/Cargo.toml' 'Entropy/Cargo.lock' 'Entropy/rust-toolchain.toml' 'Entropy/vectors/' 'Entropy/scripts/banned-api-check.sh' 'Entropy/scripts/android-*' 'Entropy/scripts/age-interop.py' 'Entropy/tools/verify/' 'Entropy/scripts/testdata/android-deps-review/' 'Entropy/scripts/testdata/android-canary-lib/' 'Entropy/deny.toml' '.github/workflows/entropy-android.yml' | sed -n '1,50s/^/changed here: /p'
+            fi
+          fi
+          echo "needed=$run" | tee -a "$GITHUB_OUTPUT"
+
   build:
     name: android build (APKs, checks, uploads, hand-off)
+    needs: changes
+    if: ${{ needs.changes.outputs.needed == 'true' }}
     runs-on: ubuntu-24.04
     # Budget (tasks/todo.md, M5 "Budgets"; M5-30, M5-70 (b), M5-72, M5-73, M5-75 (g)): Stage U-3's
     # JVM tests ran the build to 779 s (run 41181656557 at f9ede2c, every step green, then stopped at
@@ -695,6 +725,8 @@ jobs:
   # difference can be diffed against the build job's android-apks.
   build-b:
     name: android build (b, the second clean build)
+    needs: changes
+    if: ${{ needs.changes.outputs.needed == 'true' }}
     runs-on: ubuntu-24.04
     # Budget: the build job's 17 minutes; this job builds one APK and runs no tests.
     timeout-minutes: 17
@@ -1030,3 +1062,34 @@ jobs:
           path: ${{ runner.temp }}/emulator-${{ matrix.api }}/captures/
           retention-days: 14
           if-no-files-found: error
+
+  result:
+    # The one check of this workflow that main's ruleset requires (tasks/todo.md, M7 H3; Q108 (a)).
+    # It runs always, a cancelled run too, so a cancelled or skipped job can never read as passing:
+    # it fails unless the changes job succeeded and then either every job succeeded (a change) or
+    # every job was skipped (none). Job names elsewhere in this file may change; this one may not.
+    name: android result
+    needs: [changes, build, build-b, apk-reproducible, emulators]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job succeeded, or none was needed
+        working-directory: .
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RUN: ${{ needs.changes.outputs.needed }}
+          RESULTS: build=${{ needs.build.result }} build-b=${{ needs.build-b.result }} apk-reproducible=${{ needs.apk-reproducible.result }} emulators=${{ needs.emulators.result }}
+        run: |
+          fail() { echo "FAIL: $*" >&2; exit 1; }
+          [ "$CHANGES" = success ] || fail "the changes job's result is $CHANGES, not success"
+          case $RUN in
+            true) want=success ;;
+            false) want=skipped ;;
+            *) fail "the changes job said run=$RUN" ;;
+          esac
+          for r in $RESULTS; do
+            echo "$r"
+            [ "${r#*=}" = "$want" ] || fail "${r%%=*} is ${r#*=}, not $want (run=$RUN)"
+          done
+          echo "run=$RUN: every job $want"

@@ -21030,8 +21030,28 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
 
 ### Stage H: docs and CI
 - [ ] H1 The user guide shared by all platforms (MA:168); owner item 13's figure from a committed script (Q108 (b)).
-- [ ] H2 design.md:278's "Gate" line and BP:320 agree on where the birthday test runs (Q42 (b) already decided).
+- [x] H2 design.md:278's "Gate" line and BP:320 agree on where the birthday test runs (Q42 (b) already decided).
+      Proof (2026-11-22): no edit. design.md:278 is phase 1's gate, "birthday-collision ... pass in CI"; BP:320 runs the
+      test nightly on core in CI (Stage A, entropy-nightly.yml) and leaves the Pi's reboots to M8's bench image. Q42 (b)
+      (approved 2026-10-14; :9867) kept design.md untouched and BP:315 (now :320) as it reads, so the two agree: the core
+      part is CI's from M7, and design.md:278's box stays unticked until M8's reboot part runs, as Q42 (b) intended.
 - [ ] H3 For Q108 (a): the three workflows' job names frozen and listed for the owner's ruleset change.
+      Found (2026-11-22): Android, iPhone and Pi image filter pull_request by path, so a required check of theirs would
+      stay pending ("Expected") on every PR outside their paths, the trap entropy-ci.yml's changes job avoids (Q12).
+      Fix, as there: no paths: on pull_request; a first job, `<x> changes (its paths or this workflow)`, diffs the PR's
+      merge commit with its first parent over the push trigger's paths (git's spelling; any other event runs every
+      job); every root job needs it and runs only when it says so; a last job, `<x> result`, runs always (a cancelled
+      run too) and fails unless the changes job succeeded and every job then succeeded (a change) or was skipped (none).
+      So the ruleset needs one name per workflow, and matrix names may change freely:
+      `android result`, `iphone result`, `pi-image result` (the job names to add, app GitHub Actions, as the 14).
+      The changes job's output is `needed`, not `run`: the gate's workflow rule read `run: ${{ ... }}` as a run step
+      with an expression (3 hits, fixed by the name, the rule unchanged).
+      Proof (local, 2026-11-22): the workflows gate clean (6 workflows); each workflow's pathspecs on scratch merge
+      commits, 18 cases as wanted (docs only: Android 0, iPhone 0, Pi 1; the workflow itself 1, another's 0;
+      `scripts/android-*` and nested testdata 1; commonMain 1 for iPhone, 0 for Android's app files); the result
+      script on 8 cases (all success, all skipped, a failure, a cancel, a job run when none was needed, the changes job
+      failed or cancelled, no answer). Owed: CI on the push (every result job green), and one PR touching none of the
+      three's paths showing the three results green with every other job skipped.
 
 ### Verification (the gate, BP:302, and the deliverables)
 - [ ] The nightly birthday job green on core with 1,000,000 legs, and its canary catching the 32- and 36-bit stubs.
