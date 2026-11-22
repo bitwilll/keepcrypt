@@ -55,7 +55,7 @@ android {
         release {
             isDebuggable = false
             isMinifyEnabled = true
-            isShrinkResources = false
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             isCrunchPngs = false
             vcsInfo {
@@ -88,6 +88,11 @@ android {
     packaging {
         jniLibs {
             keepDebugSymbols += "**/libkeepcrypt.so"
+            // Compose's graphics-path library (M7 D5): its native path iterator serves Android 13 and
+            // lower; from API 34, the minSdk, Compose uses the platform's android.graphics.PathIterator,
+            // and in the shrunk app nothing reaches the class whose initializer loads it. So no
+            // prebuilt native code but libkeepcrypt.so ships; a load would fail and end in the crash path.
+            excludes += "lib/*/libandroidx.graphics.path.so"
         }
     }
 }
