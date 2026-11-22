@@ -119,8 +119,9 @@ Defense promised: user-verifiable dice mode, reproducible builds, signed release
   `let_underscore_must_use`, `print_*` forbidden).
 - Kernel: only the BCM2835 hwrng driver may be built (pi/os/expected/kconfig-required:7; every other
   `HW_RANDOM_*` in pi/os/expected/kconfig-forbidden:60-80).
-- Reproducible Pi image: three legs compared, "pi-image reproducible (a = b = arm64)"
-  (.github/workflows/entropy-pi-image.yml:296); each leg's image scanned against pi/os/expected (:215-223).
+- Reproducible Pi image: legs a and b compared on every run, and a third, emulated on an arm64 host, on the
+  weekly schedule, release tags and dispatches (.github/workflows/entropy-pi-image.yml:117-123, 393); each
+  leg's image scanned against pi/os/expected (:307-321).
 
 #### Tests that prove it
 - `a_fixed_stub_gives_the_vectors_d_and_c`, `one_changed_byte_of_any_source_changes_d`,

@@ -20886,6 +20886,20 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   the gate: the arm64 leg runs on the weekly schedule, on tags and on dispatch, and no longer on pull requests or
   pushes; `pi-image result` then covers a, b and a = b on PRs, and a = b = arm64 on the others. Not changed until the
   owner's word.
+  Owner's word (2026-11-22): "move the arm64 leg off PRs". Done: the changes job gains an `arm64` output, true for the
+  schedule, a dispatch and a tag push (refs/tags/), false for a PR or a branch push; build-arm64 runs only where it is
+  true. `reproducible` (now "pi-image reproducible (a = b, and = arm64 where it runs)") always requires a = b of one
+  commit with both legs successful, and where arm64 is true also the arm64 leg's success and equal image; where it is
+  false it fails unless the arm64 leg was skipped. `result` requires the arm64 leg to have succeeded where arm64 is
+  true and to have been skipped where it is false; any other arm64 value fails both. docs/audit.md's citation
+  follows. Local proof (scratchpad arm64off/t.sh, the three run scripts extracted from the YAML and run in bash): 22
+  cases pass: arm64 is true for schedule, dispatch and a v0.1.0 tag and false for a main push and a PR; reproducible
+  passes a PR with a = b and the arm64 leg skipped, and a tag with all three equal, and fails an arm64 leg that ran on
+  a PR, a != b, and on a tag a skipped, different or failed arm64 leg, and a missing output; result passes a PR with
+  or without a change and a tag with every job run, and fails a failed or cancelled arm64 leg on a tag, an arm64 leg
+  that ran on a PR, a failed reproducible, a failed changes job and a missing output. Workflow gate clean (6
+  workflows). CI owed: the next push's run shows the arm64 leg skipped and the result green; the next weekly run or
+  a dispatch shows all three.
 
 ### Stage D: the Android APK, reproducible and release-shaped (:14104)
 - [ ] D1 Two clean builds give one unsigned APK hash (CI compares, like the Pi's a = b).

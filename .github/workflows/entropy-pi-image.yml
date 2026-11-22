@@ -1,8 +1,10 @@
 # KeepCrypt-Entropy Pi image (Entropy/tasks/todo.md, M4 groups 14 and 15, M7 C1-C2; Q38): the SD card
-# image built from Entropy/pi/os three times, on two fresh x86_64 runners and an arm64 one, each in a
-# fresh copy of the pinned build container (Entropy/pi/os/container/Dockerfile, run through
-# pi/os/container.sh; the arm64 host emulates its linux/amd64), at the same KC_WORK, and a job that
-# fails unless all three gave the same image (docs/build-plan.md, "Reproducible build"). Leg a
+# image built from Entropy/pi/os on two fresh x86_64 runners and, on the weekly schedule, a release tag
+# or a dispatch, a third time on an arm64 one, each in a fresh copy of the pinned build container
+# (Entropy/pi/os/container/Dockerfile, run through pi/os/container.sh; the arm64 host emulates its
+# linux/amd64), at the same KC_WORK, and a job that fails unless every leg that ran gave the same
+# image (docs/build-plan.md, "Reproducible build"). The arm64 leg takes about 4.6 hours under
+# emulation, so pull requests and branch pushes skip it (M7-6, the owner's word, 2026-11-22). Leg a
 # restores Buildroot's downloads (dl/) from the cache by exact key and leg b downloads everything
 # afresh; Buildroot checks every download by its hash either way. Leg a uploads the image, kept
 # 14 days, which the owner downloads signed in to GitHub; any commit can be rebuilt after that by
@@ -83,6 +85,7 @@ jobs:
     timeout-minutes: 5
     outputs:
       needed: ${{ steps.diff.outputs.needed }}
+      arm64: ${{ steps.diff.outputs.arm64 }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -91,6 +94,7 @@ jobs:
       - id: diff
         env:
           EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
         run: |
           top=$(git rev-parse --show-toplevel)
           cd "$top"
@@ -110,6 +114,13 @@ jobs:
             fi
           fi
           echo "needed=$run" | tee -a "$GITHUB_OUTPUT"
+          # The arm64 leg (M7-6): the schedule, a dispatch and a tag push run it; a PR or a branch push does not.
+          case $EVENT in
+            schedule|workflow_dispatch) arm64=true ;;
+            push) case $REF in refs/tags/*) arm64=true ;; *) arm64=false ;; esac ;;
+            *) arm64=false ;;
+          esac
+          echo "arm64=$arm64" | tee -a "$GITHUB_OUTPUT"
 
   build-a:
     name: pi-image build (a)
@@ -359,11 +370,12 @@ jobs:
 
   build-arm64:
     # The third build, on an arm64 host, running the same linux/amd64 container under emulation
-    # (tasks/todo.md, M7 C2 and lead decision M7-6): it must give leg a's image. GitHub's job limit,
-    # six hours, is its timeout; its first runs measure how much of it emulation takes.
+    # (tasks/todo.md, M7 C2 and M7-6): it must give leg a's image. GitHub's job limit, six hours, is
+    # its timeout; it took 4 h 37 min at 0f492397, so it runs only where the changes job's arm64 says
+    # (the schedule, a release tag, a dispatch), never on a PR or a branch push (the owner's word).
     name: pi-image build (arm64 host, emulated x86_64)
     needs: changes
-    if: ${{ needs.changes.outputs.needed == 'true' }}
+    if: ${{ needs.changes.outputs.needed == 'true' && needs.changes.outputs.arm64 == 'true' }}
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 360
     env:
@@ -373,12 +385,12 @@ jobs:
     steps: *leg-steps
 
   reproducible:
-    # Runs when a leg failed too (its scan, say), so the run always says whether the two builds
-    # agreed; not when the run was cancelled. Fails unless both image hashes are non-empty and
-    # equal, both legs built the same commit and both legs succeeded (so both scans passed); then
-    # the summary names the commit, the image and its SHA-256, the rootfs prefix and the binary's
-    # SHA-256.
-    name: pi-image reproducible (a = b = arm64)
+    # Runs when a leg failed too (its scan, say), so the run always says whether the builds
+    # agreed; not when the run was cancelled. Fails unless every leg the run needs (a and b, and
+    # arm64 where the changes job's arm64 is true) gave a non-empty image hash, all equal, of the
+    # same commit, and succeeded (so every scan passed); then the summary names the commit, the
+    # image and its SHA-256, the rootfs prefix and the binary's SHA-256.
+    name: pi-image reproducible (a = b, and = arm64 where it runs)
     needs: [changes, build-a, build-b, build-arm64]
     if: ${{ !cancelled() && needs.changes.outputs.needed == 'true' }}
     runs-on: ubuntu-24.04
@@ -410,6 +422,7 @@ jobs:
           PARTITION_2_ARM64: ${{ needs.build-arm64.outputs.partition2 }}
           PREFIX_ARM64: ${{ needs.build-arm64.outputs.prefix }}
           BINARY_ARM64: ${{ needs.build-arm64.outputs.binary }}
+          ARM64: ${{ needs.changes.outputs.arm64 }}
         run: |
           for v in RESULT COMMIT NAME IMAGE PARTITION_1 PARTITION_2 PREFIX BINARY; do
             a=${v}_A
@@ -418,29 +431,41 @@ jobs:
             echo "$v: a ${!a:-(none)}, b ${!b:-(none)}, arm64 ${!c:-(none)}"
           done
           fail() { echo "FAIL: pi-image reproducible: $1" >&2; exit 1; }
-          [ -n "$IMAGE_A" ] && [ -n "$IMAGE_B" ] && [ -n "$IMAGE_ARM64" ] || fail "a leg gave no image hash"
+          [ -n "$IMAGE_A" ] && [ -n "$IMAGE_B" ] || fail "a leg gave no image hash"
           [ "$IMAGE_A" = "$IMAGE_B" ] || fail "legs a and b gave different images (the partition hashes above say which part)"
-          [ "$IMAGE_A" = "$IMAGE_ARM64" ] || fail "the arm64 host gave another image than leg a (the partition hashes above say which part)"
-          [ -n "$COMMIT_A" ] && [ "$COMMIT_A" = "$COMMIT_B" ] && [ "$COMMIT_A" = "$COMMIT_ARM64" ] || fail "the legs built different commits"
-          [ "$RESULT_A" = success ] && [ "$RESULT_B" = success ] && [ "$RESULT_ARM64" = success ] || fail "a leg's result is not success (a: $RESULT_A, b: $RESULT_B, arm64: $RESULT_ARM64): a step after its build failed, its scan or leg a's upload, or the leg was cancelled; the image is not accepted"
-          echo "all three legs built $COMMIT_A into $NAME_A, SHA-256 $IMAGE_A, and every scan passed"
+          [ -n "$COMMIT_A" ] && [ "$COMMIT_A" = "$COMMIT_B" ] || fail "the legs built different commits"
+          [ "$RESULT_A" = success ] && [ "$RESULT_B" = success ] || fail "a leg's result is not success (a: $RESULT_A, b: $RESULT_B): a step after its build failed, its scan or leg a's upload, or the leg was cancelled; the image is not accepted"
+          case $ARM64 in
+            true)
+              [ -n "$IMAGE_ARM64" ] || fail "the arm64 leg gave no image hash"
+              [ "$IMAGE_A" = "$IMAGE_ARM64" ] || fail "the arm64 host gave another image than leg a (the partition hashes above say which part)"
+              [ "$COMMIT_A" = "$COMMIT_ARM64" ] || fail "the arm64 leg built another commit"
+              [ "$RESULT_ARM64" = success ] || fail "the arm64 leg's result is $RESULT_ARM64, not success; the image is not accepted"
+              legs="all three legs (a, b and the arm64 host)" ;;
+            false)
+              [ "$RESULT_ARM64" = skipped ] || fail "the arm64 leg's result is $RESULT_ARM64 on a run that skips it"
+              legs="legs a and b (the arm64 host runs on the schedule, tags and dispatches)" ;;
+            *) fail "the changes job said arm64=$ARM64" ;;
+          esac
+          echo "$legs built $COMMIT_A into $NAME_A, SHA-256 $IMAGE_A, and every scan passed"
           {
             echo "## Entropy Pi image"
             echo
             echo "- Commit: \`$COMMIT_A\`"
             echo "- Image: \`$NAME_A\`, leg a's artifact (kept 14 days)"
-            echo "- Image SHA-256, the same in legs a and b and on the arm64 host: \`$IMAGE_A\`"
+            echo "- Image SHA-256, the same in $legs: \`$IMAGE_A\`"
             echo "- Rootfs prefix: \`$PREFIX_A\`"
             echo "- keepcrypt-pi SHA-256, the build's (the file cargo built, which the image's /usr/bin/keepcrypt-pi equals): \`$BINARY_A\`"
             echo
-            echo "**Scanned.** All three legs' scans of their image against the reviewed \`pi/os/expected/\` (\`banned-api-check.sh --image\`, with the kernel config and that binary hash) passed, as they must for the legs to succeed; each leg's \"Scan\" step holds the output."
+            echo "**Scanned.** Every leg's scan of its image against the reviewed \`pi/os/expected/\` (\`banned-api-check.sh --image\`, with the kernel config and that binary hash) passed, as they must for the legs to succeed; each leg's \"Scan\" step holds the output."
           } >> "$GITHUB_STEP_SUMMARY"
 
   result:
     # The one check of this workflow that main's ruleset requires (tasks/todo.md, M7 H3; Q108 (a)).
     # It runs always, a cancelled run too, so a cancelled or skipped job can never read as passing:
     # it fails unless the changes job succeeded and then either every job succeeded (a change) or
-    # every job was skipped (none). Job names elsewhere in this file may change; this one may not.
+    # every job was skipped (none); the arm64 leg must instead be skipped wherever the changes job's
+    # arm64 is false (M7-6). Job names elsewhere in this file may change; this one may not.
     name: pi-image result
     needs: [changes, build-a, build-b, build-arm64, reproducible]
     if: always()
@@ -451,7 +476,9 @@ jobs:
         env:
           CHANGES: ${{ needs.changes.result }}
           RUN: ${{ needs.changes.outputs.needed }}
-          RESULTS: build-a=${{ needs.build-a.result }} build-b=${{ needs.build-b.result }} build-arm64=${{ needs.build-arm64.result }} reproducible=${{ needs.reproducible.result }}
+          ARM64: ${{ needs.changes.outputs.arm64 }}
+          RESULTS: build-a=${{ needs.build-a.result }} build-b=${{ needs.build-b.result }} reproducible=${{ needs.reproducible.result }}
+          RESULT_ARM64: ${{ needs.build-arm64.result }}
         run: |
           fail() { echo "FAIL: $*" >&2; exit 1; }
           [ "$CHANGES" = success ] || fail "the changes job's result is $CHANGES, not success"
@@ -464,4 +491,11 @@ jobs:
             echo "$r"
             [ "${r#*=}" = "$want" ] || fail "${r%%=*} is ${r#*=}, not $want (run=$RUN)"
           done
-          echo "run=$RUN: every job $want"
+          case $ARM64 in
+            true) want_arm64=$want ;;
+            false) want_arm64=skipped ;;
+            *) fail "the changes job said arm64=$ARM64" ;;
+          esac
+          echo "build-arm64=$RESULT_ARM64"
+          [ "$RESULT_ARM64" = "$want_arm64" ] || fail "build-arm64 is $RESULT_ARM64, not $want_arm64 (run=$RUN, arm64=$ARM64)"
+          echo "run=$RUN, arm64=$ARM64: every job $want, the arm64 leg $want_arm64"
