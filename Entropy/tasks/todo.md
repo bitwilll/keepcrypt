@@ -20993,6 +20993,20 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   step failing fails the job: no retry, no fallback. Local (iPhone 17, iOS 26.5, booted for it and shut down after):
   running after 4 s, 24 s in all, the app no longer installed after; a missing app fails ("no app at ..."). Proof
   owed: CI's macos-26 journeys green on it, and over the next runs whether the timeouts stop.
+  First CI run (45071035420 at 59ac470e): the warm-up ran (the app running after 30 s on macos-26, 4 s locally), and
+  journeys-2 (macos-26) failed where it never had: MatchFoundJourneyUITests' tap on show_check_qr reached the app as
+  a touch-down (the hooks' facts: last touch down at the tap, refused no) but no action fired, the facts froze from
+  that moment, and the check QR never came; after the check_now tap before it XCTest had waited 60 s for the app to
+  idle. No crash or hang report; WordsUITests then passed in the same job. A main thread that stalled (ours) and a
+  touch-up the simulator dropped (the runner's) read the same in that log. Fifth macos-26 failure in nine runs.
+- M7-14 (2026-11-23, the owner's word: "yes, add the sampler"): scripts/ios-sampled.sh runs the xcodebuild test
+  command while the app is sampled every 20 s, and on a failure prints the memory, the booted simulators, the
+  sampler's log and the main thread's heaviest frames of the last four samples; it returns the command's status.
+  Every journeys job uses it, and the narrow iPhone's step now calls it instead of its inline copy (the same loop,
+  errexit off as M7-3 found). Local (iPhone 17, iOS 26.5, booted for it and shut down after): a failing command
+  (exit 3) with the app running gave exit 3 and a sample whose call graph starts at the app's main thread; a
+  passing one gave exit 0 and printed nothing. Proof owed: CI green on it; the next macos-26 failure carries its
+  samples.
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.
