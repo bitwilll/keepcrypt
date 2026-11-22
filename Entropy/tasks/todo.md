@@ -20789,12 +20789,12 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       gate with the owner's review of it.
 
 ### Stage C: the Pi image, reproducible in clean containers (PF:162-169; :9509-9525)
-- [ ] C1 A build container pinned by digest (Debian, apt from snapshot.debian.org at a fixed date); `make source`,
+- [x] C1 A build container pinned by digest (Debian, apt from snapshot.debian.org at a fixed date); `make source`,
       `image` and `repro-check` run inside it; the image workflow uses it, so the build host is a pinned input.
-- [ ] C2 `repro-check` builds in two fresh containers and compares SHA-256; an arm64-host leg (ubuntu-24.04-arm) builds
+- [x] C2 `repro-check` builds in two fresh containers and compares SHA-256; an arm64-host leg (ubuntu-24.04-arm) builds
       once more and must give the same hash.
-- [ ] C3 The kernel moves to the newest 6.12.y LTS at least 14 days old (Q104): pins, hashes, expected/linux.config.
-- [ ] C4 PF:162-170 rewritten for the container commands.
+- [x] C3 The kernel moves to the newest 6.12.y LTS at least 14 days old (Q104): pins, hashes, expected/linux.config.
+- [x] C4 PF:162-170 rewritten for the container commands.
       C2's arm64 leg (2026-11-22): the image's cross toolchain, Bootlin's armv6-eabihf, runs on x86_64 hosts only
       (pins.txt), so no arm64 host can run the build as it is. Asked: drop the leg, switch to Buildroot's internal
       toolchain, or emulate. Owner's answer: "Emulate x86_64 on arm64". So the container is linux/amd64 on every
@@ -20836,6 +20836,13 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       qemu 10.0.13 registered (`enabled`, flags OPF), the preflight's sqv verified the Release (the three Debian
       signing-key fingerprints), and apt in the container verified the snapshot. Then, at 353 s, rustup's
       `rustc --version` segfaulted under qemu (exit 139) after the toolchain installed (M7-9).
+      Proof (CI at 0f492397, run 44965014583, 2026-11-22, all four jobs success): legs a (1642 s), b (1416 s) and
+      arm64 (16604 s) built one image, keepcrypt-pi-0.1.0-st7789-240x240.img, SHA-256
+      4a2ee371d51083303d699bce82a0d7c6183718c06b63f28f789facccc0bf4456 (partition 1 9b31816c..., partition 2
+      749f22f7..., prefix 749f-22f7-52c1-f35d, keepcrypt-pi b6647b24...), the same as d0fd4a16's native legs, and
+      every scan passed on all three. The reproducible job: "all three legs built 0f492397... into
+      keepcrypt-pi-0.1.0-st7789-240x240.img, SHA-256 4a2ee371..., and every scan passed". The arm64 leg read back
+      `vm.legacy_va_layout = 1` (M7-9) and its emulated signature check passed (M7-8).
 - M7-8 (2026-11-22): the arm64 leg's QEMU. Ubuntu noble's qemu-user-static 8.2.2 ran apt under emulation on
   GitHub's arm64 runner and every snapshot signature failed. Locally (an arm64 Ubuntu 24.04 container on Apple
   silicon) trixie's own sqv, run directly under that same 8.2.2 and under Debian's 10.0.13, verified the snapshot's
@@ -20862,6 +20869,12 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.
+  Measured (run 44965014583): 4 h 37 min, 77% of the limit: the container 5.5 min, `make source image` 4 h 00 min
+  (about 25 min on the native legs), the scan's selftest 29 min, the scan 2 min. That is most of the limit, and with
+  `pi-image result` required (H3) every PR touching the image's paths would wait about 4.6 hours. Recommendation for
+  the gate: the arm64 leg runs on the weekly schedule, on tags and on dispatch, and no longer on pull requests or
+  pushes; `pi-image result` then covers a, b and a = b on PRs, and a = b = arm64 on the others. Not changed until the
+  owner's word.
 
 ### Stage D: the Android APK, reproducible and release-shaped (:14104)
 - [ ] D1 Two clean builds give one unsigned APK hash (CI compares, like the Pi's a = b).
