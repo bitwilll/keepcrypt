@@ -20903,6 +20903,13 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       library residual (no request code is a secret or reaches the pool). The dex scan already reads every dex of
       the APK, now the shrunk one. Proof owed: CI's emulator legs on the shrunk APKs, and a = b with R8.
 - [ ] D3 F-Droid metadata (reproducible build recipe) and the release-signing steps (Q105); Data safety text.
+      Done in part (2026-11-22): mobile/android/fdroid/com.keepcrypt.entropy.yml, a draft recipe for fdroiddata
+      (the tag, the rustup srclib, NDK r30, android-rust.sh and android-gradle.sh as CI runs them, the unsigned
+      shipping APK as output, Binaries and AllowedAPKSigningKeys so F-Droid publishes our signed APK only when its
+      rebuild matches); docs/release.md "F-Droid and the store labels" (the submission's owner steps and Play's
+      Data safety answers: no data collected or shared). The signing steps were B4's (docs/release.md, step 4).
+      Owed: `fdroid lint` and `fdroid build` on the recipe (fdroidserver is a new tool, the owner's word first),
+      the release certificate's SHA-256 and the launcher icon (owner items).
 - [ ] D4 Emulator system images and the AVD's packages pinned; an API 35 leg with MediaProjection automation for the
       recording callback.
 - [ ] D5 graphics-path's native library reviewed, rebuilt from source or removed (a finding in the Review).

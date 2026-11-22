@@ -116,3 +116,23 @@ gh release create vX.Y.Z --repo bitwilll/keepcrypt --draft --prerelease \
 
 Leave out `--prerelease` from 1.0.0 on. Record the release in tasks/todo.md's Review: the tag, the
 three run IDs, the signed `SHA256SUMS` and who made the second build.
+
+## F-Droid and the store labels (Q105)
+
+F-Droid is the preferred Android channel (MA:198). Its recipe is
+`mobile/android/fdroid/com.keepcrypt.entropy.yml`, a draft for fdroiddata: F-Droid rebuilds the unsigned
+APK from the tag, with the same scripts CI runs, and publishes the APK from this release only when its
+own build matches it apart from the signature. Before the first submission the owner fills in
+`AllowedAPKSigningKeys` with the release certificate's SHA-256, supplies the launcher icon, and runs
+`fdroid lint` and `fdroid build` on the recipe.
+
+Google Play waits until its current crypto-wallet policy has been checked (MA:200). When it comes, the
+Data safety form's answers are these, the same as the iPhone's App Privacy label (MA:201):
+
+- Does the app collect or share any of the required user data types? **No.** The app has no
+  network permission (rule 9), so nothing leaves the phone except files the user saves through
+  the system's document picker.
+- Is all of the user data collected by the app encrypted in transit? Not applicable: none is
+  collected.
+- Do you provide a way for users to request that their data is deleted? Not applicable: the app
+  keeps nothing between sessions; the backup file is the user's own, in a folder they chose.
