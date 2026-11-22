@@ -38,8 +38,12 @@ SUPER = re.compile(r"\s*Superclass\s*:\s*'(.*)'")
 IFACE = re.compile(r"\s*#\d+\s*:\s*'(L.*;)'")
 NAME = re.compile(r"\s*name\s*:\s*'(.*)'")
 TYPE = re.compile(r"\s*type\s*:\s*'(\(.*)'")
-CALL = re.compile(r"(L[\w/$]+;)\.([\w$<>]+):(\([^ ]*)\s")
-REF = re.compile(r"L[\w/$]+;")
+# A dex method name may hold "-": Kotlin's names for functions taking or giving an inline value class
+# (getPositionInWindow-F1C5BW0); the first CALL here skipped them, and run 45016186578 found one shrunk.
+CALL = re.compile(r"(L[\w/$-]+;)\.([^\s:(]+):(\([^ ]*)\s")
+# Every instruction calling a method names it so; one CALL cannot read fails the check, never skipped.
+INVOKE = re.compile(r"\binvoke-[\w/-]+ .*// method@")
+REF = re.compile(r"L[\w/$-]+;")
 # What every class inherits from java.lang.Object; any other platform supertype is taken to define
 # what is called (its methods are the device's, not in either APK).
 OBJECT_METHODS = {"<init>", "equals", "hashCode", "toString", "getClass", "notify", "notifyAll", "wait", "clone", "finalize"}
@@ -108,6 +112,11 @@ def check(app_apk, test_apk, dexdump):
             return False
         return sig in methods[cls] or any(defines(s, sig, seen) for s in supers.get(cls, []))
 
+    unread = sorted({line.strip() for line in test_text.splitlines() if INVOKE.search(line) and not CALL.search(line)})
+    if unread:
+        for x in unread[:20]:
+            print(f"  unread: {x}")
+        raise Fail(f"{len(unread)} method calls in {test_apk} are not in the form this check reads (above)")
     classes = sorted({c for c in REF.findall(test_text) if not PLATFORM.match(c) and c not in methods})
     calls = sorted({
         f"{c}.{n}:{s}" for c, n, s in CALL.findall(test_text)
@@ -185,6 +194,14 @@ def selftest():
                          "Lkotlin/LazyKt;'\n  Superclass        : 'Ljava/lang/Object;'\n  Interfaces        -\n    #0              : 'Lkotlin/LazyKt__LazyJVMKt;'"),
              test_ok, False)
         case("an APK with no classes.dex fails", app, test_ok, True, entry="other.txt")
+        mangled = cls("Landroidx/compose/ui/semantics/SemanticsNode;", methods=[("getPositionInWindow-F1C5BW0", "()J")])
+        call_mangled = "|0008: invoke-virtual {v2}, Landroidx/compose/ui/semantics/SemanticsNode;.getPositionInWindow-F1C5BW0:()J // method@5\n"
+        case("a mangled name (an inline value class's) the app keeps passes",
+             app + mangled, test_ok + cls("Lcom/keepcrypt/entropy/Pos;", code=call_mangled), False)
+        case("a mangled name the app shrank fails",
+             app + mangled.replace("getPositionInWindow-F1C5BW0", "getId"), test_ok + cls("Lcom/keepcrypt/entropy/Pos;", code=call_mangled), True)
+        case("a method call in a form the check cannot read fails",
+             app, test_ok + cls("Lcom/keepcrypt/entropy/Odd;", code="|000a: invoke-virtual {v0}, Lcom/x/Y;.a b:()V // method@6\n"), True)
     print(f"android-link-check selftest: {'all cases behave' if failures == 0 else f'{failures} cases misbehave'}")
     return 0 if failures == 0 else 1
 

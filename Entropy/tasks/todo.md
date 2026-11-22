@@ -20887,6 +20887,42 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   on the index's r04; the bytes stay pinned by size, SHA-1 and SHA-256, so nothing is loosened (lessons.md).
   Local proof (the fixed API 34 line, the real download): android-sdk-install.py install gives "system-images;
   android-34;default;x86_64 2 (downloaded): 720747116 bytes, SHA-256 b57f6386...9cb2b3", rc 0; its selftest passes.
+  Push of ad87d2fe (2026-11-22). Pi run 45016186522 green again with the arm64 leg skipped (a 1776 s, b 1626 s);
+  CI, release and nightly green. Android run 45016186578: the pinned images installed and booted on every leg; the
+  build job took 838 s (58% of 23 minutes); journeys and UI-alone passed on both levels, and API 34's registry part.
+  Three legs failed, two causes:
+  (1) CaptureTest, 3 of 11 on both levels and both flavours (everyScreenIsLaidOutAtFontScale2, ...OnA412DpPhone,
+  ...DrawnAndThenBlackInEveryCapture): "NoSuchMethodError: No virtual method getPositionInWindow-F1C5BW0()J in
+  class SemanticsNode". R8 (D2b) shrank it from the app, and android-link-check.py, there to catch exactly this,
+  skipped the call: its pattern for a method's name had no "-", and Kotlin names a function taking or giving an
+  inline value class (Offset here) name-HASH. My D2b error (lessons.md). Fix: the pattern reads any dex method name,
+  and any invoke line the check cannot read now fails it, never skipped (two new selftest cases on mangled names, one
+  on an unreadable call: 10 pass); test-keeps.pro keeps SemanticsNode. Local proof: the fixed check on the APKs built
+  before the keep finds exactly that method in both flavours, and none after it (rebuilt with Gradle's strict
+  build: "0 missing classes, 0 missing methods" for both).
+  (2) RecordingTest on API 36: "Quick Settings showed no screen-record tile on 4 pages"; the tiles read "Page 1 of
+  2" and the swipe never turned the page on CI's AOSP image. Fix: for the test, SystemUI's tile list
+  (sysui_qs_tiles, which the shell may write) has screenrecord put first, the rest after it, and the list is
+  restored in a finally; paging stays for an image that ignores the setting (kc37's, found in D4b's local runs).
+  The iPhone run 45016186645: journeys-6 passed on both runners; journeys-4 and journeys-5 on macos-26 failed, two
+  more tests, with XCUITest's pre-tap checks at 10-14 s again. Each failure was read, and each is a defect in a test
+  helper that the slow runner exposed, not in the app: journeys-5 (CheckEdgesUITests:73) failed hard in waitLabel,
+  which checked exists and then read the live label, and the read-back's header was replaced between the two
+  ("Failed to get matching snapshot"); now each look is one query for an element with both the id and the label, whose
+  exists never fails the test (a first form, try? element.snapshot(), was refused by the gate's SwFailOpen rule and
+  changed, not exempted). journeys-4
+  (SnapshotJourneyUITests) pressed New seed with press, which never checks that the touch reached the app, and Length
+  never came (screen home, nothing refused); now pressTo, which brings the button above the TestHooks panel, presses
+  again a touch that never arrived, and still fails a press the app saw that did nothing.
+  Local proof (Xcode 26, iPhone 17 simulator, TestHooks build-for-testing then the two classes alone): CheckEdgesUITests
+  passed (233 s), SnapshotJourneyUITests passed (196 s), TEST EXECUTE SUCCEEDED.
+  Again with waitLabel's query form (the gate clean, the canaries' 102 checks run): SnapshotJourneyUITests passed (195
+  s); CheckEdgesUITests passed (232 s) once the reused simulator's camera answer was reset (simctl privacy reset
+  camera; a first rerun found no prompt, the earlier run having refused it; CI's simulator is new each leg).
+  Local proof (kc37, API 37, android-local.sh --part capture then --part registry, the APKs built with R8 and the
+  keep): capture passed every class, CaptureTest's 10 in both flavours among them, and the 16 KB NativeTest; registry
+  passed all twelve, RecordingTest with "recorder: the screen-record tile put first in Quick Settings (it was wifi,bt,
+  ...,screenrecord,...)" and the recording's redaction. CI's API 36 legs owed.
   The iPhone run 45006519588: journeys-6 on macos-26 failed a second time, the same test (DynamicTypeUITests, the
   narrow iPhone), with another symptom: XCUITest's own "check for interrupting elements" before a tap stalled 68 s
   on First launch's Continue, then 205 s on Home's About until "kAXErrorIPCTimeout ... Failed to get list of active

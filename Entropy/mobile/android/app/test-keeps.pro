@@ -16,4 +16,8 @@
 -keep class androidx.compose.ui.platform.ViewRootForTest$Companion { *; }
 -keep class androidx.compose.ui.semantics.SemanticsOwner { *; }
 -keep class androidx.compose.ui.semantics.SemanticsOwnerKt { *; }
+# Kotlin names SemanticsNode's positionInWindow getPositionInWindow-F1C5BW0 (it gives an inline value
+# class, Offset); the link check skipped such names until run 45016186578's capture tests failed on
+# it (NoSuchMethodError), so it is kept here and the check now reads every call.
+-keep class androidx.compose.ui.semantics.SemanticsNode { *; }
 -keep class androidx.compose.ui.text.TextLayoutResult { *; }

@@ -32,7 +32,8 @@ import java.util.regex.Pattern
  * android-emulator.sh's registry part, made on API 36 (lead decision M7-11; on API 34, which has no such callback, it
  * only says so). The callback fires only for a MediaProjection (adb's screenrecord never fires it), so the test
  * starts SystemUI's own screen recorder, a MediaProjection of the whole screen, from its Quick Settings tile: no
- * recorder of our own, so no service or notification in any APK (rule 9's gate).
+ * recorder of our own, so no service or notification in any APK (rule 9's gate). The tile is put first in Quick
+ * Settings for the test (the shell's settings command) and the tile list restored in a finally.
  * The recording starts before the app does, since leaving the app on a Protected screen discards the session and
  * Quick Settings may count as leaving. The app's words page, past the privacy gate, must then show the redacted
  * placeholder (REDACTED_LINE) and the model must hold the recording. Once the recording is stopped from its tile the
@@ -50,7 +51,9 @@ class RecordingTest {
             pass("the screen-recording callback is Android 15's; not made at API " + Build.VERSION.SDK_INT)
             return
         }
+        val tiles = shellText("settings get secure $QS_TILES")
         try {
+            recorderTileFirst(tiles)
             Capture.whileOffline {
                 startRecorder()
                 val activity = toWords()
@@ -89,8 +92,32 @@ class RecordingTest {
                 finish(activity)
             }
         } finally {
-            stopRecorder()
+            try {
+                stopRecorder()
+            } finally {
+                restoreTiles(tiles)
+            }
         }
+    }
+
+    /**
+     * SystemUI's screen-record tile put first in Quick Settings for the test, the other tiles after it in their
+     * order: on CI's API 36 image (AOSP's SystemUI) it is on the second page, and run 45016186578's swipe did not
+     * turn the page (the tiles showed "Page 1 of 2"). An image whose SystemUI follows the setting shows the tile on
+     * the first page; one that ignores it (kc37's) still has tapTile's paging. The shell may write the setting;
+     * restoreTiles puts it back.
+     */
+    private fun recorderTileFirst(tiles: String) {
+        val rest = if (tiles.isEmpty() || tiles == "null") emptyList() else tiles.split(",").filter { it != RECORD_SPEC }
+        shellText("settings put secure $QS_TILES " + (listOf(RECORD_SPEC) + rest).joinToString(","))
+        probe("recorder: the screen-record tile put first in Quick Settings (it was " + (if (tiles == "null" || tiles.isEmpty()) "the image's default list" else tiles) + ")")
+        SystemClock.sleep(1_000)
+    }
+
+    /** The tile list as it was before the test (none set: the setting deleted, the image's default list again). */
+    private fun restoreTiles(tiles: String) {
+        if (tiles.isEmpty() || tiles == "null") shellText("settings delete secure $QS_TILES")
+        else shellText("settings put secure $QS_TILES $tiles")
     }
 
     /**
@@ -187,6 +214,10 @@ class RecordingTest {
 
     private companion object {
         const val SYSTEMUI = "com.android.systemui"
+
+        /** The secure setting holding Quick Settings' tile list, and the screen recorder's tile in it. */
+        const val QS_TILES = "sysui_qs_tiles"
+        const val RECORD_SPEC = "screenrecord"
 
         /** The Quick Settings pages past the first that are searched for the tile. */
         const val PAGES = 3

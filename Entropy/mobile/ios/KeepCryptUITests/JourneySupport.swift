@@ -106,13 +106,16 @@ extension XCUIApplication {
         button.tap()
     }
 
-    /// Waits until the element id's label is label.
+    /// Waits until the element id's label is label. Each look is one query for an element with both that id and that
+    /// label, whose exists never fails the test: run 45016186645 checked exists and then read the live label, and the
+    /// read-back's header, replaced between the two for the next insert, failed the test hard ("Failed to get
+    /// matching snapshot") instead of being looked at again.
     func waitLabel(_ id: String, _ label: String, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
-        let element = self.element(id)
-        let shows = NSPredicate(format: "label == %@", label)
+        let shown = descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == %@ AND label == %@", id, label)).firstMatch
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if element.exists, shows.evaluate(with: element) { return }
+            if shown.exists { return }
             usleep(100_000)
         }
         XCTFail("\(id) never read as expected", file: file, line: line)

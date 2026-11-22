@@ -159,3 +159,14 @@ scripts that read the changed one (grep for its name and its markers) and run th
 - Rule: a pinned value that a check compares against an artifact is read from that artifact. Before pushing a new
   or changed pin file, run the installer it feeds on at least the changed lines, against the real downloads.
 
+## 2026-11-22: the link check skipped the calls it could not read, and R8's shrink reached the emulators
+- Mistake: android-link-check.py (D2b) matched method names with [\w$<>]+, so a call to Kotlin's
+  getPositionInWindow-F1C5BW0 (a name with "-", given to a function taking or giving an inline value class) was not
+  read; R8 shrank the method and three CaptureTest cases failed on every emulator (run 45016186578) though the check
+  passed.
+- Root cause: a check built on a pattern counted only what matched it, and a line it could not parse was silently
+  left out, so the check failed open.
+- Rule: a check that parses its input counts what it could not parse and fails on any of it; its selftest holds one
+  case of an unreadable line, and the patterns are written from the format's grammar (a dex member name is anything
+  but whitespace, ":" and "("), not from the names seen so far.
+
