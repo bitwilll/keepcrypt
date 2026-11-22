@@ -67,6 +67,7 @@ on:
       - 'Entropy/vectors/**'
       - 'Entropy/scripts/banned-api-check.sh'
       - 'Entropy/scripts/ios-rust.sh'
+      - 'Entropy/scripts/ios-warmup.sh'
       - '.github/workflows/entropy-ios.yml'
   schedule:
     # Weekly (Mondays, 06:17 UTC): main still builds and passes on the runners' current images.
@@ -126,14 +127,14 @@ jobs:
             run=true
           else
             rc=0
-            git diff --quiet --no-renames HEAD^1 HEAD -- 'Entropy/mobile/ios/' 'Entropy/mobile/screens.json' 'Entropy/mobile/android/screens/src/commonMain/' 'Entropy/ffi/' 'Entropy/core/' 'Entropy/Cargo.toml' 'Entropy/Cargo.lock' 'Entropy/rust-toolchain.toml' 'Entropy/vectors/' 'Entropy/scripts/banned-api-check.sh' 'Entropy/scripts/ios-rust.sh' '.github/workflows/entropy-ios.yml' 2>/dev/null || rc=$?
+            git diff --quiet --no-renames HEAD^1 HEAD -- 'Entropy/mobile/ios/' 'Entropy/mobile/screens.json' 'Entropy/mobile/android/screens/src/commonMain/' 'Entropy/ffi/' 'Entropy/core/' 'Entropy/Cargo.toml' 'Entropy/Cargo.lock' 'Entropy/rust-toolchain.toml' 'Entropy/vectors/' 'Entropy/scripts/banned-api-check.sh' 'Entropy/scripts/ios-rust.sh' 'Entropy/scripts/ios-warmup.sh' '.github/workflows/entropy-ios.yml' 2>/dev/null || rc=$?
             case $rc in
               0) run=false ;;
               1) run=true ;;
               *) echo "cannot read HEAD^1..HEAD (git diff exit $rc); every job runs"; run=true ;;
             esac
             if [ "$rc" -le 1 ]; then
-              git -c core.quotePath=false diff --name-only --no-renames HEAD^1 HEAD -- 'Entropy/mobile/ios/' 'Entropy/mobile/screens.json' 'Entropy/mobile/android/screens/src/commonMain/' 'Entropy/ffi/' 'Entropy/core/' 'Entropy/Cargo.toml' 'Entropy/Cargo.lock' 'Entropy/rust-toolchain.toml' 'Entropy/vectors/' 'Entropy/scripts/banned-api-check.sh' 'Entropy/scripts/ios-rust.sh' '.github/workflows/entropy-ios.yml' | sed -n '1,50s/^/changed here: /p'
+              git -c core.quotePath=false diff --name-only --no-renames HEAD^1 HEAD -- 'Entropy/mobile/ios/' 'Entropy/mobile/screens.json' 'Entropy/mobile/android/screens/src/commonMain/' 'Entropy/ffi/' 'Entropy/core/' 'Entropy/Cargo.toml' 'Entropy/Cargo.lock' 'Entropy/rust-toolchain.toml' 'Entropy/vectors/' 'Entropy/scripts/banned-api-check.sh' 'Entropy/scripts/ios-rust.sh' 'Entropy/scripts/ios-warmup.sh' '.github/workflows/entropy-ios.yml' | sed -n '1,50s/^/changed here: /p'
             fi
           fi
           echo "needed=$run" | tee -a "$GITHUB_OUTPUT"
@@ -592,6 +593,8 @@ jobs:
           dd=$RUNNER_TEMP/dd
           xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
             -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO build-for-testing
+          # M7-13 (the owner's (b)): the app launched once on the simulator before its tests (scripts/ios-warmup.sh).
+          sh scripts/ios-warmup.sh "$KC_SIM" "$dd/Build/Products/TestHooks-iphonesimulator/KeepCrypt.app"
           only=()
           for class in $KC_CLASSES; do only+=("-only-testing:KeepCryptUITests/$class"); done
           xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
@@ -658,6 +661,8 @@ jobs:
           # exits 1 until the app starts, so the first tick ended the sampler and run 44925400647's failure (the
           # same hang, again on iOS 26.5) left no sample. Every tick is logged, and the log is printed on a failure,
           # so a sampler that takes nothing says why.
+          # M7-13: the narrow iPhone warmed up as the leg's own was (scripts/ios-warmup.sh).
+          sh scripts/ios-warmup.sh "$KC_NARROW" "$RUNNER_TEMP/dd/Build/Products/TestHooks-iphonesimulator/KeepCrypt.app"
           mkdir -p "$RUNNER_TEMP/samples"
           log="$RUNNER_TEMP/sampler.log"
           (

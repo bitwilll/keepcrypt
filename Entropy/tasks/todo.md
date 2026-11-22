@@ -20987,6 +20987,12 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   Entropy CI 45054051356, release 45054051327, nightly 45054051359). API 34 capture passed (1067 s) and journeys-5 on
   macos-26 passed (1494 s). Neither failure is explained: the API 34 lit capture did not recur (so litAccount's line
   did not fire; its cause is open and stays a gate item), and the macos-26 timeouts remain four in eight runs.
+- M7-13 (2026-11-23, the owner's (b) at the gate): each journeys job, and journeys-6's narrow iPhone, warms its
+  simulator before its tests: scripts/ios-warmup.sh installs the TestHooks app, launches it, waits for its process
+  (120 s at most), lets it settle 20 s, then terminates and uninstalls it (no data container left for the tests). Any
+  step failing fails the job: no retry, no fallback. Local (iPhone 17, iOS 26.5, booted for it and shut down after):
+  running after 4 s, 24 s in all, the app no longer installed after; a missing app fails ("no app at ..."). Proof
+  owed: CI's macos-26 journeys green on it, and over the next runs whether the timeouts stop.
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.
