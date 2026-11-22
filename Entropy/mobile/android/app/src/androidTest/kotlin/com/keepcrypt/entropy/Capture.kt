@@ -196,6 +196,48 @@ internal object Capture {
         return count
     }
 
+    /**
+     * For a capture that shows lit pixels over the app's window, a probe line's account of them (run 45041931642,
+     * API 34: 106336 lit pixels in takeScreenshot over first_launch, screencap refused, not reproduced in three
+     * local runs): the box that holds them, and every window dumpsys window windows lists as on screen, by title,
+     * top first. A box and window titles: nothing the app drew.
+     */
+    fun litAccount(bitmap: Bitmap?, region: Rect): String {
+        if (bitmap == null) return "refused"
+        var box: Rect? = null
+        val row = IntArray(region.width())
+        for (y in region.top until region.bottom) {
+            bitmap.getPixels(row, 0, row.size, region.left, y, row.size, 1)
+            for ((i, c) in row.withIndex()) {
+                if (Color.red(c) > BLACK_MAX || Color.green(c) > BLACK_MAX || Color.blue(c) > BLACK_MAX) {
+                    val x = region.left + i
+                    box = box?.apply { union(x, y) } ?: Rect(x, y, x + 1, y + 1)
+                }
+            }
+        }
+        return "lit inside ${box ?: "nothing"}; windows on screen, top first: " + windowsOnScreen().joinToString("; ").ifEmpty { "none read" }
+    }
+
+    /** The titles of the windows dumpsys window windows marks isOnScreen=true, in its order (top first). */
+    private fun windowsOnScreen(): List<String> {
+        val header = Regex("""^\s*Window #\d+ Window\{\S+ \S+ (.*)\}:\s*$""")
+        val shown = ArrayList<String>()
+        var title: String? = null
+        for (line in shellText("dumpsys window windows").lines()) {
+            val h = header.find(line)
+            if (h != null) {
+                title = h.groupValues[1]
+                continue
+            }
+            val t = title ?: continue
+            if (Regex("""(^|\s)isOnScreen=true(\s|$)""").containsMatchIn(line)) {
+                shown.add(t)
+                title = null
+            }
+        }
+        return shown
+    }
+
     /** How many pixels of the whole capture have the known colour. */
     fun knownPixels(bitmap: Bitmap): Int {
         val row = IntArray(bitmap.width)

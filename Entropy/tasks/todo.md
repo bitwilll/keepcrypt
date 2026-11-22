@@ -20965,6 +20965,21 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   still booted, on a three-core runner. Changed: the leg's simulator is shut down before the narrow one boots (no
   later step uses it), and a failure prints memory_pressure and the booted simulators. A pass or a fourth failure on
   the next run is reported at the gate with the two options above.
+  Run at d0c1554b: Android 45041931642 and iPhone 45041931644. Both fixes held: API 36's registry part (RecordingTest)
+  and journeys-6 on macos-26 passed. Two other jobs failed:
+  - iPhone journeys-5 (macos-26, CheckEdgesUITests): XCTest's own "Failed to get screenshot: Timed out while requesting
+    screenshot" on the check QR (element found; no crash or hang report). One simulator was booted, so contention
+    between two simulators does not explain it. That is the fourth macos-26 failure in a row, each in the simulator's
+    services. Reported at the gate.
+  - Android API 34 capture: first_launch, at the start of everyScreenIsDrawnAndThenBlackInEveryCapture, had 106336 lit
+    pixels in takeScreenshot over the app's window, with screencap refused. Not reproduced locally: three CaptureTest
+    runs on kc34 (API 34, CI's 720x1280 screen; animations off as CI sets them, from part of run 1 on) gave 0 lit
+    pixels and OK (11 tests) each time. Animations are already off on the CI legs, so a window animation is ruled out.
+    The test before it (disable_secure_windows' probe) read 0 lit pixels with the setting at 1 (API 34 does not read
+    the setting) and 0 after. Changed so the next one explains itself: a lit capture's probe line gives the box that
+    holds the lit pixels and the windows dumpsys window windows marks isOnScreen=true, top first (Capture.litAccount;
+    the line format read on kc34: StatusBar, the launcher and the wallpaper on a home screen). The assertion is
+    unchanged.
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.
