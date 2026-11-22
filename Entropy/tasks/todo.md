@@ -20697,7 +20697,7 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       44925400714 green at the same head; iPhone 44925400647 red in two jobs, neither touched by this diff (M7-3).
 
 ### Stage B: the release form (BP:335-346)
-- [ ] B1 Version `0.1.0` (Q101) through every crate, both apps, the Pi image name and `created-by`; one script checks
+- [x] B1 Version `0.1.0` (Q101) through every crate, both apps, the Pi image name and `created-by`; one script checks
       they agree.
       Plan (2026-11-21): the workspace version is the one source; code reads it where it can, and a new
       `scripts/check-version.sh` (in the gates job and CLAUDE.md's Commands) fails on any site that differs from it.
@@ -20722,7 +20722,8 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       aapt2's output (scripts/testdata/apk/badging.txt, xmltree.txt) still said 0.0.0 against the 0.1.0 expected
       manifest. Fixed at the root: both stand-ins at 0.1.0 and listed in check-version.sh (51 cases now), lesson
       recorded; local --selftest-apk 89 passed, 0 failed.
-- [ ] B2 SBOM: CycloneDX JSON for the Rust workspace, the Pi image (Buildroot's `legal-info` manifest folded in) and the
+      Proof (CI at 0810da18, 2026-11-23): the gates job ran check-version.sh and its selftest (51 cases) green; release 45054051327, Android 45054051382, iPhone 45054051400, Pi image 45054051373, Entropy CI 45054051356, nightly 45054051359, all success.
+- [x] B2 SBOM: CycloneDX JSON for the Rust workspace, the Pi image (Buildroot's `legal-info` manifest folded in) and the
       Android APK. The generator is a build tool, not a shipped crate, but it is a new dependency: Q-item at Stage B's
       start with the candidates (cargo-cyclonedx, cargo-sbom, or a small committed script over `cargo metadata`, the
       last needing no new tool), for the owner's approval and a `cargo vet` entry if a crate.
@@ -20750,7 +20751,8 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       the real inputs found first, both now cases: Gradle variants name their binary their own way
       (animation.aar), and kotlin-stdlib holds an -all jar beside its primary jar; a licence check that took
       "see LICENSE file" for three ids is now an expression grammar. `make -C pi/os legal-info` added.
-- [ ] B3 `release.yml` on a `v*` tag: builds every artifact, runs every release scan, writes SHA256SUMS and the SBOMs,
+      Proof (CI at 0810da18, 2026-11-23): release 45054051327 "release checks, workspace SBOM and notes" success (145 s); the Android and Pi image runs wrote their SBOMs (45054051382, 45054051373).
+- [x] B3 `release.yml` on a `v*` tag: builds every artifact, runs every release scan, writes SHA256SUMS and the SBOMs,
       and attaches them to a draft GitHub release. It never signs (Q100). The changelog and the exact reproduce
       command per artifact go in the release notes.
       Re-plan (2026-11-21, before any B3 code): the workflow gate (banned-api-check.sh --workflows) allows a
@@ -20782,6 +20784,7 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       into `android-apks` and its SHA256SUMS; both run on a `v*` tag. Proof (local): --workflows clean (6
       workflows), the gate clean, the release step's commands run under `bash -e -o pipefail` (workspace SBOM
       a2fd321d..., verify.py 0ba842e2..., equal to `shasum` of the file).
+      Proof (CI at 0810da18, 2026-11-23): release 45054051327 success; the draft release itself is the owner's (B3's re-plan, Q100), made at the tag.
 - [ ] B4 `docs/release.md`: the owner's offline signing steps and the check against a second build before signing.
       Done (2026-11-21): docs/release.md (the release key made offline, the checks before the tag, the tag's three
       runs and their artifacts, the second build of the image, APK and verify.py, the offline apksigner and
@@ -20980,6 +20983,10 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
     holds the lit pixels and the windows dumpsys window windows marks isOnScreen=true, top first (Capture.litAccount;
     the line format read on kc34: StatusBar, the launcher and the wallpaper on a home screen). The assertion is
     unchanged.
+  Run at 0810da18 (2026-11-23): every workflow green (Android 45054051382, iPhone 45054051400, Pi image 45054051373,
+  Entropy CI 45054051356, release 45054051327, nightly 45054051359). API 34 capture passed (1067 s) and journeys-5 on
+  macos-26 passed (1494 s). Neither failure is explained: the API 34 lit capture did not recur (so litAccount's line
+  did not fire; its cause is open and stays a gate item), and the macos-26 timeouts remain four in eight runs.
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.
@@ -21005,7 +21012,7 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   a dispatch shows all three.
 
 ### Stage D: the Android APK, reproducible and release-shaped (:14104)
-- [ ] D1 Two clean builds give one unsigned APK hash (CI compares, like the Pi's a = b).
+- [x] D1 Two clean builds give one unsigned APK hash (CI compares, like the Pi's a = b).
       Plan (2026-11-22): entropy-android.yml's build job prints the unsigned shipping APK's sums as an output; a new
       job build-b, on another fresh runner, checks the commit out at another path (other/tree), in another time zone
       (Asia/Kathmandu) and under umask 0077, builds libkeepcrypt.so and :app:assembleShippingRelease alone with the
@@ -21019,7 +21026,8 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       /home/runner/work/keepcrypt/keepcrypt/other/tree/Entropy, TZ=Asia/Kathmandu (+0545), umask 0077, in 247 s
       (the build job 697 s); libkeepcrypt.so f7c610d8... (arm64-v8a), ba3f5f57... (armeabi-v7a), 0df018b0...
       (x86_64) on both. The eight emulator jobs passed on the same run. Ticked once R8 (D2b) is proven a = b too.
-- [ ] D2 R8 and lint on; the dex reference scan runs on the shrunk APK; targetSdk 37.
+      Proof (CI at 0810da18, 2026-11-23): Android 45054051382 "android reproducible (a = b)" success, the two builds on R8.
+- [x] D2 R8 and lint on; the dex reference scan runs on the shrunk APK; targetSdk 37.
       D2a, lint and targetSdk 37 (2026-11-22): lint needed no artifact outside the verification metadata (it ran
       locally under strict verification). Release builds run its vital checks (checkReleaseBuilds), CI's strict
       build runs `lintShippingRelease` and `lintWithTestRegistryRelease` with checkDependencies (so :screens,
@@ -21068,6 +21076,7 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       Local run (kc37, API 37, android-local.sh --part registry, the R8 APKs, 2026-11-22): SnapshotDrillTest (4
       tests), LifecycleTest (8), DeviceChangeTest (2), AwayTest (3), ScanRefusedTest, IdleClockTest, KillTest's four
       runs and CrashTest passed (reported as local; CI is the gate).
+      Proof (CI at 0810da18, 2026-11-23): Android 45054051382, every emulator leg on the shrunk APKs green (API 34 and 36: capture, registry and edges, journeys, journeys through the UI alone), a = b green.
 - [ ] D3 F-Droid metadata (reproducible build recipe) and the release-signing steps (Q105); Data safety text.
       Done in part (2026-11-22): mobile/android/fdroid/com.keepcrypt.entropy.yml, a draft recipe for fdroiddata
       (the tag, the rustup srclib, NDK r30, android-rust.sh and android-gradle.sh as CI runs them, the unsigned
@@ -21076,7 +21085,7 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       Data safety answers: no data collected or shared). The signing steps were B4's (docs/release.md, step 4).
       Owed: `fdroid lint` and `fdroid build` on the recipe (fdroidserver is a new tool, the owner's word first),
       the release certificate's SHA-256 and the launcher icon (owner items).
-- [ ] D4 Emulator system images and the AVD's packages pinned; an API 35 leg with MediaProjection automation for the
+- [x] D4 Emulator system images and the AVD's packages pinned; an API 35 leg with MediaProjection automation for the
       recording callback.
       D4a, pinned (2026-11-22): the leg jobs no longer run sdkmanager, which installs the newest revision of the day.
       mobile/android/expected/emulator-pins.txt pins emulator 37.3.10 and the API 34 r4, API 36 r2 and API 36 ps16k
@@ -21107,7 +21116,8 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       "recording on: screen words, placeholder shown (redacted)", and "a real recording (MediaProjection, the whole
       screen): the words page redacted while recorded; once it ended, the session discarded (Quick Settings over the
       app left it), Home saying why". Proof owed: CI's API 36 registry job.
-- [ ] D5 graphics-path's native library reviewed, rebuilt from source or removed (a finding in the Review).
+      Proof (CI at 0810da18, 2026-11-23): Android 45054051382 ran every leg on the pinned images; "android emulators (API 36, test registry and edges)" success (1288 s), RecordingTest in it. No API 35 leg (M7-11).
+- [x] D5 graphics-path's native library reviewed, rebuilt from source or removed (a finding in the Review).
       Removed (2026-11-22): androidx.graphics:graphics-path 1.0.1 (from Compose ui-graphics) ships
       libandroidx.graphics.path.so, a native path iterator for Android 13 and lower; from API 34, the minSdk, Compose
       uses the platform's android.graphics.PathIterator. In the shrunk APK no class outside graphics-path names it:
@@ -21117,6 +21127,7 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       copies; expected/native-libs.txt lists libkeepcrypt.so alone, so no prebuilt native code ships. A load would
       throw UnsatisfiedLinkError into the crash path (fail closed). Locally the APK's lib/ holds the three
       libkeepcrypt.so alone. Proof owed: the emulator legs, which draw every screen.
+      Proof (CI at 0810da18, 2026-11-23): Android 45054051382, every screen drawn on API 34 and 36 with libkeepcrypt.so alone in lib/.
 
 ### Stage E: the iPhone, release-shaped (BP:343; :1395)
 - [x] E1 The release scan's expected-symbol list for the iPhone app (`_CCRandomGenerateBytes`, nothing else).
@@ -21132,11 +21143,12 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       the unsigned generic-iOS build 0, `--ios-app Shipping` on it clean.
 
 ### Stage F: the verifier's release (:4759-4766)
-- [ ] F1 A release scan of verify.py reusing check 12's static and audit rules.
+- [x] F1 A release scan of verify.py reusing check 12's static and audit rules.
       Done (2026-11-22; CI proof at the head carrying it): entropy-release.yml compares the release's verify.py with
       the tag's byte for byte and runs `vectorgen.py --selftest --check 12 --verify-py` on that copy. Local: check 12
       on a copy passed (4.7 s).
-- [ ] F2 Its `--selftest` run on the Python that current Tails ships (the version read from Tails' own release notes
+      Proof (CI at 0810da18, 2026-11-23): release 45054051327 success.
+- [x] F2 Its `--selftest` run on the Python that current Tails ships (the version read from Tails' own release notes
       at that time; CI runs that Python version).
       Read 2026-11-22: the current Tails is 7.17.1 (tails.net's install feed); Tails 7.0's notes call it "the first
       version of Tails based on Debian 13 (Trixie)", and Tails ships Debian's python3. The pinned Pi build container
@@ -21146,8 +21158,10 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       run exiting 2 and not 70 and the pseudo-terminal Ctrl-C timing out; natively on trixie arm64 with the same
       Python, check 12 passed. The emulator in the process takes fd 0 and slows the pty: an emulation artefact, not
       Python 3.13's or verify.py's. So F2 runs natively, never emulated; the Pi arm64 leg runs no verifier check.
-- [ ] F3 The release copies verify.py byte for byte from the tag; its SHA-256 goes in the notes.
+      Proof (CI at 0810da18, 2026-11-23): release 45054051327 success (the trixie container's selftests in it).
+- [x] F3 The release copies verify.py byte for byte from the tag; its SHA-256 goes in the notes.
       Done with B3 (release-notes.py prints the copy's SHA-256) and F1's cmp; run 44937973937 at c6590498 wrote it.
+      Proof (CI at 0810da18, 2026-11-23): release 45054051327 success.
 
 ### Stage G: threat-model review and the audit packet
 - [ ] G1 A threat-model review against design.md's table (DS:55-70), as it stands after M6: each threat, the code and
@@ -21213,7 +21227,9 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       three's paths showing the three results green with every other job skipped.
 
 ### Verification (the gate, BP:302, and the deliverables)
-- [ ] The nightly birthday job green on core with 1,000,000 legs, and its canary catching the 32- and 36-bit stubs.
+- [x] The nightly birthday job green on core with 1,000,000 legs, and its canary catching the 32- and 36-bit stubs.
+      Proof (CI at 0810da18, 2026-11-23): nightly 45054051359, "birthday (1,000,000 real device legs)" success (2937 s)
+      and "birthday canary (24- and 28-bit states)" success (418 s); the canary's states are 24 and 28 bits (M7-1, A2).
 - [ ] A `v0.1.0` draft release from release.yml: every artifact, SHA256SUMS, the SBOMs, the release scans green.
 - [ ] SHA256SUMS signed by the owner offline (Q100); `minisign -Vm` checks against the committed public key.
 - [ ] Pi image: two clean containers and the arm64 host give one hash; a third party reproduces it (Q103).
