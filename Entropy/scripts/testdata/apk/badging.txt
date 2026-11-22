@@ -1,6 +1,6 @@
 package: name='com.keepcrypt.entropy' versionCode='1' versionName='0.1.0' platformBuildVersionName='17' platformBuildVersionCode='37' compileSdkVersion='37' compileSdkVersionCodename='17'
 minSdkVersion:'34'
-targetSdkVersion:'36'
+targetSdkVersion:'37'
 uses-permission: name='android.permission.HIDE_OVERLAY_WINDOWS'
 uses-permission: name='android.permission.DETECT_SCREEN_RECORDING'
 uses-permission: name='android.permission.CAMERA'

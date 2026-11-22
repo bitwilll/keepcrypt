@@ -9,7 +9,7 @@ N: android=http://schemas.android.com/apk/res/android (line=12)
     A: platformBuildVersionName=17
       E: uses-sdk (line=17)
         A: http://schemas.android.com/apk/res/android:minSdkVersion(0x0101020c)=34
-        A: http://schemas.android.com/apk/res/android:targetSdkVersion(0x01010270)=36
+        A: http://schemas.android.com/apk/res/android:targetSdkVersion(0x01010270)=37
       E: uses-permission (line=21)
         A: http://schemas.android.com/apk/res/android:name(0x01010003)="android.permission.HIDE_OVERLAY_WINDOWS" (Raw: "android.permission.HIDE_OVERLAY_WINDOWS")
       E: uses-permission (line=22)

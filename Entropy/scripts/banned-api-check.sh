@@ -9669,7 +9669,9 @@ STUB
     acase "apk-manifest-$f-true" "Manifest: $c/app.apk: application $f=true, not false"
   done
   anew differs
-  sed 's/^targetSdk 36$/targetSdk 35/' "$committed" >"$c/expected/manifest-shipping.txt" || exit 2
+  sed 's/^targetSdk 37$/targetSdk 36/' "$committed" >"$c/expected/manifest-shipping.txt" || exit 2
+  # The edit must change the file, or the case would test nothing (the committed targetSdk moved, M7 D2a).
+  if cmp -s "$committed" "$c/expected/manifest-shipping.txt"; then echo "selftest-apk: the differs case's edit matched nothing in $committed" >&2; exit 2; fi
   acase apk-manifest-summary-differs "Manifest: $c/expected/manifest-shipping.txt: differs from the APK's manifest summary"
   # Every attribute of the application and of each component is in the summary: a library that
   # swaps the class instantiating every component, puts its own Application class in place of
