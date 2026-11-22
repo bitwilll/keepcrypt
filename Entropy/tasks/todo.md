@@ -20872,6 +20872,12 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       for line. scripts/android-repro.py (sums, compare, --selftest; the selftest runs in the build job) prints the
       APK's SHA-256 and every entry's, in the APK's order, so a difference names its entries without moving an APK;
       build-b also uploads its APK (android-apk-b, 7 days) for a byte diff. No new action or dependency.
+      Proof (run 44965014669 at 0f492397, 2026-11-22): job apk-reproducible printed
+      `a: ff9ae446746b3f12703cbbcf50bb4a986b14b6a39b99dd7952d2bad123698df0  apk, 112 entries`, the same line for b,
+      and "PASS: the two clean builds gave one unsigned APK". build-b built at
+      /home/runner/work/keepcrypt/keepcrypt/other/tree/Entropy, TZ=Asia/Kathmandu (+0545), umask 0077, in 247 s
+      (the build job 697 s); libkeepcrypt.so f7c610d8... (arm64-v8a), ba3f5f57... (armeabi-v7a), 0df018b0...
+      (x86_64) on both. The eight emulator jobs passed on the same run. Ticked once R8 (D2b) is proven a = b too.
 - [ ] D2 R8 and lint on; the dex reference scan runs on the shrunk APK; targetSdk 37.
       D2a, lint and targetSdk 37 (2026-11-22): lint needed no artifact outside the verification metadata (it ran
       locally under strict verification). Release builds run its vital checks (checkReleaseBuilds), CI's strict
@@ -20907,6 +20913,20 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       shrinking is on: aapt2's dump of either APK falls from 3,221 lines to 1,109, and the app's own resources
       (app_name, "KeepCrypt TEST REGISTRY" in the test-registry APK, Theme.KeepCrypt, data_extraction_rules) stay.
       Locally both flavours build and lint clean.
+      D2d, the test APKs linked (2026-11-22): the first local run on kc37 with R8 failed every class at the runner's
+      start (NoClassDefFoundError: kotlin.LazyKt): a test APK leaves out every library the app also carries and uses
+      the app's copy, so what only the tests use was shrunk away. Comparing the test APK's references with the shrunk
+      app's definitions found 37 classes (Kotlin's standard library, kotlinx's coroutines, androidx.concurrent.futures,
+      Guava's ListenableFuture) and 13 methods (Compose's ViewRootForTest, SemanticsOwner and TextLayoutResult,
+      androidx.tracing's Trace). app/test-keeps.pro keeps them in the release build (so the tests still run on the
+      shipped bytes); it names kotlinx.** rather than the coroutines package (the gate's KtFailOpen reads that name
+      anywhere under mobile/; the only kotlinx library in the APK is coroutines, 876 classes, so the rule keeps the
+      same). scripts/android-link-check.py (check, --selftest: 7 cases) makes the comparison a build-job step for both
+      flavours: a class neither APK defines, or a method no class in the chain defines (java.lang.Object counting for
+      its own methods alone), fails before any emulator boots. Both flavours: 0 missing classes, 0 missing methods.
+      Local run (kc37, API 37, android-local.sh --part registry, the R8 APKs, 2026-11-22): SnapshotDrillTest (4
+      tests), LifecycleTest (8), DeviceChangeTest (2), AwayTest (3), ScanRefusedTest, IdleClockTest, KillTest's four
+      runs and CrashTest passed (reported as local; CI is the gate).
 - [ ] D3 F-Droid metadata (reproducible build recipe) and the release-signing steps (Q105); Data safety text.
       Done in part (2026-11-22): mobile/android/fdroid/com.keepcrypt.entropy.yml, a draft recipe for fdroiddata
       (the tag, the rustup srclib, NDK r30, android-rust.sh and android-gradle.sh as CI runs them, the unsigned
@@ -20925,6 +20945,17 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       every zip, a cached one too, before unpacking it; refuses entries outside the zip's top directory, absolute
       names and ".."; and requires each source.properties to give the pinned revision. actions/cache keeps the zips
       alone, keyed on the pins file. Proof owed: the leg jobs' first run on the pins.
+      D4b, a real recording (2026-11-22; lead decision M7-11): RecordingTest starts SystemUI's own screen recorder (a
+      MediaProjection of the whole screen) from its Quick Settings tile before the app starts (leaving the app on a
+      Protected screen discards the session), then takes dice-50-words12 to its words page past the gate through the
+      model: the model must hold the recording and the page show the redacted placeholder (REDACTED_LINE); the
+      recording stopped from the tile, the placeholder must go and the page come back with the session kept. It runs
+      in the registry part on both levels and is made on API 36 (Android 15's callback exists from API 35); on API 34
+      it only says so, as IdleClockTest does. M7-11: no API 35 leg and no recorder of our own. A recorder in
+      capture-control needs a foreground service and its notification, which the gate refuses in every source set
+      (KtManifest, KtWindow); SystemUI's recorder needs neither, and API 36's jobs already run Android 15+. The API 35
+      image was looked up and hashed (x86_64-35_r02.zip, 782,404,023 bytes, SHA-256 6dd7de33...4ff4556) and is not
+      pinned. android-emulator.sh's registry part and its selftest (66 cases) name the class.
 - [ ] D5 graphics-path's native library reviewed, rebuilt from source or removed (a finding in the Review).
       Removed (2026-11-22): androidx.graphics:graphics-path 1.0.1 (from Compose ui-graphics) ships
       libandroidx.graphics.path.so, a native path iterator for Android 13 and lower; from API 34, the minSdk, Compose

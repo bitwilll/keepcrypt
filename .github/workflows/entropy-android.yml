@@ -411,6 +411,18 @@ jobs:
             echo "== aapt2 dump xmltree AndroidManifest.xml"
             "$bt/aapt2" dump xmltree --file AndroidManifest.xml "$apk"
           done
+      # The test APKs link against the shrunk app (M7 D2b): R8 removes what only the tests use unless a
+      # keep rule (app/test-keeps.pro) holds it, and the test APK takes those libraries from the app, so
+      # a class or method gone from the app is caught here, before any emulator boots.
+      - name: The test APKs link against the shrunk app (scripts/android-link-check.py)
+        run: |
+          python3 -I scripts/android-link-check.py --selftest
+          dexdump=$ANDROID_HOME/build-tools/$KC_BUILD_TOOLS/dexdump
+          apk=mobile/android/app/build/outputs/apk
+          for f in shipping withTestRegistry; do
+            python3 -I scripts/android-link-check.py check "$apk/$f/release/app-$f-release-unsigned.apk" \
+              "$apk/androidTest/$f/release/app-$f-release-androidTest.apk" "$dexdump"
+          done
       # The release's APK, unsigned, as Gradle wrote it (M7 D1): its SHA-256 and each libkeepcrypt.so's
       # in it, the reference the second clean build (job build-b) must reproduce byte for byte.
       - name: The unsigned shipping APK's SHA-256 (the reference for build-b)
