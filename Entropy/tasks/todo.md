@@ -20877,6 +20877,26 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   0f492397's green run, and no earlier run records this error. Recorded as a runner launch timeout, not rerun on its
   own; the next push runs it again, and a second occurrence is a defect to chase (a warm launch on the fresh narrow
   simulator first).
+  Push of 8cff2c27 (2026-11-22). Android run 45006519552: the build job took 887 s, within the 23 minutes (64%), and
+  apk-reproducible passed; every emulator leg failed closed in about 30 s in android-sdk-install.py: "system-images;
+  android-34;default;x86_64's source.properties gives revision ['2'], not 4". Google's index (sys-img2-3.xml) calls
+  x86_64-34_r04.zip revision 4, and the pin took 4 from it and from sdkmanager, but the zip's own source.properties
+  says Pkg.Revision=2 (read from dl.google.com with range requests; the other three packages' files match their
+  pins: 36 r02 gives 2, ps16k r07 gives 7, the emulator 37.3.10). My D4a error: the revision was copied from the
+  index, not from the package the installer checks. Fix: the pin records 2, the package's own revision, with a note
+  on the index's r04; the bytes stay pinned by size, SHA-1 and SHA-256, so nothing is loosened (lessons.md).
+  Local proof (the fixed API 34 line, the real download): android-sdk-install.py install gives "system-images;
+  android-34;default;x86_64 2 (downloaded): 720747116 bytes, SHA-256 b57f6386...9cb2b3", rc 0; its selftest passes.
+  The iPhone run 45006519588: journeys-6 on macos-26 failed a second time, the same test (DynamicTypeUITests, the
+  narrow iPhone), with another symptom: XCUITest's own "check for interrupting elements" before a tap stalled 68 s
+  on First launch's Continue, then 205 s on Home's About until "kAXErrorIPCTimeout ... Failed to get list of active
+  applications" (333 s). Chased: the runner image (macos-26-arm64 20261117.0516.1, macOS 26.7.2 25G332) and the iOS
+  tree are the same as 0f492397's green run (44965014701, 00:31 UTC), where this job passed; the failures were at
+  about 06:00 and 10:00 UTC, and the runs were slow throughout (macos-15's journeys-6 2480 s, against 1238 s). Both
+  stalls are inside the simulator's accessibility IPC, before the app is asked anything, and no app assertion failed.
+  Recorded as a runner fault; the next push (the pin fix) runs it again. A third occurrence goes to the owner at
+  the gate with two options: the test split so each launch at the largest size is its own test, or the job given
+  its own simulator boot and a warm launch first.
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.

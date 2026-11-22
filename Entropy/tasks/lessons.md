@@ -149,3 +149,13 @@ scripts that read the changed one (grep for its name and its markers) and run th
 - Rule: a fixture that stands in for a built artifact's output follows the expected file it is checked against, and
   scripts/check-version.sh lists every such site. Before pushing a change to any expected/ file, or to anything
   --selftest-apk or another self-test mode reads, run that mode locally.
+
+## 2026-11-22: a pinned revision was copied from Google's index, and the package says another
+- Mistake: D4a (47ad8bde) pinned the API 34 system image as revision 4, the revision Google's sys-img2-3.xml and
+  sdkmanager give for x86_64-34_r04.zip; the installer checks the zip's own source.properties, which says 2. Every
+  emulator leg of run 45006519552 failed closed at install; the pre-push checks passed, as they never install.
+- Root cause: each pinned field was taken from the index about the artifact, not from the artifact the check reads;
+  the SHA-256 was computed from the download, but its source.properties was never opened.
+- Rule: a pinned value that a check compares against an artifact is read from that artifact. Before pushing a new
+  or changed pin file, run the installer it feeds on at least the changed lines, against the real downloads.
+
