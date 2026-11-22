@@ -4,7 +4,7 @@
 // raw-frame calls must find its pixels; a missing control fails the job. Its words page is a gate
 // seed's page from vectors/, made as :core-ffi's WordPage (lead decision M5-68 (f)); it has no
 // native library. Its own app id; :app never depends on it. Release build type, not debuggable,
-// with the app's reproducibility settings (and, as there, no lint until M7).
+// with the app's reproducibility settings, and no lint: it never ships (M7 D2 lints the app).
 
 plugins {
     alias(libs.plugins.android.application)

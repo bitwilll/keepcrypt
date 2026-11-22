@@ -318,14 +318,16 @@ jobs:
       # The strict build (group 4): the APKs and the JVM tests, in one Gradle run (the host tests of
       # the two shared modules, :core-ffi and :screens, named as well, so a test task the lifecycle
       # task left out fails the build instead of passing it). A configuration whose resolution
-      # differs from its lockfile, and a file whose SHA-256 is not the metadata's, fail it. A Gradle
-      # failure fails the step.
+      # differs from its lockfile, and a file whose SHA-256 is not the metadata's, fail it. Lint (M7
+      # D2) runs on both flavours' release builds, the modules they depend on included, and any
+      # warning fails it as an error does. A Gradle failure fails the step.
       - name: Build (strict locking and dependency verification)
         run: |
           sh scripts/android-gradle.sh --dependency-verification strict \
             :app:assembleShippingRelease :app:assembleWithTestRegistryRelease \
             :app:assembleShippingReleaseAndroidTest :app:assembleWithTestRegistryReleaseAndroidTest \
             :capture-control:assembleRelease \
+            :app:lintShippingRelease :app:lintWithTestRegistryRelease \
             :core-ffi:testAndroidHostTest :screens:testAndroidHostTest test
       # The JVM tests' counts per class (M5 groups 13 and 14): every test class of :core-ffi's and
       # :screens' common and host tests and of :app's and :secure-ui's unit tests (each file that

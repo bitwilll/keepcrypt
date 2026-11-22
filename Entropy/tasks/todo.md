@@ -20873,6 +20873,21 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       APK's SHA-256 and every entry's, in the APK's order, so a difference names its entries without moving an APK;
       build-b also uploads its APK (android-apk-b, 7 days) for a byte diff. No new action or dependency.
 - [ ] D2 R8 and lint on; the dex reference scan runs on the shrunk APK; targetSdk 37.
+      D2a, lint and targetSdk 37 (2026-11-22): lint needed no artifact outside the verification metadata (it ran
+      locally under strict verification). Release builds run its vital checks (checkReleaseBuilds), CI's strict
+      build runs `lintShippingRelease` and `lintWithTestRegistryRelease` with checkDependencies (so :screens,
+      :secure-ui and :core-ffi too), abortOnError and warningsAsErrors. Its first run found 2 errors and 5 warnings,
+      then 1 more in :secure-ui with dependencies checked. Fixed: GoAheadScanner opened the camera without checking
+      the permission at that moment (MissingPermission); a permission taken back after the prompt's yes would have
+      thrown into the crash path, and now refuses the scan (ScanStop.Refused). Suppressed at the element, each with
+      its reason in the source: LockedOrientationActivity and DiscouragedApi (Q77's portrait lock), MissingClass
+      (lint looks for the class a tools:node="remove" only removes), DefaultUncaughtExceptionDelegation (the crash
+      path must not delegate: no dialog, no crash report), InlinedApi (SCREEN_RECORDING_STATE_VISIBLE, a
+      compile-time int, read only in a callback registered on Android 15+), and MissingApplicationIcon: the
+      launcher icon is the owner's to supply before a release (an owner item). targetSdk 37 (libs.versions.toml;
+      the expected manifest summaries). Locally both flavours lint with "No issues found" and build. CI's emulators
+      are API 34 and 36, where target-37 behaviour changes do not apply; the local kc37 AVD (API 37) runs the
+      instrumented tests before the gate (a residual until then).
 - [ ] D3 F-Droid metadata (reproducible build recipe) and the release-signing steps (Q105); Data safety text.
 - [ ] D4 Emulator system images and the AVD's packages pinned; an API 35 leg with MediaProjection automation for the
       recording callback.

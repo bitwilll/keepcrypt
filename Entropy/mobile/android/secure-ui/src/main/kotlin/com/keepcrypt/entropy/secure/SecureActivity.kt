@@ -1,5 +1,6 @@
 package com.keepcrypt.entropy.secure
 
+import android.annotation.SuppressLint
 import android.os.Build
 import android.os.Bundle
 import android.view.View
@@ -38,6 +39,9 @@ import java.util.function.Consumer
  * The starting window is black with no icon (Theme.KeepCrypt).
  */
 abstract class SecureActivity : ComponentActivity() {
+    // Lint's InlinedApi: the constant is a compile-time int copied into the APK, and the callback is
+    // registered (onStart) and removed (onStop) only on Android 15+, where the platform calls it.
+    @SuppressLint("InlinedApi")
     private val recording = Consumer<Int> { state ->
         onRecordingChanged(state == WindowManager.SCREEN_RECORDING_STATE_VISIBLE)
     }

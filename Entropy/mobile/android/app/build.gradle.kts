@@ -8,9 +8,10 @@
 // against the release build type too, so they test the bytes that ship. Every APK before the
 // audit's 1.0.0 is a development build (Q101).
 //
-// Reproducibility groundwork (M5 "Built into this plan"; the two-build comparison is M7): no
+// Reproducibility groundwork (M5 "Built into this plan"; the two-build comparison is M7 D1): no
 // dependency or VCS block in the APK, no R8, no PNG crunching and no baseline profile. Android
-// lint is M7 too, so release builds do not run its vital checks yet.
+// lint (M7 D2): release builds run its vital checks, CI runs the full lint on the shipping release,
+// and any warning fails it, as an error does.
 
 plugins {
     alias(libs.plugins.android.application)
@@ -70,7 +71,10 @@ android {
         compose = true
     }
     lint {
-        checkReleaseBuilds = false
+        checkReleaseBuilds = true
+        abortOnError = true
+        warningsAsErrors = true
+        checkDependencies = true
     }
     // libkeepcrypt.so is packaged as scripts/android-rust.sh built and scanned it, symbol table and
     // all: banned-api-check.sh --apk requires the APK's copy to be those bytes, and the release

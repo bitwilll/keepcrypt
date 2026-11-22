@@ -1,5 +1,6 @@
 package com.keepcrypt.entropy
 
+import android.annotation.SuppressLint
 import android.app.Application
 import android.os.Process
 import com.keepcrypt.entropy.ffi.Core
@@ -11,6 +12,9 @@ import com.keepcrypt.entropy.ffi.Core
  * no dialog and no crash report of the activity manager's.
  */
 class KeepCryptApp : Application() {
+    // The platform's handler is replaced, never delegated to (lint's DefaultUncaughtExceptionDelegation):
+    // delegating would show the crash dialog and write the activity manager's crash report.
+    @SuppressLint("DefaultUncaughtExceptionDelegation")
     override fun onCreate() {
         super.onCreate()
         Thread.setDefaultUncaughtExceptionHandler(

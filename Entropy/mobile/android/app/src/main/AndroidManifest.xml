@@ -21,7 +21,11 @@
      activity and nothing is recreated: a pending picker's or CAMERA prompt's answer still reaches it.
      The one removal is the androidx.startup provider, which would run library initializers at
      start; profileinstaller, the one that writes files, is excluded from every configuration
-     (build.gradle.kts). -->
+     (build.gradle.kts).
+     Lint (M7 D2) is told to ignore three findings here, each at its own element: the portrait lock
+     above (LockedOrientationActivity, DiscouragedApi: Q77's answer); the removal's class, which lint
+     looks for although the node only removes it (MissingClass); and the launcher icon, which the
+     owner supplies before a release (MissingApplicationIcon; until then Android draws its default). -->
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
@@ -37,18 +41,20 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:usesCleartextTraffic="false"
         android:label="@string/app_name"
-        android:theme="@style/Theme.KeepCrypt">
+        android:theme="@style/Theme.KeepCrypt"
+        tools:ignore="MissingApplicationIcon">
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:screenOrientation="portrait"
+            tools:ignore="LockedOrientationActivity,DiscouragedApi"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|density|fontScale|uiMode|keyboard|keyboardHidden|navigation">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <provider android:name="androidx.startup.InitializationProvider" android:authorities="${applicationId}.androidx-startup" tools:node="remove" />
+        <provider android:name="androidx.startup.InitializationProvider" android:authorities="${applicationId}.androidx-startup" tools:node="remove" tools:ignore="MissingClass" />
     </application>
 </manifest>

@@ -255,6 +255,12 @@ internal class GoAheadScanner(private val context: Context) : QrScanner {
                 finish { stopped(ScanStop.Missing) }
                 return@step
             }
+            // The prompt's yes is checked again here, on the thread that opens the camera: a
+            // permission taken back since then refuses the scan rather than throwing (M7 D2, lint).
+            if (context.checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+                finish { stopped(ScanStop.Refused) }
+                return@step
+            }
             width = chosen.size.width
             height = chosen.size.height
             autofocus = chosen.autofocus
