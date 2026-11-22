@@ -140,6 +140,10 @@ Defense promised: user-verifiable dice mode, reproducible builds, signed release
 - Verification protects generation only if the user runs it; a user who skips verify.py trusts the firmware
   (swb:177 row "Dishonest firmware hides seed data in the seal code").
 - Anti-exfil signing is not applicable: KeepCrypt signs no transactions.
+- Library code in the APK is not judged by the dex scan (Q59 (b)). With R8 shrinking (M7 D2b), Kotlin's `Random`
+  is still reachable: androidx.activity's `ActivityResultRegistry` draws request codes from `Random.Default` for
+  the camera prompt and the document pickers, and Kotlin's `PlatformImplementations` names it. No request code is
+  a secret or reaches the pool; the app's own classes are scanned and clean.
 - Supply-chain trust on first use: the 61 PGP signer keys pinned for Android artifacts (M5-12, todo:10818-10820)
   and later signers (todo:15164, :15535, :16585-16586, :16614-16615); Buildroot inputs hash-checked, not
   source-reviewed (todo:1065-1066, :9521).

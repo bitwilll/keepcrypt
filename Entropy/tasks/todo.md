@@ -20888,6 +20888,20 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       the expected manifest summaries). Locally both flavours lint with "No issues found" and build. CI's emulators
       are API 34 and 36, where target-37 behaviour changes do not apply; the local kc37 AVD (API 37) runs the
       instrumented tests before the gate (a residual until then).
+      D2b, R8 (2026-11-22; lead decision M7-10): the release build type shrinks with R8 and does nothing else:
+      proguard-rules.pro sets -dontoptimize (the optimizer may remove a write it proves dead, and a wipe that zeroes
+      a secret array before letting it go is such a write, rule 5) and -dontobfuscate (the auditor, dexdump and
+      --apk's dex scan read the source's names), and keeps com.keepcrypt.** whole (the instrumented tests run
+      against this build; libkeepcrypt.so finds Native.call by name). AGP 9 refuses proguard-android.txt, so the
+      base file is proguard-android-optimize.txt, whose optimization the -dontoptimize switches off. The test APKs
+      get test-proguard-rules.pro (-dontshrink, -dontoptimize, -dontobfuscate; -dontwarn for Error Prone's
+      compile-time annotations that androidx.test names). R8 needed no artifact outside the verification metadata.
+      Locally the four app APKs build; the shipping APK holds one dex of 4,576 classes, 638 of them com.keepcrypt.
+      Kotlin's Random survives shrinking: androidx.activity's ActivityResultRegistry draws its request codes from
+      Random.Default (the camera prompt and the pickers register through it), and Kotlin's
+      PlatformImplementations names it. Library code is not judged (Q59 (b)); it goes on the audit list as a
+      library residual (no request code is a secret or reaches the pool). The dex scan already reads every dex of
+      the APK, now the shrunk one. Proof owed: CI's emulator legs on the shrunk APKs, and a = b with R8.
 - [ ] D3 F-Droid metadata (reproducible build recipe) and the release-signing steps (Q105); Data safety text.
 - [ ] D4 Emulator system images and the AVD's packages pinned; an API 35 leg with MediaProjection automation for the
       recording callback.

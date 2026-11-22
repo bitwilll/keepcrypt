@@ -9,7 +9,10 @@
 // audit's 1.0.0 is a development build (Q101).
 //
 // Reproducibility groundwork (M5 "Built into this plan"; the two-build comparison is M7 D1): no
-// dependency or VCS block in the APK, no R8, no PNG crunching and no baseline profile. Android
+// dependency or VCS block in the APK, no PNG crunching and no baseline profile. R8 (M7 D2b, lead
+// decision M7-10) shrinks the release build and nothing more (proguard-rules.pro: no optimization,
+// no renaming, the app's own classes kept whole); the test APKs are only linked against it
+// (test-proguard-rules.pro). Android
 // lint (M7 D2): release builds run its vital checks, CI runs the full lint on the shipping release,
 // and any warning fails it, as an error does.
 
@@ -35,6 +38,7 @@ android {
             abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86_64"))
         }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testProguardFiles("test-proguard-rules.pro")
     }
     flavorDimensions += "registry"
     productFlavors {
@@ -50,8 +54,9 @@ android {
     buildTypes {
         release {
             isDebuggable = false
-            isMinifyEnabled = false
+            isMinifyEnabled = true
             isShrinkResources = false
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             isCrunchPngs = false
             vcsInfo {
                 include = false
