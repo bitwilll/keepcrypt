@@ -20949,13 +20949,23 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
       MediaProjection of the whole screen) from its Quick Settings tile before the app starts (leaving the app on a
       Protected screen discards the session), then takes dice-50-words12 to its words page past the gate through the
       model: the model must hold the recording and the page show the redacted placeholder (REDACTED_LINE); the
-      recording stopped from the tile, the placeholder must go and the page come back with the session kept. It runs
+      recording stopped from the tile, the model must drop it and the placeholder go, and either the page is back with
+      the session kept or, Quick Settings over the app having stopped it, the session is discarded at once (Home,
+      notice Left, the slot at home); any other outcome fails. It runs
       in the registry part on both levels and is made on API 36 (Android 15's callback exists from API 35); on API 34
       it only says so, as IdleClockTest does. M7-11: no API 35 leg and no recorder of our own. A recorder in
       capture-control needs a foreground service and its notification, which the gate refuses in every source set
       (KtManifest, KtWindow); SystemUI's recorder needs neither, and API 36's jobs already run Android 15+. The API 35
       image was looked up and hashed (x86_64-35_r02.zip, 782,404,023 bytes, SHA-256 6dd7de33...4ff4556) and is not
       pinned. android-emulator.sh's registry part and its selftest (66 cases) name the class.
+      Local runs (kc37, API 37, --part registry, 2026-11-22), each found by the test's own output: no screen-record
+      tile on Quick Settings' first page (the image ignores sysui_qs_tiles, so the test now pages through the tiles
+      and changes no setting); the dialog's "Start recording" is a description, not text (now matched either way);
+      then the stop discarded the session (notice Left: Quick Settings over the app stopped it). The last run passed
+      all twelve classes: "recorder: SystemUI's screen recorder started from its tile, its projection running",
+      "recording on: screen words, placeholder shown (redacted)", and "a real recording (MediaProjection, the whole
+      screen): the words page redacted while recorded; once it ended, the session discarded (Quick Settings over the
+      app left it), Home saying why". Proof owed: CI's API 36 registry job.
 - [ ] D5 graphics-path's native library reviewed, rebuilt from source or removed (a finding in the Review).
       Removed (2026-11-22): androidx.graphics:graphics-path 1.0.1 (from Compose ui-graphics) ships
       libandroidx.graphics.path.so, a native path iterator for Android 13 and lower; from API 34, the minSdk, Compose
