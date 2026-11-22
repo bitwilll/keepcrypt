@@ -21030,6 +21030,15 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
 
 ### Stage H: docs and CI
 - [ ] H1 The user guide shared by all platforms (MA:168); owner item 13's figure from a committed script (Q108 (b)).
+      Figure done (2026-11-22): `tools/figures/seed_pipeline.py` (stdlib) draws `docs/img/seed-pipeline.svg`, the old
+      PNG's layout and text, its numbers computed: the three roll quotas read from core/src/dice.rs (each must appear
+      once), log2(6) = 2.585 bits per roll, 50 rolls 129.2 bits, 99 rolls 255.9 (the PNG said 256; design.md:262's
+      rounding note goes), and two facts the PNG left out (99 rolls after a collision; dice-only E = SHA-256(R)).
+      design.md:260 names the SVG; the PNG, with no source, is removed (git keeps it). CI's verifier (python 3.9) job
+      runs `--check`, which fails unless the committed SVG is byte for byte what the script draws (lessons.md,
+      2026-10-09: CI re-runs every computed number). Proof (local): `--check` passes on 3.9.6 and Homebrew's 3.x;
+      a hand edit (255.9 to 256) fails it, rc 1; a bad flag rc 2; the gate clean; the rendering looked at.
+      The guide itself: still to write.
 - [x] H2 design.md:278's "Gate" line and BP:320 agree on where the birthday test runs (Q42 (b) already decided).
       Proof (2026-11-22): no edit. design.md:278 is phase 1's gate, "birthday-collision ... pass in CI"; BP:320 runs the
       test nightly on core in CI (Stage A, entropy-nightly.yml) and leaves the Pi's reboots to M8's bench image. Q42 (b)

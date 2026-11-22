@@ -452,6 +452,8 @@ jobs:
             *) echo "FAIL: expected Python 3.9.x; re-decide the verifier's floor" >&2; exit 1 ;;
           esac
       - run: /usr/bin/python3 -I tools/verify/vectorgen.py --selftest
+      # design.md's seed-pipeline figure is what its script draws from core's roll quotas (M7 H1).
+      - run: /usr/bin/python3 -I tools/figures/seed_pipeline.py --check
 
   coverage:
     # M1 gate (docs/build-plan.md): at least 95% line coverage in core/. The test-sources run, so
