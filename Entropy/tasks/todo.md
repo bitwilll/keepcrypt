@@ -21017,8 +21017,17 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   jobs (attempt 2, 2026-11-27): green; macos-15 1200 s (CannotCheck 583 s, Scan 109 s), macos-26 1795 s
   (CannotCheck 874 s, Scan 177 s), 65 s inside its 31 minutes. The timeout is the owner's to raise.
 - M7-15 (2026-11-28, the owner's word: "yes, raise it to 35 minutes"): macos-26's journeys-1 timeout goes from 31
-  to 35 minutes in .github/workflows/entropy-ios.yml; macos-15's stays at 31 (1200 s in the re-run). Proof owed: CI
-  green on it.
+  to 35 minutes in .github/workflows/entropy-ios.yml; macos-15's stays at 31 (1200 s in the re-run). CI at 6995f477
+  (run 46054903424): macos-26's journeys-1 passed in 1895 s, past the old 31 minutes.
+- M7-16 (2026-11-28): run 46054903424's journeys-4 (macos-26) failed TwentyFourWordJourneyUITests: after insert 22
+  of 24 the bare tap of "next" changed nothing and insert_header waited 30 s for insert 23. The sampler's last four
+  samples show the app's main thread idle in its run loop (mach_msg), no crash or hang report: a lost tap, not an
+  app stall (what M7-14 added the sampler to tell). The words' "next" was a bare tap, outside M6-28's pressUntil.
+  Fix: JourneySupport.swift's pressToLabel presses "next" through pressUntil with the next insert's header as its
+  effect (a press that never reached the app or never fired is pressed again, named; one that fired and did nothing
+  fails); waitLabel's failure now prints the touch counts and the hooks' facts. Local (iPhone 17 511E3FF6, booted
+  for it and shut down after): TwentyFourWordJourneyUITests passed (309.8 s) and WordsUITests passed (85.2 s).
+  Proof owed: CI green on it.
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.
