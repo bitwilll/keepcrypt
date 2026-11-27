@@ -405,6 +405,8 @@ jobs:
     # word): macos-26's ran past 30 minutes in runs 44306763928 and 44326338905, its narrow iPhone's
     # test-without-building waiting 922 s and then 14 minutes (15:38:42 to 15:52:49) before "Running tests" on
     # a freshly made iOS 26.5 simulator; macos-15's whole job took 1245 s. M5-30 re-measures from two green runs.
+    # macos-26's journeys-1 at 35 (M7-15, the owner's word, 2026-11-28): run 45891831276 at a9066203 cancelled it at
+    # 31 on a slow runner, and its re-run took 1795 s, 65 s inside the 31.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -416,7 +418,7 @@ jobs:
             device: iPhone 17
             group: journeys-1
             classes: CannotCheckJourneyUITests ScanUITests
-            timeout: 31
+            timeout: 35
           - os: macos-26
             xcode: '26.6'
             ios: '26.5'

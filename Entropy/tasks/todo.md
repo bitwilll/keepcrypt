@@ -21016,6 +21016,9 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   and 70.55 s plain, 70.50 s and 70.78 s sampled, three samples a run, each about 2.5 s. Re-run of the cancelled
   jobs (attempt 2, 2026-11-27): green; macos-15 1200 s (CannotCheck 583 s, Scan 109 s), macos-26 1795 s
   (CannotCheck 874 s, Scan 177 s), 65 s inside its 31 minutes. The timeout is the owner's to raise.
+- M7-15 (2026-11-28, the owner's word: "yes, raise it to 35 minutes"): macos-26's journeys-1 timeout goes from 31
+  to 35 minutes in .github/workflows/entropy-ios.yml; macos-15's stays at 31 (1200 s in the re-run). Proof owed: CI
+  green on it.
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.
