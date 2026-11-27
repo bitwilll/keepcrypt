@@ -21007,6 +21007,15 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   (exit 3) with the app running gave exit 3 and a sample whose call graph starts at the app's main thread; a
   passing one gave exit 0 and printed nothing. Proof owed: CI green on it; the next macos-26 failure carries its
   samples.
+  CI at a9066203 (run 45891831276, 2026-11-26): every job green but journeys-1 on both legs, cancelled at its 31
+  minutes while still passing (macos-15 had passed both classes 49 s before; macos-26 was in CannotCheck's
+  read-back at 980 s, 763 s in run 45071035420). Slow runners, not the sampler: the same image (20261111.635); in
+  macos-15's ScanUITests the median accessibility query went from 0.040 s to 0.110 s throughout, not in the
+  sampler's 2 s of every 22; TwentyFourWord, Snapshot and Lifecycle ran at 0.96-1.07 times run 45071035420 with
+  the sampler running too. Local A/B (iPhone 17 511E3FF6, booted for it and shut down after): ScanUITests 70.65 s
+  and 70.55 s plain, 70.50 s and 70.78 s sampled, three samples a run, each about 2.5 s. Re-run of the cancelled
+  jobs (attempt 2, 2026-11-27): green; macos-15 1200 s (CannotCheck 583 s, Scan 109 s), macos-26 1795 s
+  (CannotCheck 874 s, Scan 177 s), 65 s inside its 31 minutes. The timeout is the owner's to raise.
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.
