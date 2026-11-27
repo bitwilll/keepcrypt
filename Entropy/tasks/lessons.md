@@ -180,3 +180,12 @@ scripts that read the changed one (grep for its name and its markers) and run th
 - Rule: a failure seen on one emulator or simulator image is reproduced on that image (installed locally under the
   owner's emulator approval) before a fix is pushed, and the fix's local proof names that image. A pass on another
   image proves nothing about it.
+
+## 2026-11-28: a partial rerun of the Android run, whose legs take only their own attempt's APKs
+- Mistake: after run 46067531702 failed build b and one API 36 leg, I reran it with `gh run rerun --failed`. Attempt
+  2 rebuilt neither APK hand-off, and both emulator legs failed at once on "Failed to restore cache entry ...
+  android-apks-46067531702-2", costing a run.
+- Root cause: the legs' hand-off cache is keyed on the run and its attempt (a leg tests only the APKs built in its
+  own attempt, by design), and I chose the rerun's scope without reading the jobs' hand-offs.
+- Rule: before a partial rerun, read how the rerun jobs get their inputs from the jobs that will not rerun. An
+  Android run is rerun whole (`gh run rerun RUN`, no `--failed`).
