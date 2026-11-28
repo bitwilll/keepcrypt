@@ -443,6 +443,9 @@ Grouped by component; `todo:N` is the line where it is recorded. Kept complete r
 - todo:15535 konan-deps pins named as trust on first use (LLVM itself anchored to a published fingerprint, todo:1677).
 - todo:16585-16586, :16614-16615 JetBrains Compose Team signer and multiplatform scopes trusted on first use.
 - todo:10815-10817 SHA-1-only artifacts accepted by name (four ship).
+- todo M7-17 CI keeps the Android review's Maven Central files between runs (exact key on the pins): the pinned
+  SHA-256 and the PGP signature are checked on every run, Central's published .sha1 files and 404 answers only on
+  the run that saved the entry; Google's Maven is asked on every run.
 - todo:1065-1066 Buildroot, kernel, firmware and tools hash-pinned, sources unreviewed.
 - `Entropy/release/` absent: release key not yet made (Q100, Stage B4).
 

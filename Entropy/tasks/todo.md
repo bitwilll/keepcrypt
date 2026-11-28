@@ -21027,7 +21027,31 @@ halves: the work that makes a release auditable and reproducible (Stages A-H, ou
   effect (a press that never reached the app or never fired is pressed again, named; one that fired and did nothing
   fails); waitLabel's failure now prints the touch counts and the hooks' facts. Local (iPhone 17 511E3FF6, booted
   for it and shut down after): TwentyFourWordJourneyUITests passed (309.8 s) and WordsUITests passed (85.2 s).
-  Proof owed: CI green on it.
+  CI at 88d2166a (iPhone run 46067531463): every job green; macos-26's journeys-4 1487 s, journeys-1 1369 s. CI,
+  release, nightly and the Pi image green at 88d2166a too. Android run 46067531702 at 88d2166a (no Android file
+  changed; green at 6995f477): attempt 1 failed build b (the Kotlin plugin 2.4.20 "not found" in Google's Maven and
+  Maven Central) and API 36's RecordingTest (stopping the recorder, the tile pager's swipe did not turn it in 3 s;
+  not seen again, not chased: no later attempt reached the emulators); attempt 2 was my partial rerun
+  (tasks/lessons.md, 2026-11-28); attempt 3, whole, failed the build's dependency review, Maven Central answering
+  429 to all 1311 of its requests for twelve rounds (M7-17).
+- M7-17 (2026-11-28, the owner's choice of three, "Keep all Central files"): entropy-android.yml keeps the review's
+  Maven Central files (the mirror's repo.maven.apache.org/, 266 MB) between runs with actions/cache, by exact key
+  on verification-metadata.xml, the lockfiles and android-deps-review.py, restored before the review, so before any
+  Gradle line (canaries.sh's review_before_gradle). Google's Maven is not kept. Not done, and told to the owner: the
+  review's --gradle-files (commit 8x has the review run before Gradle, on bytes fetched by the review itself).
+  Still proven on every run from a restored entry: each Central file's bytes have the pinned SHA-256 and gpg verifies
+  its .asc with a committed trusted key. No longer asked on every run: Central's published .sha1 files and its 404
+  answers, as of the run that saved the entry (docs/audit.md, trust on first use). A changed pin, lockfile or review
+  script is a new key and asks Central for everything.
+  Local proof (this Mac has no gpg, so reviews ran with --skip-pgp, exit 3; the signature step is CI's): mirror A
+  from empty, the script's curl logged by a wrapper: 1740 requests to Central, 778 to Google's Maven in 3 rounds;
+  mirror B, only A's repo.maven.apache.org/ copied in (what CI restores): 0 requests to Central, 778 to Google's
+  Maven; A's and B's reviews print the same ("924 artifacts: 359 Google's Maven (SHA-256 matched), 551 Maven
+  Central (SHA-1 matched, PGP NOT CHECKED ...), 14 accepted by name ..., 0 failed"). On copies of B: one byte
+  appended to annotations-4.1.1.4.jar fails ("the file's SHA-256 is 0750..., the metadata's ba73...", exit 1); its
+  .sha1 replaced fails ("the published .sha1 0000... is not the file's a167...", exit 1). Workflow gate clean (6
+  workflows). Proof owed: CI: a first run that saves the entry, a second whose review asks Central for nothing,
+  both with gpg's signatures checked.
 - M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
   timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
   dispatches, with the owner's word.

@@ -303,6 +303,22 @@ jobs:
       # the committed keyring and a trusted key scoped to the artifact's group; the 14 files that
       # publish neither (lead decision M5-11) by name, by SHA-1 and SHA-256; and the licences of the
       # shipping classpath against deny.toml's allow list. Any failure fails it.
+      # M7-17 (the owner's word, 2026-11-28): the review's Maven Central files are kept between runs,
+      # by exact key (no restore-keys) on the pins, the lockfiles and the review script, so a change
+      # to any of them asks Central for everything again. Run 46067531702 (attempt 3) had Central
+      # answer 429 to all 1311 of its requests from the first, for twelve rounds; with the entry
+      # restored the review asks Central for nothing. Google's Maven is not kept: its 499 published
+      # .sha256 files are fetched on every run. What a restored entry still proves on every run: each
+      # file's bytes have the pinned SHA-256 and gpg verifies its .asc with a committed trusted key.
+      # What it no longer asks on every run: Central's published .sha1 files and its 404 answers,
+      # which are as of the run that saved the entry (docs/audit.md, trust on first use). The key's
+      # paths are written as globs because scripts/canaries.sh reads any earlier line that names the
+      # build tool as a step that runs it; this step runs none of it.
+      - name: The review's Maven Central files from the cache (keyed on the pins; Google's Maven is fetched every run)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ runner.temp }}/deps-mirror/repo.maven.apache.org/
+          key: ${{ runner.os }}-${{ runner.arch }}-android-deps-central-${{ hashFiles('Entropy/mobile/android/**/verification-metadata.xml', 'Entropy/mobile/android/**/*.lockfile', 'Entropy/scripts/android-deps-review.py') }}
       - name: Dependency review (scripts/android-deps-review.sh)
         run: sh scripts/android-deps-review.sh "$RUNNER_TEMP/deps-mirror"
       # The Gradle distribution from the cache (M5 "Budgets"), keyed on the version and SHA-256
