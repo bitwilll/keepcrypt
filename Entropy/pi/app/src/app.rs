@@ -1366,7 +1366,7 @@ mod tests {
     impl Hal for Fake {
         fn build_info(&self) -> BuildInfo {
             BuildInfo {
-                version: "0.0.0",
+                version: env!("CARGO_PKG_VERSION"),
                 rootfs: String::from("test"),
                 simulator: false,
             }

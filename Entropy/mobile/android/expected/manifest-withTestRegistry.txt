@@ -1,7 +1,7 @@
 package com.keepcrypt.entropy.testregistry
-versionName 0.0.0
+versionName 0.1.0
 minSdk 34
-targetSdk 36
+targetSdk 37
 permission com.keepcrypt.entropy.testregistry.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION
 uses-permission android.permission.CAMERA
 uses-permission android.permission.DETECT_SCREEN_RECORDING

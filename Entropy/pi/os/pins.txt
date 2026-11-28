@@ -5,10 +5,9 @@
 # Buildroot by BR_URL and refuses it unless it has BR_SHA256, and `make source` and `make image`
 # check every *_PINS entry ("hash file:SHA-256:file") against the hash file that Buildroot reads,
 # so this record cannot drift from what is built. Until the M7 audit the hashes are checked, the
-# sources not reviewed. The build host is not pinned here: the ubuntu-24.04 runner image and the
-# Ubuntu packages the image workflow installs (Buildroot's host packages, the host compilers
-# among them) stay unpinned until M7's pinned build container (Q38 (e)); each leg prints the
-# runner image's version and those packages' versions.
+# sources not reviewed. The build host is pinned in container/Dockerfile (M7 C1, Q38 (e)): Debian
+# trixie by digest, its packages from snapshot.debian.org at one fixed time, rustup-init by SHA-256;
+# pi/os/container.sh runs every command in it and the image workflow prints its package list.
 
 # The build time (`SOURCE_DATE_EPOCH`): a constant, so equal trees give equal images whatever the
 # commit time. It is Buildroot 2026.08's own BR2_VERSION_EPOCH, 2026-09-04 15:16:40 UTC, the time
@@ -24,12 +23,14 @@ BR_VERSION = 2026.08
 BR_URL = https://buildroot.org/downloads/buildroot-2026.08.tar.xz
 BR_SHA256 = 87aaca4164ea9d5c8085854953018263f7963f07c22e73a2a2185cc98c581c34
 
-# Linux: raspberrypi/linux 21b410140c47ffab5668399f6f143c7d7b935c8b (6.12.61), committed
-# 2025-12-09, the kernel Buildroot 2026.08's raspberrypi0_defconfig boots this board on, with its
-# hash from that release's board/raspberrypi/patches/linux/linux.hash. Downloaded by Buildroot
-# from https://github.com/raspberrypi/linux/archive/21b410140c47ffab5668399f6f143c7d7b935c8b
-# (configs/keepcrypt_pizero_defconfig), checked by our patches/linux/linux.hash.
-OS_PINS += patches/linux/linux.hash:7c31df8061aae748a6e72417bfe743a54198fb5bdc96e229ecc605dc621d32ef:linux-21b410140c47ffab5668399f6f143c7d7b935c8b.tar.gz
+# Linux: raspberrypi/linux 2569533d6c33c15231fbc21704c87fcebc67173c (6.12.115), the newest rpi-6.12.y
+# merge of stable/linux-6.12.y at least 14 days old when pinned (merged 2026-11-02; tasks/todo.md, M7
+# item C3, Q104). M4 pinned 21b410140c47 (6.12.61), Buildroot 2026.08's raspberrypi0_defconfig kernel.
+# Downloaded by Buildroot from
+# https://github.com/raspberrypi/linux/archive/2569533d6c33c15231fbc21704c87fcebc67173c/linux-2569533d6c33c15231fbc21704c87fcebc67173c.tar.gz
+# (configs/keepcrypt_pizero_defconfig), checked by our patches/linux/linux.hash; the SHA-256 is
+# GitHub's archive, the same in three downloads (247,555,356 bytes).
+OS_PINS += patches/linux/linux.hash:c78d71fda7730140ef27dee9bcea61e9fabc5472665760733b8e484b90933940:linux-2569533d6c33c15231fbc21704c87fcebc67173c.tar.gz
 
 # rpi-firmware: raspberrypi/firmware 063bcab6c8a90efb0d19f69d88cbbc7ec79cab68, committed
 # 2025-12-08, Buildroot 2026.08's pin, from

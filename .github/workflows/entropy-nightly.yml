@@ -1,0 +1,95 @@
+# KeepCrypt-Entropy nightly: the birthday-collision test (Entropy/docs/build-plan.md test matrix
+# "Birthday collision, 1,000,000 device legs", Nightly; Entropy/docs/design.md "Prove the path" 3;
+# Entropy/tasks/todo.md, M7 Stage A). Not a required check: a pull request that changes the test or
+# this workflow runs it too, so the change is proven before it merges.
+#
+# - birthday: 1,000 child processes of 1,000 real phone sessions each, on the OS source (default
+#   features, no stub), several children at a time; any repeated commitment C fails. C stands in
+#   for D (equal exactly when D is), so the run handles no secret.
+# - canary: the same count over stub sessions whose OS bytes come from a 24- or 28-bit state must
+#   find repeats (test-sources), so the job above could fail.
+#
+# Hardening as in entropy-ci.yml: read-only token and no secret; only actions/checkout and
+# actions/cache, pinned by commit SHA; no event data inside run scripts; the toolchain comes from
+# rust-toolchain.toml through the runner's preinstalled rustup. Caches are exact-keyed.
+
+name: Entropy nightly
+
+on:
+  pull_request:
+    paths:
+      - 'Entropy/core/tests/birthday.rs'
+      - '.github/workflows/entropy-nightly.yml'
+  schedule:
+    # Nightly, 03:41 UTC, on main.
+    - cron: '41 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    # Explicit bash runs with -eo pipefail: any failing command fails the step.
+    shell: bash
+    working-directory: Entropy
+
+env:
+  CARGO_INCREMENTAL: 0
+
+jobs:
+  birthday:
+    name: birthday (1,000,000 real device legs)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            Entropy/target/
+          key: ${{ runner.os }}-${{ runner.arch }}-nightly-${{ hashFiles('Entropy/rust-toolchain.toml', 'Entropy/Cargo.lock') }}
+      - name: Install the pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+          nproc
+      - name: The birthday test (exactly 1 passed)
+        run: |
+          cargo test --release --locked -p keepcrypt-core --test birthday -- --ignored --exact one_million_real_device_legs_never_repeat --nocapture 2>&1 | tee birthday.log
+          grep -q '^test result: ok\. 1 passed;' birthday.log
+
+  canary:
+    name: birthday canary (24- and 28-bit states)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            Entropy/target/
+          key: ${{ runner.os }}-${{ runner.arch }}-nightly-canary-${{ hashFiles('Entropy/rust-toolchain.toml', 'Entropy/Cargo.lock') }}
+      - name: Install the pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+          nproc
+      - name: The canary (exactly 1 passed)
+        run: |
+          cargo test --release --locked -p keepcrypt-core --features test-sources --test birthday -- --ignored --exact narrowed::narrowed_states_are_caught --nocapture 2>&1 | tee canary.log
+          grep -q '^test result: ok\. 1 passed;' canary.log

@@ -1,0 +1,17 @@
+# The Android workflow's emulator and system images (tasks/todo.md, M7 D4), installed by
+# scripts/android-sdk-install.py into the leg jobs' SDK root. The revisions are the ones sdkmanager
+# installed in run 44955420386 (2026-11-21): the emulator's stable channel and the three images CI
+# tests on. Size and SHA-1 are Google's repository index (repository2-3.xml and the two
+# sys-img2-3.xml, fetched 2026-11-22); the SHA-256 was computed from the same download. A new
+# revision is a reviewed change of this file.
+#
+# The revision is the one the package's own source.properties gives, which the installer checks.
+# Google's index calls the API 34 image's zip (x86_64-34_r04.zip) revision 4, and sdkmanager reports
+# 4, but the zip's source.properties says Pkg.Revision=2 (read 2026-11-22; run 45006519552 failed
+# closed on it). The bytes are the index's revision 4, pinned by size, SHA-1 and SHA-256.
+#
+# path revision url size sha1 sha256 place top
+emulator 37.3.10 https://dl.google.com/android/repository/emulator-linux_x64-16970787.zip 350068887 5f7314368fc6c05c937f6991bb4106214dc389e7 a4405349d8a9c52136ab7861e5331dc40e85574bd91cb8889a298a2ff4c52e26 emulator emulator
+system-images;android-34;default;x86_64 2 https://dl.google.com/android/repository/sys-img/android/x86_64-34_r04.zip 720747116 5f6a249f9bc3b1b4c459b13ce2eb646c9680bed1 b57f6386af25b0fe5488e77196b43c03778c6760e6f4311611d090391b9cb2b3 system-images/android-34/default/x86_64 x86_64
+system-images;android-36;default;x86_64 2 https://dl.google.com/android/repository/sys-img/android/x86_64-36_r02.zip 844217077 829c076e8ff448a336097ae25a355b495ba36e2c e1b9d9fb665001ef27b16e57d8762a2d54aec6bff617e17506edb8676667b9da system-images/android-36/default/x86_64 x86_64
+system-images;android-36;google_apis_ps16k;x86_64 7 https://dl.google.com/android/repository/sys-img/google_apis/x86_64-ps16k-36_r07.zip 1849428145 dd783282e84bf475a02eba6777c79fc5695e1583 56005e428f0d30105789bde96f60bbd32c5c62e710321abd7c10f9e591889ff7 system-images/android-36/google_apis_ps16k/x86_64 x86_64

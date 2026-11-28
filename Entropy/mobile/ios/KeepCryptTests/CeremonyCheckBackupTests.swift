@@ -180,7 +180,7 @@ final class CeremonyCheckBackupTests: XCTestCase {
     func testTheEntrysLine() {
         XCTAssertEqual(entryWordText(0), "Backup passphrase, word 1 of 8")
         XCTAssertEqual(entryWordText(7), "Backup passphrase, word 8 of 8")
-        XCTAssertEqual(versionText(), "Version 0.0.0")
+        XCTAssertEqual(versionText(), "Version 0.1.0")
         XCTAssertEqual(securityText(), "Security reports: admin@keepcrypt.com")
     }
 }

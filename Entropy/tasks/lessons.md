@@ -127,3 +127,65 @@ scripts that read the changed one (grep for its name and its markers) and run th
   compiled three times (Shipping, WithTestRegistry, TestHooks) and the pre-push checks build none of them.
 - Rule: before pushing a change to any iOS source, UI tests included, build-for-testing runs locally for all three
   schemes (KeepCrypt-Shipping, -WithTestRegistry, -TestHooks) and each exit code is read.
+
+## 2026-11-21: a CI diagnostic sampler died at its first tick and hid that it took nothing
+- Mistake: U3n's sampler loop in entropy-ios.yml (journeys-6, the narrow iPhone) ran as `( while ...; done ) &` in a
+  step whose shell is `bash -e -o pipefail`, and discarded sample's output. When the iOS 26.5 hang came back (run
+  44925400647) the step printed no sample: the subshell had exited at the first `pgrep` that found no app.
+- Root cause: a background subshell inherits errexit and pipefail; a command expected to fail (pgrep before the app
+  starts) ended the loop, and with its output thrown away nothing said so. It was never run locally under the
+  step's flags.
+- Rule: a background loop in a CI step that tolerates failing commands sets `set +e` itself, logs each tick, and
+  prints that log when the step fails; it is run locally under `bash -e -o pipefail` before it is pushed.
+
+
+## 2026-11-22: a version bump left the APK scan's stand-ins at the old version; CI's gates job failed
+- Mistake: B1 (694bcccf) moved the expected Android manifests to 0.1.0 but not scripts/testdata/apk/badging.txt and
+  xmltree.txt, the --selftest-apk stand-ins for aapt2's output that are checked against those manifests. Every
+  --selftest-apk case failed in CI's gates job (run 44937973859, at c6590498); the pre-push checks passed.
+- Root cause: the version sites were found by searching for the old string outside scripts/testdata, on the view that
+  fixtures do not carry the version; these two mirror an expected file and must. And the pre-push checks run
+  --selftest but not --selftest-apk, which only CI ran.
+- Rule: a fixture that stands in for a built artifact's output follows the expected file it is checked against, and
+  scripts/check-version.sh lists every such site. Before pushing a change to any expected/ file, or to anything
+  --selftest-apk or another self-test mode reads, run that mode locally.
+
+## 2026-11-22: a pinned revision was copied from Google's index, and the package says another
+- Mistake: D4a (47ad8bde) pinned the API 34 system image as revision 4, the revision Google's sys-img2-3.xml and
+  sdkmanager give for x86_64-34_r04.zip; the installer checks the zip's own source.properties, which says 2. Every
+  emulator leg of run 45006519552 failed closed at install; the pre-push checks passed, as they never install.
+- Root cause: each pinned field was taken from the index about the artifact, not from the artifact the check reads;
+  the SHA-256 was computed from the download, but its source.properties was never opened.
+- Rule: a pinned value that a check compares against an artifact is read from that artifact. Before pushing a new
+  or changed pin file, run the installer it feeds on at least the changed lines, against the real downloads.
+
+## 2026-11-22: the link check skipped the calls it could not read, and R8's shrink reached the emulators
+- Mistake: android-link-check.py (D2b) matched method names with [\w$<>]+, so a call to Kotlin's
+  getPositionInWindow-F1C5BW0 (a name with "-", given to a function taking or giving an inline value class) was not
+  read; R8 shrank the method and three CaptureTest cases failed on every emulator (run 45016186578) though the check
+  passed.
+- Root cause: a check built on a pattern counted only what matched it, and a line it could not parse was silently
+  left out, so the check failed open.
+- Rule: a check that parses its input counts what it could not parse and fails on any of it; its selftest holds one
+  case of an unreadable line, and the patterns are written from the format's grammar (a dex member name is anything
+  but whitespace, ":" and "("), not from the names seen so far.
+
+## 2026-11-22: a fix for one image's failure was pushed without running it on that image
+- Mistake: 478b30c5 put the screen-record tile first through sysui_qs_tiles to fix RecordingTest on CI's API 36
+  image, proven only on kc37 (API 37, Play), where the paging fallback, not the setting, found the tile. On API 36
+  SystemUI writes its own list back over the setting, and UI Automator's swipe never turns its pager: run
+  45030614916 failed the same way.
+- Root cause: no API 36 image was on the Mac, so the fix rested on how SystemUI was assumed to behave, and the
+  local pass on another image was read as proof for this one.
+- Rule: a failure seen on one emulator or simulator image is reproduced on that image (installed locally under the
+  owner's emulator approval) before a fix is pushed, and the fix's local proof names that image. A pass on another
+  image proves nothing about it.
+
+## 2026-11-28: a partial rerun of the Android run, whose legs take only their own attempt's APKs
+- Mistake: after run 46067531702 failed build b and one API 36 leg, I reran it with `gh run rerun --failed`. Attempt
+  2 rebuilt neither APK hand-off, and both emulator legs failed at once on "Failed to restore cache entry ...
+  android-apks-46067531702-2", costing a run.
+- Root cause: the legs' hand-off cache is keyed on the run and its attempt (a leg tests only the APKs built in its
+  own attempt, by design), and I chose the rerun's scope without reading the jobs' hand-offs.
+- Rule: before a partial rerun, read how the rerun jobs get their inputs from the jobs that will not rerun. An
+  Android run is rerun whole (`gh run rerun RUN`, no `--failed`).

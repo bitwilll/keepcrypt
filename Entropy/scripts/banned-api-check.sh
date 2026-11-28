@@ -9669,7 +9669,9 @@ STUB
     acase "apk-manifest-$f-true" "Manifest: $c/app.apk: application $f=true, not false"
   done
   anew differs
-  sed 's/^targetSdk 36$/targetSdk 35/' "$committed" >"$c/expected/manifest-shipping.txt" || exit 2
+  sed 's/^targetSdk 37$/targetSdk 36/' "$committed" >"$c/expected/manifest-shipping.txt" || exit 2
+  # The edit must change the file, or the case would test nothing (the committed targetSdk moved, M7 D2a).
+  if cmp -s "$committed" "$c/expected/manifest-shipping.txt"; then echo "selftest-apk: the differs case's edit matched nothing in $committed" >&2; exit 2; fi
   acase apk-manifest-summary-differs "Manifest: $c/expected/manifest-shipping.txt: differs from the APK's manifest summary"
   # Every attribute of the application and of each component is in the summary: a library that
   # swaps the class instantiating every component, puts its own Application class in place of
@@ -10279,6 +10281,9 @@ extern int CCRandomGenerateBytes(void *bytes, size_t count);
 #ifdef KC_ARC4
 extern uint32_t arc4random(void);
 #endif
+#ifdef KC_SECRAND
+extern int SecRandomCopyBytes(const void *rnd, size_t count, void *bytes);
+#endif
 #ifdef KC_CFNET
 extern const void *CFNetworkCopySystemProxySettings(void);
 #endif
@@ -10300,6 +10305,9 @@ int main(void) {
 #endif
 #ifdef KC_ARC4
   r += (int)arc4random();
+#endif
+#ifdef KC_SECRAND
+  r += SecRandomCopyBytes(0, 1, b);
 #endif
 #ifdef KC_CFNET
   r += CFNetworkCopySystemProxySettings() != 0;
@@ -10377,6 +10385,7 @@ EOF
   cbuild "$st/source" -DKC_TEXT='"KC_TEST_SOURCE_DO_NOT_SHIP"'
   cbuild "$st/no-import" -DKC_TEXT="$text" -DKC_NO_IMPORT
   cbuild "$st/arc4" -DKC_TEXT="$text" -DKC_ARC4
+  cbuild "$st/secrand" -DKC_TEXT="$text" -DKC_SECRAND -framework Security
   cbuild "$st/cfnetwork" -DKC_TEXT="$text" -DKC_CFNET -framework CFNetwork
   cbuild "$st/paste" -DKC_TEXT="$text" -DKC_PASTE -framework UIKit
   cbuild "$st/rpath" -DKC_TEXT="$text" -DKC_LIB "$st/libkc.dylib"
@@ -10507,6 +10516,9 @@ EOF
   icase ios-no-os-import Shipping 1 "OSImport: $a/KeepCrypt: no undefined _CCRandomGenerateBytes" ": 1 hit(s)"
   inew arc4 "$st/arc4"
   icase ios-arc4random-import Shipping 1 "Symbol: $a/KeepCrypt: undefined _arc4random" ": 1 hit(s)"
+  # M7 E1: the iPhone app's one RNG import is _CCRandomGenerateBytes; Security's generator is another.
+  inew secrand "$st/secrand"
+  icase ios-secrandomcopybytes-import Shipping 1 "Symbol: $a/KeepCrypt: undefined _SecRandomCopyBytes" ": 1 hit(s)"
   inew cfnetwork "$st/cfnetwork"
   icase ios-cfnetwork Shipping 1 "Network: $a/KeepCrypt: undefined _CFNetworkCopySystemProxySettings" \
     "Network: $a/KeepCrypt: links CFNetwork.framework" ": 2 hit(s)"

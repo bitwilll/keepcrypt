@@ -5,12 +5,16 @@
 // the plan's test-registry APK (com.keepcrypt.entropy.testregistry, built only in CI and never
 // released; labelled "KeepCrypt TEST REGISTRY" with a strip on every screen). The Android Gradle
 // plugin refuses a flavour name that starts with "test", hence "with". The instrumented tests run
-// against the release build type too, so they test the bytes that ship. Every M5 APK is a 0.0.0
-// development build.
+// against the release build type too, so they test the bytes that ship. Every APK before the
+// audit's 1.0.0 is a development build (Q101).
 //
-// Reproducibility groundwork (M5 "Built into this plan"; the two-build comparison is M7): no
-// dependency or VCS block in the APK, no R8, no PNG crunching and no baseline profile. Android
-// lint is M7 too, so release builds do not run its vital checks yet.
+// Reproducibility groundwork (M5 "Built into this plan"; the two-build comparison is M7 D1): no
+// dependency or VCS block in the APK, no PNG crunching and no baseline profile. R8 (M7 D2b, lead
+// decision M7-10) shrinks the release build and nothing more (proguard-rules.pro: no optimization,
+// no renaming, the app's own classes kept whole); the test APKs are only linked against it
+// (test-proguard-rules.pro). Android
+// lint (M7 D2): release builds run its vital checks, CI runs the full lint on the shipping release,
+// and any warning fails it, as an error does.
 
 plugins {
     alias(libs.plugins.android.application)
@@ -27,13 +31,14 @@ android {
         minSdk = libs.versions.android.min.sdk.get().toInt()
         targetSdk = libs.versions.android.target.sdk.get().toInt()
         versionCode = 1
-        versionName = "0.0.0"
+        versionName = "0.1.0"
         // Exactly MA:23's three ABIs (lead decision M5-10): a library's native code for any other
         // (graphics-path's x86 copy) stays out of the APK.
         ndk {
             abiFilters.addAll(listOf("arm64-v8a", "armeabi-v7a", "x86_64"))
         }
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testProguardFiles("test-proguard-rules.pro")
     }
     flavorDimensions += "registry"
     productFlavors {
@@ -49,8 +54,9 @@ android {
     buildTypes {
         release {
             isDebuggable = false
-            isMinifyEnabled = false
-            isShrinkResources = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro", "test-keeps.pro")
             isCrunchPngs = false
             vcsInfo {
                 include = false
@@ -70,7 +76,10 @@ android {
         compose = true
     }
     lint {
-        checkReleaseBuilds = false
+        checkReleaseBuilds = true
+        abortOnError = true
+        warningsAsErrors = true
+        checkDependencies = true
     }
     // libkeepcrypt.so is packaged as scripts/android-rust.sh built and scanned it, symbol table and
     // all: banned-api-check.sh --apk requires the APK's copy to be those bytes, and the release
@@ -79,6 +88,11 @@ android {
     packaging {
         jniLibs {
             keepDebugSymbols += "**/libkeepcrypt.so"
+            // Compose's graphics-path library (M7 D5): its native path iterator serves Android 13 and
+            // lower; from API 34, the minSdk, Compose uses the platform's android.graphics.PathIterator,
+            // and in the shrunk app nothing reaches the class whose initializer loads it. So no
+            // prebuilt native code but libkeepcrypt.so ships; a load would fail and end in the crash path.
+            excludes += "lib/*/libandroidx.graphics.path.so"
         }
     }
 }

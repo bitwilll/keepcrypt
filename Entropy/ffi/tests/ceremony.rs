@@ -1501,7 +1501,7 @@ fn right_picks(slot: &Slot, passphrase: &[String]) -> [u8; 2] {
 // generated passphrase, page by page, and its 2-of-4 confirm (a wrong pick keeps the display copy;
 // a second passphrase halts before the confirm and after it, which would void the paper copy);
 // `encrypt_backup`, then `verify_backup` of the saved bytes (a changed byte is refused and the words
-// stay); verify.py's own reader opens it, `keepcrypt-android 0.0.0` with the summary's fingerprint;
+// stay); verify.py's own reader opens it, `keepcrypt-android X.Y.Z` (the crate version) with the summary's fingerprint;
 // and "Check a backup" with first-four entries: an entry that names no word is refused before
 // scrypt, a wrong passphrase after it, and the right one gives the same fingerprint, Seal ID and
 // words, until Done or a discard drops them.
@@ -1598,7 +1598,10 @@ fn ffi_backup_round_trip() {
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect();
-    assert_eq!(opened, format!("android 0.0.0 {hex4}"));
+    assert_eq!(
+        opened,
+        format!("android {} {hex4}", env!("CARGO_PKG_VERSION"))
+    );
     done(slot.end());
 
     let entries: Zeroizing<Vec<String>> = Zeroizing::new(

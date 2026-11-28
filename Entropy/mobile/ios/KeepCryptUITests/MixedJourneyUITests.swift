@@ -108,7 +108,7 @@ final class MixedJourneyUITests: XCTestCase {
         app.checkSavedBackup(passphrase, words)
         app.press("show_about")
         app.on("about", "About")
-        app.waitLabel("about_version", "Version 0.0.0")
+        app.waitLabel("about_version", "Version 0.1.0")
         app.waitLabel("about_flavour", "This build: the TEST REGISTRY app, built only in CI and never released. Registry key: the test key.")
         app.press("back")
         app.on("home", "Home")

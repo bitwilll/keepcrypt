@@ -1,0 +1,124 @@
+# KeepCrypt-Entropy release checks (Entropy/tasks/todo.md, M7 item B3; Q100, Q109, Q110;
+# Entropy/docs/build-plan.md, "Release, reproducible builds and audit"). On a v* tag, the Pi image
+# and Android workflows build, scan and upload their artifacts with each one's SBOM and SHA256SUMS;
+# this workflow does the source-wide part of the same release, from the same commit:
+# - the tag is v and the workspace version (Cargo.toml), and every site names that version
+#   (scripts/check-version.sh);
+# - the gate and the offline verifier's self-test pass;
+# - the workspace SBOM (scripts/sbom.py workspace), verify.py itself, the notes draft
+#   (scripts/release-notes.py: the CHANGELOG.md section, the files, verify.py's SHA-256 and the
+#   reproduce commands) and their SHA256SUMS, uploaded as one artifact.
+# It never signs and never publishes: the owner downloads the three runs' artifacts, checks them
+# against a second build, signs SHA256SUMS offline and makes the release (Entropy/docs/release.md).
+# A pull request that changes the release's scripts or this file runs it too (without the tag
+# check), so a change is proven before a tag needs it. Not a required check.
+#
+# Hardening as in entropy-ci.yml, whose gates job checks this file (banned-api-check.sh
+# --workflows): read-only token and no secret; only actions/checkout and actions/upload-artifact,
+# pinned by commit SHA; no event data inside run scripts.
+
+name: Entropy release
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    paths:
+      - '.github/workflows/entropy-release.yml'
+      - 'Entropy/scripts/release-notes.py'
+      - 'Entropy/scripts/sbom.py'
+      - 'Entropy/scripts/check-version.sh'
+      - 'Entropy/CHANGELOG.md'
+      - 'Entropy/pi/os/container/**'
+      - 'Entropy/pi/os/container.sh'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    # Explicit bash runs with -eo pipefail: any failing command fails the step.
+    shell: bash
+    working-directory: Entropy
+
+jobs:
+  release:
+    name: release checks, workspace SBOM and notes
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Install the pinned toolchain (rust-toolchain.toml)
+        run: |
+          rustup toolchain install
+          rustc --version
+          cargo --version
+      # GITHUB_REF_TYPE and GITHUB_REF_NAME are the runner's own variables. On a tag the tag must be
+      # v and the workspace version; on any other run the check says what it would compare.
+      - name: The tag is v and the workspace version
+        run: |
+          version=$(sed -n '/^\[workspace\.package\]/,/^\[/s/^version = "\([0-9][0-9.]*\)"$/\1/p' Cargo.toml)
+          [ -n "$version" ] || { echo "FAIL: no workspace version in Cargo.toml" >&2; exit 1; }
+          echo "workspace version: $version"
+          echo "KC_VERSION=$version" >> "$GITHUB_ENV"
+          if [ "$GITHUB_REF_TYPE" = tag ]; then
+            [ "$GITHUB_REF_NAME" = "v$version" ] || { echo "FAIL: tag $GITHUB_REF_NAME is not v$version" >&2; exit 1; }
+            echo "tag $GITHUB_REF_NAME is v$version"
+          else
+            echo "not a tag run ($GITHUB_REF_TYPE $GITHUB_REF_NAME): a tag would have to be v$version"
+          fi
+      - run: sh scripts/check-version.sh
+      - run: scripts/banned-api-check.sh
+      - run: python3 -I tools/verify/verify.py selftest
+      - run: python3 -I tools/verify/vectorgen.py --selftest
+      - run: python3 -I scripts/sbom.py --selftest
+      - run: python3 -I scripts/release-notes.py --selftest
+      - name: The workspace SBOM, verify.py, the notes draft and SHA256SUMS
+        run: |
+          rel=$RUNNER_TEMP/release
+          mkdir "$rel"
+          commit=$(git rev-parse HEAD)
+          echo "commit: $commit"
+          cargo metadata --locked --format-version 1 > "$RUNNER_TEMP/metadata.json"
+          python3 -I scripts/sbom.py workspace --metadata "$RUNNER_TEMP/metadata.json" --lock Cargo.lock \
+            --out "$rel/keepcrypt-entropy-$KC_VERSION.sbom.cdx.json"
+          cp tools/verify/verify.py "$rel/verify.py"
+          python3 -I scripts/release-notes.py --version "$KC_VERSION" --commit "$commit" \
+            --changelog CHANGELOG.md --verifier "$rel/verify.py" --out "$rel/RELEASE-NOTES.md"
+          (cd "$rel" && sha256sum -- "keepcrypt-entropy-$KC_VERSION.sbom.cdx.json" verify.py RELEASE-NOTES.md > SHA256SUMS)
+          cat "$rel/SHA256SUMS"
+          cat "$rel/RELEASE-NOTES.md"
+      # The verifier's release (Entropy/tasks/todo.md, M7 F1-F3): the release's verify.py is the tag's, byte for
+      # byte, and check 12's rules (its imports and attributes, no test material, its known answers, a lone copy,
+      # fault twins, audited runs) run on that copy itself.
+      - name: verify.py's release scan (the tag's bytes; check 12 on the release's copy)
+        run: |
+          cmp tools/verify/verify.py "$RUNNER_TEMP/release/verify.py"
+          python3 -I tools/verify/vectorgen.py --selftest --check 12 --verify-py "$RUNNER_TEMP/release/verify.py"
+      # F2: verify.py is for an offline computer, ideally Tails. Tails 7 is Debian 13, trixie (Tails 7.0's
+      # notes), and ships Debian's python3: the pinned Pi build container is trixie at one snapshot (Python
+      # 3.13.5), native on this x86_64 runner, so the verifier's self-tests run on Tails' Python there.
+      - name: The verifier's self-tests on Tails' Python (Debian trixie, the pinned container)
+        run: |
+          export KC_WORK=$RUNNER_TEMP/kc-work
+          mkdir "$KC_WORK"
+          sh pi/os/container.sh build > "$RUNNER_TEMP/container-build.log" 2>&1 || { cat "$RUNNER_TEMP/container-build.log"; exit 1; }
+          grep -E '^python3(\.[0-9]+)? ' "$RUNNER_TEMP/container-build.log"
+          sh pi/os/container.sh run python3 --version
+          sh pi/os/container.sh run python3 -I tools/verify/verify.py selftest
+          sh pi/os/container.sh run python3 -I tools/verify/vectorgen.py --selftest
+      - name: Upload the release's source-wide files
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-source-files
+          path: ${{ runner.temp }}/release/
+          retention-days: 14
+          if-no-files-found: error

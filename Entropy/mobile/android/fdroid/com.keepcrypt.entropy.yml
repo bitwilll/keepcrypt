@@ -1,0 +1,49 @@
+# F-Droid's build recipe for the shipping app (tasks/todo.md, M7 D3; Q105; docs/release.md, "F-Droid").
+# A draft for fdroiddata's metadata/com.keepcrypt.entropy.yml, submitted by the owner after 0.1.0 is
+# tagged. Not yet checked by `fdroid lint` or `fdroid build` (fdroidserver is a new tool: the owner's
+# word first). F-Droid builds the unsigned APK from the tag exactly as CI's build and build-b jobs do,
+# then publishes our signed APK only if its own build matches it byte for byte apart from the
+# signature (Binaries, AllowedAPKSigningKeys): F-Droid's rebuild is the reproduction Q103 counts.
+#
+# Owner items before submission: AllowedAPKSigningKeys is the SHA-256 of the Android release key's
+# certificate (docs/release.md, "Once: the release key"; SECURITY.md); the launcher icon (lint's
+# MissingApplicationIcon, ignored until it exists).
+
+Categories:
+  - Security
+License: MIT OR Apache-2.0
+SourceCode: https://github.com/bitwilll/keepcrypt
+IssueTracker: https://github.com/bitwilll/keepcrypt/issues
+
+AutoName: KeepCrypt
+
+RepoType: git
+Repo: https://github.com/bitwilll/keepcrypt.git
+Binaries: https://github.com/bitwilll/keepcrypt/releases/download/v%v/keepcrypt-%v.apk
+
+Builds:
+  - versionName: 0.1.0
+    versionCode: 1
+    commit: v0.1.0
+    subdir: Entropy/mobile/android/app
+    sudo:
+      - apt-get update
+      - apt-get install -y curl unzip
+    output: build/outputs/apk/shipping/release/app-shipping-release-unsigned.apk
+    srclibs:
+      - rustup@1.29.3
+    ndk: 30.0.16248370
+    prebuild:
+      - $$rustup$$/rustup-init.sh -y --no-modify-path --profile minimal --default-toolchain none
+      - source $HOME/.cargo/env
+      - cd ../../.. && rustup toolchain install && sh scripts/android-rust.sh shipping
+    build:
+      - source $HOME/.cargo/env
+      - cd ../../.. && sh scripts/android-gradle.sh --dependency-verification strict :app:assembleShippingRelease
+
+AllowedAPKSigningKeys: OWNER-RELEASE-CERTIFICATE-SHA256
+
+AutoUpdateMode: Version
+UpdateCheckMode: Tags ^v[0-9.]+$
+CurrentVersion: 0.1.0
+CurrentVersionCode: 1

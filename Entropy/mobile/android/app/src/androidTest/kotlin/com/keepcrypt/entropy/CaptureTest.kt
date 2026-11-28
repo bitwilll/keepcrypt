@@ -723,6 +723,8 @@ class CaptureTest {
         val found = windows(pkg)
         probe("screencap -p: ${Capture.described(cap)}; takeScreenshot(): ${Capture.described(shot)}")
         probe("$name: $capLit lit pixels in screencap, $shotLit in takeScreenshot over the app's window $region")
+        if (capLit > 0) probe("$name: screencap " + Capture.litAccount(cap, region))
+        if (shotLit > 0) probe("$name: takeScreenshot " + Capture.litAccount(shot, region))
         assertEquals("lit pixels in screencap over the app's window", 0, capLit)
         assertEquals("lit pixels in takeScreenshot over the app's window", 0, shotLit)
         assertTrue("the window's flags lack FLAG_SECURE", flagged)

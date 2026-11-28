@@ -15,6 +15,8 @@ The specification lives in `docs/`. Read all of it before starting any milestone
 | `docs/pi-firmware.md` | Pi hardware, OS image, firmware, ceremony screens |
 | `docs/mobile-apps.md` | Android and iPhone apps, capture protection, offline rules |
 | `docs/seal-watchonly-braille.md` | Collision seal and registry, watch-only export, braille backup |
+| `docs/release.md` | The owner's release procedure: tag, second build, offline signing, publishing |
+| `docs/audit.md` | The external audit's packet: scope, threat-model review, findings, residuals, auditor questions |
 | `docs/KeepCrypt-SeedBook_Braille.pdf` | The owner's braille reference: insert format and the full word list |
 
 If the docs and this file disagree, stop and ask the owner. Do not guess.
@@ -150,6 +152,15 @@ TRYBUILD=overwrite cargo test -p keepcrypt-core --locked --test typestate   # on
                                      # pinned .stderr files; review the diff
 cargo deny --locked check && cargo audit && cargo vet --locked   # plain `cargo vet` re-fetches imports
 scripts/check-path-deps.sh           # every non-workspace crate comes from crates.io (no path or git overrides)
+scripts/check-version.sh             # every crate, both apps and the Pi image name the workspace version (M7 B1)
+scripts/check-version.sh --selftest # 51 cases: each site changed or removed in a copy must fail
+python3 -I scripts/sbom.py --selftest  # 32 cases; the SBOMs (CycloneDX 1.6, M7 B2), one per artifact, from cargo metadata:
+# python3 -I scripts/sbom.py workspace --metadata META --lock Cargo.lock --out OUT
+# python3 -I scripts/sbom.py apk --metadata META_ANDROID_TRIPLE (x3) --lock Cargo.lock \
+#   --classpath mobile/android/expected/shipping-runtime-classpath.txt --verification mobile/android/gradle/verification-metadata.xml --out OUT
+# python3 -I scripts/sbom.py pi-image --metadata META_ARM --lock Cargo.lock --manifest $KC_WORK/out/legal-info/manifest.csv --out OUT
+#   (META: cargo metadata --locked --format-version 1 [--filter-platform TRIPLE]; the manifest from make -C pi/os legal-info)
+python3 -I scripts/release-notes.py --selftest   # 10 cases; release.yml (entropy-release.yml) writes the notes draft on a v* tag
 python3 -I tools/verify/vectorgen.py --selftest   # 13 checks; also with /usr/bin/python3 -I (3.9, the floor)
 # Generated vectors are regenerated, never hand-edited, then checked by --selftest:
 python3 -I tools/verify/vectorgen.py --write-seal-vectors        # vectors/seal.json
@@ -211,18 +222,21 @@ scripts/banned-api-check.sh --artifact T target/T/release/libkeepcrypt_core.rlib
 # exit 1 with exactly the registry marker, the simulator marker and the test key, and no stub marker:
 cargo build --release --locked -p keepcrypt-pi-sim --bin keepcrypt-pi-sim --features keepcrypt-core/test-registry --target T --target-dir target/pi-sim-scan
 scripts/banned-api-check.sh --artifact T target/pi-sim-scan/T/release/keepcrypt-pi-sim
-# The Pi image (pi/os; Linux x86_64 hosts only; CI: .github/workflows/entropy-pi-image.yml builds it on two fresh
-# runners and compares). KC_WORK (default /kc-work) holds Buildroot, the downloads, the crates and the build: an
-# absolute path outside Entropy/ with no spaces, the same in every build (reproducibility needs the same path):
-make -C pi/os source                 # the only target that uses the network: pinned Buildroot, every download, the crates
-make -C pi/os image                  # afresh in $KC_WORK/out, offline (a missing download fails it); prints the SHA-256
-make -C pi/os repro-check            # builds it twice in fresh output directories and compares the two images
-make -C pi/os scan                   # after make image: --image-lists on the built image, then --image against expected/
+# The Pi image (pi/os; CI: .github/workflows/entropy-pi-image.yml builds it on two fresh x86_64 runners and an arm64
+# one, and compares). Every command runs in the pinned build container (M7 C1; pi/os/container/Dockerfile), with
+# Docker on any host (linux/amd64; emulated on arm64): the checkout is /keepcrypt and the build directory /kc-work
+# inside. KC_WORK, the host's build directory (absolute, outside Entropy/), holds Buildroot, the downloads, the
+# crates and the build:
+sh pi/os/container.sh build                          # the container: Debian by digest, snapshot.debian.org, rustup by SHA-256
+sh pi/os/container.sh run make -C pi/os source       # the only target that uses the network: pinned Buildroot, every download, the crates
+sh pi/os/container.sh run make -C pi/os image        # afresh in $KC_WORK/out, offline (a missing download fails it); prints the SHA-256
+sh pi/os/container.sh repro-check                    # source and image in one fresh container, image in another; compares
+sh pi/os/container.sh tools make -C pi/os scan       # after make image: --image-lists on the built image, then --image against expected/
 # What CI's image legs run on their build, in this order (make scan runs the first and the last; the build's host
 # mcopy, mdir and unsquashfs first on PATH:
-# PATH="$KC_WORK/out/host/bin:$PATH"); IMG is $KC_WORK/out/images/keepcrypt-pi-0.0.0-st7789-240x240.img, KCONFIG the
+# PATH="$KC_WORK/out/host/bin:$PATH"); IMG is $KC_WORK/out/images/keepcrypt-pi-0.1.0-st7789-240x240.img, KCONFIG the
 # one $KC_WORK/out/build/linux-*/.config and BIN_SHA256 the SHA-256 of the keepcrypt-pi cargo built, in
-# $KC_WORK/out/build/keepcrypt-pi-0.0.0/target/arm-unknown-linux-gnueabihf/release/ (so the packed binary is that file):
+# $KC_WORK/out/build/keepcrypt-pi-0.1.0/target/arm-unknown-linux-gnueabihf/release/ (so the packed binary is that file):
 scripts/banned-api-check.sh --image-lists IMG KCONFIG          # the listing pi/os/expected/ was reviewed from; not a scan
 scripts/banned-api-check.sh --selftest-image IMG KCONFIG       # the scan's positive controls, as mutations of the built image
 scripts/banned-api-check.sh --image IMG pi/os/expected KCONFIG BIN_SHA256   # the scan; a hit fails the leg before
@@ -259,7 +273,7 @@ scripts/banned-api-check.sh --ios-app CONFIG APP mobile/ios/expected   # CONFIG 
                                      # .app's Info.plist and privacy manifest against expected/, its own files alone, its
                                      # binary under the artifact rules (no hooks marker; the registry marker and test key
                                      # in WithTestRegistry alone), no network, clipboard or embedded library (macOS)
-scripts/banned-api-check.sh --selftest-ios-app   # 36 cases on stand-in apps built with the SDK's clang and swiftc
+scripts/banned-api-check.sh --selftest-ios-app   # 37 cases on stand-in apps built with the SDK's clang and swiftc
                                      # (macOS with Xcode only; entropy-ios.yml runs it, the gates job cannot)
 # The Android app (mobile/android; CI: .github/workflows/entropy-android.yml, not a required check; needs the
 # Android SDK, NDK and JDK the workflow pins). Rust libraries for both flavours, then the strict Gradle build:

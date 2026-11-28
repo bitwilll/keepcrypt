@@ -4,7 +4,7 @@
 // raw-frame calls must find its pixels; a missing control fails the job. Its words page is a gate
 // seed's page from vectors/, made as :core-ffi's WordPage (lead decision M5-68 (f)); it has no
 // native library. Its own app id; :app never depends on it. Release build type, not debuggable,
-// with the app's reproducibility settings (and, as there, no lint until M7).
+// with the app's reproducibility settings, and no lint: it never ships (M7 D2 lints the app).
 
 plugins {
     alias(libs.plugins.android.application)
@@ -21,7 +21,7 @@ android {
         minSdk = libs.versions.android.min.sdk.get().toInt()
         targetSdk = libs.versions.android.target.sdk.get().toInt()
         versionCode = 1
-        versionName = "0.0.0"
+        versionName = "0.1.0"
         // Exactly MA:23's three ABIs (lead decision M5-10): a library's native code for any other
         // (graphics-path's x86 copy) stays out of the APK.
         ndk {

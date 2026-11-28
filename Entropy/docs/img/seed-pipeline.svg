@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1344" height="1010" viewBox="0 0 1344 1010" font-family="-apple-system, 'Segoe UI', Helvetica, Arial, sans-serif">
+<title>KeepCrypt-Entropy seed pipeline: two legs, one combine step</title>
+<defs>
+<marker id="head" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse"><path d="M0 1 L9 5 L0 9 z" fill="#b9bcb0"/></marker>
+</defs>
+<rect width="1344" height="1010" fill="#ffffff"/>
+<text x="42" y="50" font-size="27" font-weight="600" fill="#1f2328">The seed stays safe if either the device leg or the dice leg is honest</text>
+<text x="42" y="86" font-size="20" fill="#57606a">Every state stays at least 256 bits wide; any failed test or missed quota halts generation</text>
+<text x="42" y="134" font-size="23" font-weight="600" fill="#1f2328">Device leg D</text>
+<text x="764" y="134" font-size="23" font-weight="600" fill="#1f2328">User leg R</text>
+<rect x="42" y="160" width="652" height="156" rx="10" fill="#ffffff" stroke="#c8cac2" stroke-width="2"/>
+<text x="64" y="202" font-size="23" font-weight="600" fill="#1f2328">Device sources</text>
+<text x="64" y="232" font-size="20" fill="#57606a">hardware RNG and getrandom(): credited</text>
+<text x="64" y="261" font-size="20" fill="#57606a">open TRNG in phase 2: credited</text>
+<text x="64" y="290" font-size="20" fill="#57606a">camera, mic, IMU, keys: mixed, never counted</text>
+<rect x="42" y="358" width="652" height="128" rx="10" fill="#ffffff" stroke="#c8cac2" stroke-width="2"/>
+<text x="64" y="400" font-size="23" font-weight="600" fill="#1f2328">Health tests on raw samples</text>
+<text x="64" y="430" font-size="20" fill="#57606a">Repetition Count and Adaptive Proportion</text>
+<text x="64" y="459" font-size="20" fill="#57606a">any failure halts; no fallback path</text>
+<rect x="42" y="528" width="652" height="128" rx="10" fill="#ffffff" stroke="#c8cac2" stroke-width="2"/>
+<text x="64" y="570" font-size="23" font-weight="600" fill="#1f2328">SHA-512 pool, 512 bits wide</text>
+<text x="64" y="600" font-size="20" fill="#57606a">tag, length and data for every record</text>
+<text x="64" y="629" font-size="20" fill="#57606a">D = first 32 bytes of the digest</text>
+<path d="M368 316 L368 356" fill="none" stroke="#b9bcb0" stroke-width="2" marker-end="url(#head)"/>
+<path d="M368 486 L368 526" fill="none" stroke="#b9bcb0" stroke-width="2" marker-end="url(#head)"/>
+<rect x="764" y="160" width="538" height="128" rx="10" fill="#ffffff" stroke="#c8cac2" stroke-width="2"/>
+<text x="786" y="202" font-size="23" font-weight="600" fill="#1f2328">Commitment C shown first</text>
+<text x="786" y="232" font-size="20" fill="#57606a">C = SHA-256(tag, D)</text>
+<text x="786" y="261" font-size="20" fill="#57606a">on screen before any roll is typed</text>
+<rect x="764" y="358" width="538" height="128" rx="10" fill="#ffffff" stroke="#c8cac2" stroke-width="2"/>
+<text x="786" y="400" font-size="23" font-weight="600" fill="#1f2328">Physical dice</text>
+<text x="786" y="430" font-size="20" fill="#57606a">50 rolls for 12 words, 99 for 24</text>
+<text x="786" y="459" font-size="20" fill="#57606a">99 after a collision; typed in privately</text>
+<rect x="764" y="528" width="538" height="128" rx="10" fill="#ffffff" stroke="#c8cac2" stroke-width="2"/>
+<text x="786" y="570" font-size="23" font-weight="600" fill="#1f2328">Roll string R</text>
+<text x="786" y="600" font-size="20" fill="#57606a">2.585 bits per roll (log2 6)</text>
+<text x="786" y="629" font-size="20" fill="#57606a">50 rolls give 129.2 bits; 99 give 255.9</text>
+<path d="M1033 288 L1033 356" fill="none" stroke="#b9bcb0" stroke-width="2" marker-end="url(#head)"/>
+<path d="M1033 486 L1033 526" fill="none" stroke="#b9bcb0" stroke-width="2" marker-end="url(#head)"/>
+<path d="M694 592 L729 592 L729 224 L762 224" fill="none" stroke="#b9bcb0" stroke-width="2" marker-end="url(#head)"/>
+<text x="740" y="414" font-size="20" fill="#57606a">D</text>
+<rect x="283" y="712" width="778" height="128" rx="10" fill="#e5eef9" stroke="#2f6fd0" stroke-width="3"/>
+<text x="305" y="754" font-size="23" font-weight="600" fill="#1f2328">Combine: E = SHA-256(tag, D, len(R), R)</text>
+<text x="305" y="784" font-size="20" fill="#57606a">strong if either leg is honest</text>
+<text x="305" y="813" font-size="20" fill="#57606a">dice-only mode: E = SHA-256(R), as Coldcard</text>
+<path d="M368 656 L368 710" fill="none" stroke="#b9bcb0" stroke-width="2" marker-end="url(#head)"/>
+<path d="M1033 656 L1033 710" fill="none" stroke="#b9bcb0" stroke-width="2" marker-end="url(#head)"/>
+<rect x="354" y="878" width="636" height="112" rx="10" fill="#ffffff" stroke="#c8cac2" stroke-width="2"/>
+<text x="376" y="920" font-size="23" font-weight="600" fill="#1f2328">BIP39 encoding: 12 words (24 optional)</text>
+<text x="376" y="950" font-size="20" fill="#57606a">12: first 128 bits of E; 24: all 256; plus checksum</text>
+<path d="M672 840 L672 876" fill="none" stroke="#b9bcb0" stroke-width="2" marker-end="url(#head)"/>
+<rect x="1046" y="878" width="256" height="112" rx="10" fill="#ffffff" stroke="#c8cac2" stroke-width="2" stroke-dasharray="7 6"/>
+<text x="1068" y="920" font-size="23" font-weight="600" fill="#1f2328">Offline verifier</text>
+<text x="1068" y="950" font-size="20" fill="#57606a">recomputes C and E</text>
+<path d="M1044 934 L992 934" fill="none" stroke="#b9bcb0" stroke-width="2" stroke-dasharray="7 6" marker-end="url(#head)"/>
+</svg>

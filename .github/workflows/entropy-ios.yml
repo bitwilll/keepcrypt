@@ -34,9 +34,10 @@
 # verify on every build) is the one thing cached, keyed on the toolchain and Cargo.lock; no built
 # library or app is.
 #
-# Not one of the 14 required checks (Q91), so path filters are safe, as in entropy-android.yml: a
-# skipped run never leaves a required check pending. The rule instead (Q38 (b)): no PR that touches
-# these paths merges without a green run of this workflow on its final head. They name every input of
+# Required through its last job, "iphone result" (M7 H3; Q108 (a), once the owner adds it to main's
+# ruleset; until then Q38 (b)'s rule: no PR that touches these paths merges without a green run of
+# this workflow on its final head). So no paths: filter on pull_request: the changes job compares a
+# PR with these paths and the other jobs run or are skipped by its answer. They name every input of
 # the app: the project and its Swift, the Rust library's crates, manifests and toolchain, the vectors
 # and the shared screen table the tests read, the Android screens' sources whose texts they pin (D3),
 # the scripts it runs and this file.
@@ -50,20 +51,8 @@
 name: Entropy iPhone
 
 on:
+  # No paths: filter on pull_request (M7 H3): the changes job below decides which jobs run.
   pull_request:
-    paths:
-      - 'Entropy/mobile/ios/**'
-      - 'Entropy/mobile/screens.json'
-      - 'Entropy/mobile/android/screens/src/commonMain/**'
-      - 'Entropy/ffi/**'
-      - 'Entropy/core/**'
-      - 'Entropy/Cargo.toml'
-      - 'Entropy/Cargo.lock'
-      - 'Entropy/rust-toolchain.toml'
-      - 'Entropy/vectors/**'
-      - 'Entropy/scripts/banned-api-check.sh'
-      - 'Entropy/scripts/ios-rust.sh'
-      - '.github/workflows/entropy-ios.yml'
   push:
     branches: [main]
     paths:
@@ -78,6 +67,8 @@ on:
       - 'Entropy/vectors/**'
       - 'Entropy/scripts/banned-api-check.sh'
       - 'Entropy/scripts/ios-rust.sh'
+      - 'Entropy/scripts/ios-warmup.sh'
+      - 'Entropy/scripts/ios-sampled.sh'
       - '.github/workflows/entropy-ios.yml'
   schedule:
     # Weekly (Mondays, 06:17 UTC): main still builds and passes on the runners' current images.
@@ -107,8 +98,52 @@ defaults:
     working-directory: Entropy
 
 jobs:
+  changes:
+    # Did this PR change what this workflow tests (tasks/todo.md, M7 H3; Q108 (a))? The workflow
+    # starts on every PR, as entropy-ci.yml does, because a required check on a path-filtered
+    # workflow stays pending on every PR it skips; every other job needs this one and is skipped
+    # when it says no. The pathspecs are the push trigger's paths, in git's spelling (a directory
+    # for its "/**"). A pull request's checkout is its merge commit, whose first parent is the
+    # base branch; any other event (push, tag, schedule, dispatch) runs every job. The answer is git
+    # diff's exit code, never a text match (entropy-ci.yml's changes job says why); a range that
+    # cannot be read counts as a change.
+    name: iphone changes (its paths or this workflow)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      needed: ${{ steps.diff.outputs.needed }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+      - id: diff
+        env:
+          EVENT: ${{ github.event_name }}
+        run: |
+          top=$(git rev-parse --show-toplevel)
+          cd "$top"
+          if [ "$EVENT" != pull_request ]; then
+            echo "a $EVENT run: every job runs"
+            run=true
+          else
+            rc=0
+            git diff --quiet --no-renames HEAD^1 HEAD -- 'Entropy/mobile/ios/' 'Entropy/mobile/screens.json' 'Entropy/mobile/android/screens/src/commonMain/' 'Entropy/ffi/' 'Entropy/core/' 'Entropy/Cargo.toml' 'Entropy/Cargo.lock' 'Entropy/rust-toolchain.toml' 'Entropy/vectors/' 'Entropy/scripts/banned-api-check.sh' 'Entropy/scripts/ios-rust.sh' 'Entropy/scripts/ios-warmup.sh' 'Entropy/scripts/ios-sampled.sh' '.github/workflows/entropy-ios.yml' 2>/dev/null || rc=$?
+            case $rc in
+              0) run=false ;;
+              1) run=true ;;
+              *) echo "cannot read HEAD^1..HEAD (git diff exit $rc); every job runs"; run=true ;;
+            esac
+            if [ "$rc" -le 1 ]; then
+              git -c core.quotePath=false diff --name-only --no-renames HEAD^1 HEAD -- 'Entropy/mobile/ios/' 'Entropy/mobile/screens.json' 'Entropy/mobile/android/screens/src/commonMain/' 'Entropy/ffi/' 'Entropy/core/' 'Entropy/Cargo.toml' 'Entropy/Cargo.lock' 'Entropy/rust-toolchain.toml' 'Entropy/vectors/' 'Entropy/scripts/banned-api-check.sh' 'Entropy/scripts/ios-rust.sh' 'Entropy/scripts/ios-warmup.sh' 'Entropy/scripts/ios-sampled.sh' '.github/workflows/entropy-ios.yml' | sed -n '1,50s/^/changed here: /p'
+            fi
+          fi
+          echo "needed=$run" | tee -a "$GITHUB_OUTPUT"
+
   unit:
     name: iphone unit (${{ matrix.os }}, Xcode ${{ matrix.xcode }}, ${{ matrix.device }} iOS ${{ matrix.ios }})
+    needs: changes
+    if: ${{ needs.changes.outputs.needed == 'true' }}
     runs-on: ${{ matrix.os }}
     # Budget (lead decision M5-30's rule): the measured whole job plus 25%, rounded up. The first green
     # run, 44049143630 at ab3e8ab0, took 826 s on macos-26 and 857 s on macos-15: 857 s x 1.25 is
@@ -327,6 +362,8 @@ jobs:
 
   journeys:
     name: iphone journeys ${{ matrix.group }} (${{ matrix.os }}, Xcode ${{ matrix.xcode }}, ${{ matrix.device }} iOS ${{ matrix.ios }})
+    needs: changes
+    if: ${{ needs.changes.outputs.needed == 'true' }}
     runs-on: ${{ matrix.os }}
     # Each row's budget (timeout, read here; M5-30's rule): its measured job plus 25%, rounded up, from the
     # slower leg. Run 44173357483 at 4c2d9859 measured the journeys (macos-26 / macos-15, seconds):
@@ -368,6 +405,8 @@ jobs:
     # word): macos-26's ran past 30 minutes in runs 44306763928 and 44326338905, its narrow iPhone's
     # test-without-building waiting 922 s and then 14 minutes (15:38:42 to 15:52:49) before "Running tests" on
     # a freshly made iOS 26.5 simulator; macos-15's whole job took 1245 s. M5-30 re-measures from two green runs.
+    # macos-26's journeys-1 at 35 (M7-15, the owner's word, 2026-11-28): run 45891831276 at a9066203 cancelled it at
+    # 31 on a slow runner, and its re-run took 1795 s, 65 s inside the 31.
     timeout-minutes: ${{ matrix.timeout }}
     strategy:
       fail-fast: false
@@ -379,7 +418,7 @@ jobs:
             device: iPhone 17
             group: journeys-1
             classes: CannotCheckJourneyUITests ScanUITests
-            timeout: 31
+            timeout: 35
           - os: macos-26
             xcode: '26.6'
             ios: '26.5'
@@ -557,9 +596,13 @@ jobs:
           dd=$RUNNER_TEMP/dd
           xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
             -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO build-for-testing
+          # M7-13 (the owner's (b)): the app launched once on the simulator before its tests (scripts/ios-warmup.sh).
+          sh scripts/ios-warmup.sh "$KC_SIM" "$dd/Build/Products/TestHooks-iphonesimulator/KeepCrypt.app"
           only=()
           for class in $KC_CLASSES; do only+=("-only-testing:KeepCryptUITests/$class"); done
-          xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
+          # M7-14: the app sampled every 20 s while the tests run; printed only if they fail (scripts/ios-sampled.sh).
+          sh scripts/ios-sampled.sh "$RUNNER_TEMP/sampled" \
+            xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
             -destination "id=$KC_SIM" -derivedDataPath "$dd" CODE_SIGNING_ALLOWED=NO "${only[@]}" test-without-building
           exe=$dd/Build/Products/TestHooks-iphonesimulator/KeepCrypt.app/KeepCrypt
           n=$(grep -c -a KC_TEST_HOOKS_DO_NOT_SHIP "$exe") || { echo "FAIL: no KC_TEST_HOOKS_DO_NOT_SHIP in $exe" >&2; exit 1; }
@@ -576,6 +619,10 @@ jobs:
       # (390), each narrower than the leg's own device; a second simulator made from that device type (none is
       # installed or downloaded), booted and checked as the first is. None for the runtime is logged and said,
       # and the narrow run is then skipped by name.
+      # M7-12: the leg's own simulator is shut down first; no later step uses it. Runs 44990020044, 45006519588
+      # and 45030614911 (macos-26, iOS 26.5) lost the narrow run to a simulator process that stopped answering
+      # (the app's launch timed out; an accessibility IPC timeout on pid 1102 while the app was 38484): two
+      # iOS 26.5 simulators booted at once on the runner's three cores, where macos-15's iOS 18.6 pair passes.
       - name: Narrow iPhone (journeys-6, a device type of the image's)
         if: matrix.group == 'journeys-6'
         run: |
@@ -598,6 +645,7 @@ jobs:
             echo "narrow iPhone: none of the image's device types narrower than $KC_DEVICE runs $runtime; DynamicTypeUITests runs on $KC_DEVICE alone"
             exit 0
           fi
+          xcrun simctl shutdown "$KC_SIM" || fail "the leg's own simulator $KC_SIM did not shut down"
           xcrun simctl boot "$narrow" || fail "simctl boot failed"
           xcrun simctl bootstatus "$narrow" -b || fail "simctl bootstatus failed (exit $?)"
           xcrun simctl list devices -j > "$RUNNER_TEMP/narrow.json" || fail "simctl list failed"
@@ -611,32 +659,15 @@ jobs:
             echo "narrow iPhone: none for this runtime (the step before says why); not run"
             exit 0
           fi
-          # U3n: the app's main thread sampled every 20 s while the test runs (an unresponsive app leaves no crash
-          # report; run 44836559071 at b167f155 timed out its UI queries on iOS 26.5 at the largest text size).
-          # Function names of the TestHooks app on test values; printed only if the step fails.
-          mkdir -p "$RUNNER_TEMP/samples"
-          (
-            while :; do
-              pid=$(pgrep -x KeepCrypt | head -n 1)
-              if [ -n "$pid" ]; then
-                sample "$pid" 2 -mayDie -file "$RUNNER_TEMP/samples/$(date +%s).txt" > /dev/null 2>&1 || true
-              fi
-              sleep 20
-            done
-          ) &
-          sampler=$!
-          status=0
-          xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
+          # M7-13: the narrow iPhone warmed up as the leg's own was (scripts/ios-warmup.sh).
+          sh scripts/ios-warmup.sh "$KC_NARROW" "$RUNNER_TEMP/dd/Build/Products/TestHooks-iphonesimulator/KeepCrypt.app"
+          # U3n, M7-3, M7-14: the app sampled every 20 s while the test runs; printed only if it fails
+          # (scripts/ios-sampled.sh; run 44836559071 at b167f155 timed out its UI queries on iOS 26.5 at the
+          # largest text size, and an unresponsive app leaves no crash report).
+          sh scripts/ios-sampled.sh "$RUNNER_TEMP/narrow-sampled" \
+            xcodebuild -project mobile/ios/KeepCrypt.xcodeproj -scheme KeepCrypt-TestHooks -configuration TestHooks \
             -destination "id=$KC_NARROW" -derivedDataPath "$RUNNER_TEMP/dd" CODE_SIGNING_ALLOWED=NO \
-            -only-testing:KeepCryptUITests/DynamicTypeUITests test-without-building || status=$?
-          kill "$sampler" 2> /dev/null || true
-          if [ "$status" -ne 0 ]; then
-            for f in $(ls "$RUNNER_TEMP/samples" | tail -n 4); do
-              echo "== sample $f (the main thread's heaviest frames)"
-              sed -n '/^Call graph:/,/^Total number in stack/p' "$RUNNER_TEMP/samples/$f" | head -n 120
-            done
-          fi
-          exit "$status"
+            -only-testing:KeepCryptUITests/DynamicTypeUITests test-without-building
       # On a failure, the simulators' crash and hang reports for the app (U3l: an app lost on iOS 18.6 left
       # nothing but "not running"). Thread backtraces of the TestHooks app on test values; no artifact.
       - name: The app's crash reports (on a failure)
@@ -651,3 +682,34 @@ jobs:
             echo
           done
           [ "$found" = 1 ] || echo "no KeepCrypt crash or hang report on this runner"
+
+  result:
+    # The one check of this workflow that main's ruleset requires (tasks/todo.md, M7 H3; Q108 (a)).
+    # It runs always, a cancelled run too, so a cancelled or skipped job can never read as passing:
+    # it fails unless the changes job succeeded and then either every job succeeded (a change) or
+    # every job was skipped (none). Job names elsewhere in this file may change; this one may not.
+    name: iphone result
+    needs: [changes, unit, journeys]
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Every job succeeded, or none was needed
+        working-directory: .
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          RUN: ${{ needs.changes.outputs.needed }}
+          RESULTS: unit=${{ needs.unit.result }} journeys=${{ needs.journeys.result }}
+        run: |
+          fail() { echo "FAIL: $*" >&2; exit 1; }
+          [ "$CHANGES" = success ] || fail "the changes job's result is $CHANGES, not success"
+          case $RUN in
+            true) want=success ;;
+            false) want=skipped ;;
+            *) fail "the changes job said run=$RUN" ;;
+          esac
+          for r in $RESULTS; do
+            echo "$r"
+            [ "${r#*=}" = "$want" ] || fail "${r%%=*} is ${r#*=}, not $want (run=$RUN)"
+          done
+          echo "run=$RUN: every job $want"

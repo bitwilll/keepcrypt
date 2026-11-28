@@ -106,16 +106,37 @@ extension XCUIApplication {
         button.tap()
     }
 
-    /// Waits until the element id's label is label.
+    /// Waits until the element id's label is label. Each look is one query for an element with both that id and that
+    /// label, whose exists never fails the test: run 45016186645 checked exists and then read the live label, and the
+    /// read-back's header, replaced between the two for the next insert, failed the test hard ("Failed to get
+    /// matching snapshot") instead of being looked at again.
     func waitLabel(_ id: String, _ label: String, timeout: TimeInterval = 30, file: StaticString = #filePath, line: UInt = #line) {
-        let element = self.element(id)
-        let shows = NSPredicate(format: "label == %@", label)
         let deadline = Date().addingTimeInterval(timeout)
         while Date() < deadline {
-            if element.exists, shows.evaluate(with: element) { return }
+            if labelShown(id, label) { return }
             usleep(100_000)
         }
-        XCTFail("\(id) never read as expected", file: file, line: line)
+        XCTFail("\(id) never read as expected; touches \(touchCounts()); " + facts(), file: file, line: line)
+    }
+
+    /// Whether the element id reads label now: one query for both, whose exists never fails the test (waitLabel).
+    func labelShown(_ id: String, _ label: String) -> Bool {
+        descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier == %@ AND label == %@", id, label)).firstMatch.exists
+    }
+
+    /// The button id pressed as a person presses it, its effect the element labelId reading label (the next insert's
+    /// header on the same screen): classified as pressUntil classifies a press that did nothing. M7-16: run
+    /// 46054903424's journeys-4 (macos-26) lost the bare tap of "next" after insert 22 of 24, the app's main thread
+    /// idle in each of the sampler's last four samples, and the header waited 30 s for insert 23.
+    func pressToLabel(
+        _ id: String, _ labelId: String, _ label: String, file: StaticString = #filePath, line: UInt = #line
+    ) {
+        let button = buttons[id]
+        XCTAssertTrue(button.waitForExistence(timeout: 30), "no button " + id + "; " + facts(), file: file, line: line)
+        pressUntil(button, id + " to " + label, placed: true, file: file, line: line) {
+            self.labelShown(labelId, label)
+        }
     }
 
     /// Launched, past First launch and the self-test, the offline path reported, Start: Home.
@@ -440,10 +461,12 @@ extension XCUIApplication {
                 press("continue")
                 passGate("word 13")
                 on("words", "insert 13", file: file, line: line)
-            } else if position > 1 {
-                press("next")
             }
-            waitLabel("insert_header", String(format: "Insert %02d \u{00B7} device %d of %d", position, device, devices), file: file, line: line)
+            let header = String(format: "Insert %02d \u{00B7} device %d of %d", position, device, devices)
+            if position > 1 && position != 13 {
+                pressToLabel("next", "insert_header", header, file: file, line: line)
+            }
+            waitLabel("insert_header", header, file: file, line: line)
             words.append(element("kc_secret_insert_word").label)
         }
         if let expected {

@@ -257,9 +257,9 @@ No entropy source protects against code that ignores it, so let users check the 
 
 Run seed generation as one small, isolated module: two independent legs, a single combine step, fail-closed gates, and an offline check the user can run.
 
-![KeepCrypt-Entropy seed pipeline · two legs, one combine step](img/seed-pipeline.png)
+![KeepCrypt-Entropy seed pipeline · two legs, one combine step](img/seed-pipeline.svg)
 
-The device leg carries a full 256 bits and the dice leg at least 128 (about 256 with 99 rolls: 255.9, which the figure's "99 give 256" rounds up); the commitment is shown before any roll, so neither side can steer the other. The dashed path is the user's own check on a separate offline computer.
+The device leg carries a full 256 bits and the dice leg at least 128 (about 256 with 99 rolls: 255.9); the commitment is shown before any roll, so neither side can steer the other. The dashed path is the user's own check on a separate offline computer. `tools/figures/seed_pipeline.py` draws the figure, its roll quotas read from core and its bits computed, and CI fails if the committed file differs.
 
 **Kept out of the seed module:** the games, any network stack, file storage, and logging. None of them can read the pool. The games run in the app's one process but hold no path to the session: they take their bytes only from core's separate `game_random` call, and only the ceremony loop forwards their button timing to the pool, uncredited.
 

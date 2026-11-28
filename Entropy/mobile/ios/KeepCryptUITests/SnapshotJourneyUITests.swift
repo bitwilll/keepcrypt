@@ -27,7 +27,7 @@ final class SnapshotJourneyUITests: XCTestCase {
         app.toHome()
         app.press("show_about")
         app.on("about", "About")
-        app.waitLabel("about_version", "Version 0.0.0")
+        app.waitLabel("about_version", "Version 0.1.0")
         app.press("back")
         app.on("home", "Home")
         app.press("load_snapshot")
@@ -55,8 +55,9 @@ final class SnapshotJourneyUITests: XCTestCase {
         app.checklistToFinish()
         pass("snapshot: dice-50-words12's 50 rolls checked against the snapshot on its own, its 12 words read back, the summary, every export skipped, Finish (\(Int(Date().timeIntervalSince(started))) s)")
         app.press("hook_halt")
-        app.press("new_seed")
-        app.on("length", "Length")
+        // pressTo, not press (run 45016186645): a press that never reached the app is pressed again, the button
+        // brought above the TestHooks panel first; one the app saw that did nothing still fails here.
+        app.pressTo("new_seed", "length")
         app.press("words_12")
         app.on("stop", "the stop screen", timeout: 120)
         app.waitLabel("halt_reason", "An internal check failed.")

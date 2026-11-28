@@ -20560,6 +20560,749 @@ capture handling, backup via document picker". Needs M1, M2, and M5 if it reuses
   run 44865641576, 14 of 14 jobs success (unit and journeys-1..6 on iOS 26.5 iPhone 17 and iOS 18.6 iPhone 16).
   Also green there: Entropy Android 44865641612 (9 of 9), Entropy Pi image 44865641588 (a = b).
 
+## M7: Hardening and audit
+
+Gate (docs/build-plan.md:302): "External auditor signs off; a third party reproduces the Pi image and Android APK".
+Deliverables: "Birthday-collision job, signed reproducible releases, SBOM, threat-model review". Needs M4, M5, M6
+(all merged). Two parts of the gate are people outside the project (an auditor, a third-party builder), so M7 has two
+halves: the work that makes a release auditable and reproducible (Stages A-H, ours), and the audit and outside rebuild
+(the owner's arrangements, Q102 and Q103). The plan below is for the owner's review; no M7 code until it is approved.
+
+### Inputs from M6 and earlier
+- M6 merged 2026-11-21 as bd242098 (PR bitwilll/keepcrypt#10); `m7-hardening` is cut from it. Still open from M6, owed
+  by the owner: I0-I5 on a real iPhone, Q89 (its model and iOS version); from M5: the S25's Android version and
+  TalkBack P1. None blocks M7's own stages; all are needed before a release (BP:323 "one real phone").
+- Items earlier milestones moved to M7, collected (todo.md line numbers at bd242098):
+  - Birthday-collision nightly job on core (BP:320; Q42 (b), :1176-1180; reboots stay with M8's bench image).
+  - Release signing, minisign or GPG, and who holds the key (:1391); release numbering, `0.0.0` until M7 (:1188).
+  - verify.py's release form, its release scan, its selftest on Tails' Python, and `tools/verify` in the audit scope
+    (:4759-4766); the shared user guide (MA:168).
+  - Pi (:9509-9525): the pinned build container (Debian by digest, snapshot apt) and `repro-check` in clean
+    containers; a third-party and an arm64-host reproduction; Buildroot's next LTS and a current kernel before the
+    first release (:1055); dm-verity (Q39 (g)); a hang watchdog (audit question); the Pi image as a required check.
+  - Android (:14104-14112): two builds giving one APK hash and a third-party rebuild; release signing and SBOM;
+    F-Droid, GitHub releases, Play and the Data safety label; target 37; lint and R8 with the dex scan on the shrunk
+    APK; an API 35 MediaProjection leg; emulator and image pinning; the Android workflow required; Pixel and Samsung
+    capture checks before release; graphics-path's native library.
+  - iPhone: its own expected-symbol list for releases (:1395); source, exact Xcode and build steps (BP:343).
+  - The audit list (owner item 6 and later): core's library residuals (:1407-1420), qrcodegen-no-heap's stack
+    temporaries (:6782), the Pi's kernel FAT/USB paths, rppal's and nix's unsafe sites, the spidev buffer, the hwrng
+    `reading_mutex`, Buildroot's `.hash` inputs (:9515-9521), keepcrypt-jni and jni-sys, `:secure-ui`, Documents.kt,
+    the scanner, the JVM and iPhone residuals (MA:17), tombstones, swap, page locking (:14109-14111), the signers
+    trusted on first use (:15164, :15535, :16586).
+  - Owner item 13: the seed-pipeline figure, drawn from a committed script if no source file arrives (:932).
+
+### Questions for the owner (Q100-Q108, asked 2026-11-21)
+100. **Release signing key** (:1391; BP:346)
+     Recommended: minisign (one small tool, Ed25519, what PF:177 already shows). The owner makes the key pair on an
+     offline computer and keeps the secret key and its password offline; only the public key enters the repo
+     (`Entropy/release/keepcrypt.pub`, SECURITY.md, PF:177). CI never holds it: CI builds and writes SHA256SUMS, the
+     owner checks the sums against a second, local or third-party build, then signs SHA256SUMS offline and uploads
+     the `.minisig`. Otherwise: GPG; or a CI-held key (convenient, but a CI compromise then signs releases).
+101. **Version numbers** (:1188)
+     Recommended: the first tagged release is `0.1.0`, marked pre-release and "not for real funds until the audit"
+     (SECURITY.md stays as is); `1.0.0` only after the audit's fixes (BP:350). Tags `v0.1.0`; the image
+     `keepcrypt-pi-0.1.0.img`; backups read `created-by: keepcrypt-<platform> 0.1.0`. Otherwise: start at 1.0.0.
+102. **The external audit** (BP:350; design.md:291-294)
+     Recommended: the owner chooses and engages the auditor; I prepare the audit packet (Stage G): scope `core/`,
+     `ffi/`, `tools/verify/`, the Pi image build, both apps' capture and backup code; the threat-model review; the
+     collected residual and trust-on-first-use list; the release and reproduction steps. The gate records the
+     auditor's sign-off and the published report. Otherwise: name the auditor now, or narrow the scope.
+103. **The third-party reproduction** (BP:302)
+     Recommended: one builder outside the project rebuilds `0.1.0`'s Pi image and Android APK from the tag with the
+     documented commands on their own Linux x86_64 machine and posts the SHA-256 of each (a signed comment or issue);
+     F-Droid's own rebuild counts for the APK once it is listed. I add an arm64-host leg in CI too, which is not a third
+     party. Otherwise: the auditor does the rebuild (design.md:294 asks them to anyway).
+104. **Buildroot and the kernel before the first release** (:1055)
+     Recommended: stay on Buildroot 2026.08 for `0.1.0` with the newest 6.12.y LTS kernel that is at least 14 days old,
+     its Kconfig compare and hashes redone; move to Buildroot 2027.02 LTS (due in early 2027) before `1.0.0`, after its
+     14-day wait. Otherwise: hold the first release for 2027.02.
+105. **Android distribution** (:14104; MA:190-199)
+     Recommended: GitHub releases (an APK signed with a release key the owner holds offline, as Q100) and F-Droid
+     (reproducible, verified against our signature); Google Play later, after its crypto-wallet policy is checked.
+     targetSdk 37; R8 and lint on, with the dex scan moved to the shrunk APK. Otherwise: name the channels.
+106. **iPhone distribution** (MA:196-197; BP:343)
+     Recommended: for `0.1.0`, source plus the exact Xcode version and build steps only (iOS cannot be reproduced);
+     the App Store waits for the legal entity guideline 3.1.5(i) needs, which is the owner's to set up. Otherwise:
+     TestFlight now (needs the paid Developer Program).
+107. **Pi image integrity** (Q39 (g))
+     Recommended: no dm-verity in `0.1.0`; the boot-time hash check stays, and dm-verity goes on the audit list as a
+     question. Otherwise: dm-verity now (a new kernel option set and an initramfs step).
+108. **Required checks and owner item 13**
+     Recommended: (a) the owner adds Entropy Android, Entropy iPhone and Entropy Pi image to main's ruleset as required
+     checks once Stage H's pins land (a settings change only the owner can make); (b) owner item 13 is drawn from a
+     committed script in Stage H unless a source file arrives. Otherwise: keep them optional; a hand-drawn figure.
+
+### The owner's answers (2026-11-21)
+- Q100-Q108: "approve all as recommended" (2026-11-21). So: minisign with the owner's offline key, CI never signs
+  (Q100); `0.1.0` first, `1.0.0` after the audit's fixes (Q101); the owner engages the auditor, I prepare the packet
+  (Q102); one outside builder reproduces the Pi image and APK, F-Droid's rebuild counting for the APK (Q103); Buildroot
+  2026.08 with the newest 6.12.y LTS kernel for `0.1.0`, 2027.02 LTS before `1.0.0` (Q104); GitHub releases and
+  F-Droid, Play later (Q105); the iPhone as source and build steps (Q106); no dm-verity in `0.1.0` (Q107); the owner
+  adds the three workflows as required checks after Stage H, and owner item 13 is drawn by a committed script (Q108).
+
+### Lead decisions (M7-n, dated; each for the owner's review at the gate)
+- M7-1 (2026-11-21): the canary runs 2^16 sessions at 24 and 28 bits, not 10^6 at 32 and 36. A session costs about
+  5 ms (200 real phone sessions in 1.06 s, release build, the owner's Mac), so 10^6 stub sessions per width would
+  double the nightly job twice over. n^2 / 2^(k+1) gives about 128 and 8 expected pairs, the same regime as 116 and 7.
+  The canary also asserts more than "some": the commitments repeat exactly as often as the narrowed states do.
+- M7-2 (2026-11-21): core's tests cannot print (core/clippy.toml bans println!, eprintln! and std::io::stdout and
+  stderr, forbid, rule 5), so A1's children hand their commitments to the parent through files of their own under
+  cargo's CARGO_TARGET_TMPDIR, which the parent reads and removes. The values are public C, never D. The other way, a
+  harness crate that may print (as pi/sim does), would add an eighth workspace member and change the pins in
+  scripts/check-path-deps.sh, scripts/canaries.sh and deny.toml; not worth it for a test. The counts live in the
+  assertions, so a run shows only pass or fail and libtest's time.
+- M7-3 (2026-11-21): run 44925400647 (iPhone, at 42e469a2, which touches no iOS file) failed two jobs.
+  (a) macos-26 journeys-6: DynamicTypeUITests on the narrow iPhone, iOS 26.5, timed out its UI queries at the largest
+  text size ("Timed out while fetching attributes 'XC_kAXXCAttributeFocusedApplications'", 144 s after a drag), the
+  iOS 26 hang U3n set out to sample, now seen twice. U3n's sampler printed nothing: the step runs `bash -e -o
+  pipefail`, the background subshell inherits it, and `pgrep -x KeepCrypt` exits 1 until the app starts, so the
+  first tick ended the sampler (reproduced locally: the subshell dies at once, exit 1). It has never taken a sample.
+  Fix: `set +e` in the subshell, every tick logged (no process, or the pid and sample's exit), the log printed on a
+  failure; checked locally under the same flags (two ticks with no process, then three samples taken). The hang's
+  cause stays open until a sample shows it. (b) macos-15 journeys-1: cancelled at its 31-minute timeout with every
+  test it finished green; the runner was slow throughout (7 min 15 s from launch to "Running tests", CannotCheck
+  1048 s against 494 s measured), about 1.6 times the job's measured 1185 s, outside the third M5-30 allows for.
+  The timeout stays: one outlier; it changes only if the next runs repeat it.
+- M7-4 (2026-11-21): B1 found that iPhone backups say `created-by: keepcrypt-android 0.0.0`. The iPhone reaches the
+  ceremony through keepcrypt-capi, keepcrypt-guard and keepcrypt-ffi, whose created-by is fixed at Android (M5's
+  ceremony.rs; nothing in M6 changed it). design.md and the backup format name `keepcrypt-ios`. Fix: keepcrypt-ffi
+  picks the app by target, `ios` for target_os = "ios" and `android` otherwise (host builds serve Android's JVM
+  tests), with the version from the crate's. A unit test pins the line on every target, run on an iOS simulator
+  too. The image keeps the screen suffix Q47 gave it: `keepcrypt-pi-0.1.0-st7789-240x240.img`, Q101's
+  `keepcrypt-pi-0.1.0.img` read as the version part.
+
+### Stage A: the birthday-collision job (BP:320; design.md:198)
+- [x] A1 `core/tests/birthday.rs` (ignored by default, so `cargo test` stays fast): with the dice fixed, each child
+      process makes 1,000 real sessions from `getrandom` (no `test-sources`) and writes each commitment C (M7-2); the parent
+      runs 1,000 child processes (1,000,000 legs in all, across process restarts) and fails on any repeated C. C is
+      SHA256("KCE/v1/commit" || D), public, and equal for equal D, so the test never handles D and needs no new API.
+      Proof: a local run's count and wall time.
+      Proof (2026-11-21, the owner's Mac, 16 CPUs, release): `cargo test --release --locked -p keepcrypt-core --test
+      birthday -- --ignored --exact one_million_real_device_legs_never_repeat`: "test result: ok. 1 passed; 0 failed;
+      0 ignored; 0 measured; 2 filtered out; finished in 439.90s" (1,000,000 legs, no repeat); no `birthday-*.bin`
+      left under target/. The default run: 1 passed, 2 ignored.
+- [x] A2 The test proves it would fire (M7-1): `test-sources` stub sessions whose OS bytes come from a 24- or 28-bit
+      state, 2^16 of each; the commitments must repeat exactly as often as the states, more than zero, and more at 24
+      bits than at 28. Proof: a local and a CI pass.
+      Proof (2026-11-21, local, release, `--features test-sources`): "test result: ok. 1 passed; ... finished in
+      58.64s". An earlier draft that printed its counts gave 138 repeated pairs at 24 bits and 10 at 28 (expected
+      about 128 and 8). Clippy clean with and without test-sources. The CI pass lands with A3.
+- [x] A3 A new workflow, `entropy-nightly.yml` ("Entropy nightly"), runs A1 and A2 as two jobs every night at 03:41
+      UTC, on a manual dispatch, and on a pull request that changes the test or the workflow. It is not a required
+      check, and entropy-ci.yml's 14 checks are untouched. Only checkout and cache, pinned by SHA, as entropy-ci.yml.
+      Proof (2026-11-21, PR #12 at 42e469a2, run 44925401107, ubuntu-24.04, 4 CPUs): "birthday (1,000,000 real
+      device legs)" success in 2953 s, "birthday canary (24- and 28-bit states)" success in 452 s, each step's grep
+      for "test result: ok. 1 passed;" passing. Entropy CI 44925400691 (14 checks), Android 44925400613 and Pi image
+      44925400714 green at the same head; iPhone 44925400647 red in two jobs, neither touched by this diff (M7-3).
+
+### Stage B: the release form (BP:335-346)
+- [x] B1 Version `0.1.0` (Q101) through every crate, both apps, the Pi image name and `created-by`; one script checks
+      they agree.
+      Plan (2026-11-21): the workspace version is the one source; code reads it where it can, and a new
+      `scripts/check-version.sh` (in the gates job and CLAUDE.md's Commands) fails on any site that differs from it.
+      - Rust: Cargo.toml `0.1.0` (Cargo.lock's workspace entries follow); ffi's created-by from
+        CARGO_PKG_VERSION_* as pi/app's usb.rs does, and its app by target (M7-4); test fakes and their assertions
+        read `env!("CARGO_PKG_VERSION")` (pi/app's Fake and screens test, pi/sim's test, ffi's ceremony test).
+      - Android: both build.gradle.kts versionName, APP_VERSION, expected/manifest-*.txt; versionCode stays 1.
+      - iPhone: Info.plist CFBundleShortVersionString, Texts.swift appVersion, expected/*-Info.json, the tests that
+        name the string.
+      - Pi: keepcrypt-pi.mk's version, the image `keepcrypt-pi-0.1.0-st7789-240x240.img` (Q101's name with Q47's
+        screen suffix, M7-4), the Makefile, genimage.cfg, entropy-pi-image.yml and CLAUDE.md's build-path note.
+      - Left as they are: the fixtures under scripts/testdata (path-deps and workflow cases; the version is not
+        what they test) and core's tests, which name versions of their own on purpose.
+      Proof: check-version.sh clean, then failing on one changed site per kind (its self-test); the suite; CI.
+      Proof (2026-11-21, local; CI at the head carrying it): `scripts/check-version.sh` "every site names 0.1.0";
+      `--selftest` "45 passed, 0 failed"; fmt and clippy clean; `cargo test --workspace --locked` green; keepcrypt-ffi's
+      lib tests built for aarch64-apple-ios-sim and run on an iOS 27.0 simulator (`xcrun simctl spawn`): 17 passed,
+      created_by_names_this_target_and_the_crate_version among them (`ios` there, `android` on the host); the three
+      iOS schemes built for testing, KeepCryptTests on Shipping 141 tests 0 failures, `--ios-app` clean on the
+      Shipping and WithTestRegistry apps against the new expected Info files.
+      CI then failed at c6590498 (run 44937973859, gates job): every --selftest-apk case, because the stand-ins for
+      aapt2's output (scripts/testdata/apk/badging.txt, xmltree.txt) still said 0.0.0 against the 0.1.0 expected
+      manifest. Fixed at the root: both stand-ins at 0.1.0 and listed in check-version.sh (51 cases now), lesson
+      recorded; local --selftest-apk 89 passed, 0 failed.
+      Proof (CI at 0810da18, 2026-11-23): the gates job ran check-version.sh and its selftest (51 cases) green; release 45054051327, Android 45054051382, iPhone 45054051400, Pi image 45054051373, Entropy CI 45054051356, nightly 45054051359, all success.
+- [x] B2 SBOM: CycloneDX JSON for the Rust workspace, the Pi image (Buildroot's `legal-info` manifest folded in) and the
+      Android APK. The generator is a build tool, not a shipped crate, but it is a new dependency: Q-item at Stage B's
+      start with the candidates (cargo-cyclonedx, cargo-sbom, or a small committed script over `cargo metadata`, the
+      last needing no new tool), for the owner's approval and a `cargo vet` entry if a crate.
+      Owner's answer (2026-11-21): "approve the script over cargo metadata, continue". No new tool or dependency.
+      Plan: `scripts/sbom.py` (Python stdlib, `python3 -I`, no network, 3.9+) writes CycloneDX 1.6 JSON, one SBOM
+      per artifact, byte-for-byte reproducible (sorted, no timestamp, no serial number), and fails closed on any
+      input it cannot account for:
+      - `workspace`: every shipped Rust root (keepcrypt-pi, keepcrypt-jni, keepcrypt-capi) over `cargo metadata
+        --locked` for all platforms, normal and build dependencies (dev ones are not built into anything);
+        crates.io packages as `pkg:cargo` purls with Cargo.lock's SHA-256 and the manifest's licence expression;
+        a crates.io package with no Cargo.lock checksum, or any source other than crates.io or the workspace, fails.
+      - `apk`: keepcrypt-jni over the three Android triples' metadata, and the 120 lines of
+        expected/shipping-runtime-classpath.txt (the reviewed list CI holds the APK to) as `pkg:maven` purls with
+        their artifacts' SHA-256 from gradle/verification-metadata.xml; a classpath line the metadata lacks fails.
+      - `pi-image`: keepcrypt-pi over arm-unknown-linux-gnueabihf, and Buildroot's legal-info manifest.csv
+        (package, version, licence, source archive) as `pkg:generic`; a malformed manifest fails. The manifest
+        exists only after an image build, so release.yml (B3) runs `make -C pi/os legal-info` and this mode on it.
+      - `--selftest`: fixtures under scripts/testdata/sbom/ give known SBOMs, and each refusal above fails.
+      Proof: the self-test; the workspace and APK SBOMs from the real inputs, twice, byte-equal; the gate clean.
+      Proof (2026-11-21, local; the pi-image mode's live run lands with B3's release.yml): `--selftest` 32 passed,
+      0 failed, on python3 and /usr/bin/python3 (3.9.6); `workspace` 87 components (77 crates.io required, 7
+      build-only excluded, 3 workspace crates), `apk` 193 (70 crates.io over the three Android triples, 120
+      classpath lines: 76 with their binary's SHA-256, 44 Multiplatform roots and BOMs with their .module or .pom
+      alone, none without a descriptor), each run twice byte-equal; the gate and --workflows clean. Two refusals
+      the real inputs found first, both now cases: Gradle variants name their binary their own way
+      (animation.aar), and kotlin-stdlib holds an -all jar beside its primary jar; a licence check that took
+      "see LICENSE file" for three ids is now an expression grammar. `make -C pi/os legal-info` added.
+      Proof (CI at 0810da18, 2026-11-23): release 45054051327 "release checks, workspace SBOM and notes" success (145 s); the Android and Pi image runs wrote their SBOMs (45054051382, 45054051373).
+- [x] B3 `release.yml` on a `v*` tag: builds every artifact, runs every release scan, writes SHA256SUMS and the SBOMs,
+      and attaches them to a draft GitHub release. It never signs (Q100). The changelog and the exact reproduce
+      command per artifact go in the release notes.
+      Re-plan (2026-11-21, before any B3 code): the workflow gate (banned-api-check.sh --workflows) allows a
+      top-level `contents: read` only, no token, and no `uses:` but checkout, cache and upload-artifact at their
+      pinned SHAs. So CI cannot create or fill a GitHub release (it needs `contents: write` or a token), and a
+      release workflow cannot call or collect from the build workflows (a reusable `uses: ./...` or
+      download-artifact is outside the list). Q109 and Q110 put this to the owner.
+      Q109. Where the release's files are gathered. Recommended: CI only builds and uploads, as Q100's offline
+      signing has it anyway; the owner downloads the artifacts, checks them against a second build, signs, and
+      makes the release from their own machine (`gh release create`, docs/release.md, B4). No gate rule changes.
+      Otherwise: one release job with `contents: write` and the token, a reviewed exception in the gate.
+      Q110. How the artifacts are built on a tag. Recommended: the Pi image and Android workflows also run on a
+      `v*` tag and, on one, add the artifact's SBOM and SHA256SUMS to their upload; a short release.yml on the
+      same tag runs the source-wide checks (the tag equals the workspace version, check-version, the workspace
+      SBOM, verify.py's SHA-256 for the notes) and writes the notes draft. Nothing is built twice in two places.
+      Otherwise: a self-contained release.yml repeating the Pi image and APK builds (about 900 lines copied from
+      two workflows, which would drift apart) for one run with one bundle.
+      Owner's answers (2026-11-21): Q109 "Owner makes it" and Q110 "Existing workflows on tag", as recommended.
+      B3 is now: the Pi image and Android workflows also run on a `v*` tag and, on one, upload the artifact with its
+      SBOM and SHA256SUMS; `release.yml` on the tag checks that the tag is `v` + the workspace version, runs
+      check-version and the gate, writes the workspace SBOM, verify.py's SHA-256 and the notes draft (changelog
+      section and the reproduce command per artifact), and uploads them. It never signs and never publishes.
+      Done (2026-11-21; CI proof at the head carrying it): `.github/workflows/entropy-release.yml` ("Entropy
+      release": tag check, check-version, the gate, verify.py selftest, vectorgen and both scripts' self-tests,
+      then the workspace SBOM, verify.py, RELEASE-NOTES.md and SHA256SUMS as `release-source-files`; also on a PR
+      that changes it or its scripts); `scripts/release-notes.py` (10-case self-test, in the gates job) over the new
+      `CHANGELOG.md`; the Pi image workflow's leg a runs `make -C pi/os legal-info` and `sbom.py pi-image` on every
+      run and uploads `pi-image-release-files`; the Android build stages the unsigned shipping APK and its SBOM
+      into `android-apks` and its SHA256SUMS; both run on a `v*` tag. Proof (local): --workflows clean (6
+      workflows), the gate clean, the release step's commands run under `bash -e -o pipefail` (workspace SBOM
+      a2fd321d..., verify.py 0ba842e2..., equal to `shasum` of the file).
+      Proof (CI at 0810da18, 2026-11-23): release 45054051327 success; the draft release itself is the owner's (B3's re-plan, Q100), made at the tag.
+- [ ] B4 `docs/release.md`: the owner's offline signing steps and the check against a second build before signing.
+      Done (2026-11-21): docs/release.md (the release key made offline, the checks before the tag, the tag's three
+      runs and their artifacts, the second build of the image, APK and verify.py, the offline apksigner and
+      minisign steps, `gh release create --draft --prerelease`), listed in CLAUDE.md's docs table. Ticked at the
+      gate with the owner's review of it.
+
+### Stage C: the Pi image, reproducible in clean containers (PF:162-169; :9509-9525)
+- [x] C1 A build container pinned by digest (Debian, apt from snapshot.debian.org at a fixed date); `make source`,
+      `image` and `repro-check` run inside it; the image workflow uses it, so the build host is a pinned input.
+- [x] C2 `repro-check` builds in two fresh containers and compares SHA-256; an arm64-host leg (ubuntu-24.04-arm) builds
+      once more and must give the same hash.
+- [x] C3 The kernel moves to the newest 6.12.y LTS at least 14 days old (Q104): pins, hashes, expected/linux.config.
+- [x] C4 PF:162-170 rewritten for the container commands.
+      C2's arm64 leg (2026-11-22): the image's cross toolchain, Bootlin's armv6-eabihf, runs on x86_64 hosts only
+      (pins.txt), so no arm64 host can run the build as it is. Asked: drop the leg, switch to Buildroot's internal
+      toolchain, or emulate. Owner's answer: "Emulate x86_64 on arm64". So the container is linux/amd64 on every
+      host, and the arm64 leg (ubuntu-24.04-arm) runs it under QEMU (Ubuntu's qemu-user-static, binfmt); it
+      must give leg a's hash. It may near GitHub's 6-hour job limit: its first run measures it (M7-6).
+      Plan (C1-C4):
+      - C1 `pi/os/container/Dockerfile`: debian:trixie-20261104-slim by its index digest; apt from
+        snapshot.debian.org at 20261103T202439Z (debian) and 20261103T160100Z (debian-security), what
+        20261104T000000Z resolves to, signatures checked by the image's keyring; Buildroot's host packages;
+        rustup-init 1.29.3 by SHA-256, then the rust-toolchain.toml toolchain. Each pin past the 14-day cutoff
+        (2026-11-08). `pi/os/container.sh` builds it and runs every pi/os command in a fresh container (checkout
+        at /keepcrypt, build directory at /kc-work, the caller's user), the scans with the build's host tools
+        (`tools`); the workflow's legs build, hash, scan and write release files only through it.
+      - C2 `container.sh repro-check`: source and image in one fresh container, image again in another, cmp. CI's
+        legs a and b are two fresh containers on two runners; the arm64 leg is a third, under emulation.
+      - C3 raspberrypi/linux 2569533d6c33 (6.12.115), the newest rpi-6.12.y merge at least 14 days old (merged
+        2026-11-02; the next, 2026-11-17, is too new). Its GitHub archive's SHA-256 c78d71fd...933940, the same in two
+        downloads (247,555,356 bytes). defconfig, linux.hash, pins.txt; expected/linux.config and the image lists
+        regenerated from a build in the container and reviewed (the diff in the Review).
+      - C4 PF's "Build, flash and verify" commands through container.sh; pins.txt's build-host note.
+      Proof: a local build in the container (the lists and config), CI's legs a, b and arm64 agreeing.
+      Progress (2026-11-22): the container built locally (Docker Desktop, linux/amd64 emulated): rustup-init's
+      SHA-256 checked, rustc 1.98.1, 179 packages; kconfig.sh and rootfs-prefix.py self-tests pass in it. A full
+      local image build under emulation was too slow (28 minutes and still in Buildroot's host-cmake) and was
+      stopped by the lead, by mistake, with a `docker kill` of every container. So expected/linux.config and the
+      image lists come from CI's native legs: the commit carrying C1-C4 fails the scan on 6.12.115 as expected, and
+      the next commit records the printed lists after review.
+      CI at d0fd4a16 (run 44946045508, 2026-11-21): legs a and b, two fresh containers on two runners, built one
+      image: 4a2ee371d51083303d699bce82a0d7c6183718c06b63f28f789facccc0bf4456 (partition 2 749f22f7..., prefix
+      749f-22f7-52c1-f35d, keepcrypt-pi b6647b24...). The scan's only hit was the expected Kconfig diff; the
+      boot, root and imports lists, the deny list and kconfig-required/forbidden matched unchanged. Review of the
+      diff, now in pi/os/expected/linux.config: the banner (6.12.61 → 6.12.115); `CONFIG_CC_OPT_INLINE_MEMSET`
+      added (a compiler-option symbol 6.12.115 defines); `# CONFIG_WARN_ALL_UNSEEDED_RANDOM is not set` gone,
+      because 6.12.115 no longer has the option at all (no Kconfig in the tree names it). It was off, a debug
+      warning only, so nothing changes; getrandom still blocks until the CRNG is ready (drivers/char/random.c:1401
+      in 2569533d). The arm64 leg failed in 38 s, in the container build: apt under emulation rejected all three
+      snapshot InRelease files ("No good signature"), which the native legs verified (M7-8).
+      CI at 856683b6 (run 44955420441, 2026-11-21): legs a and b passed, the scan included. The arm64 leg's pinned
+      qemu 10.0.13 registered (`enabled`, flags OPF), the preflight's sqv verified the Release (the three Debian
+      signing-key fingerprints), and apt in the container verified the snapshot. Then, at 353 s, rustup's
+      `rustc --version` segfaulted under qemu (exit 139) after the toolchain installed (M7-9).
+      Proof (CI at 0f492397, run 44965014583, 2026-11-22, all four jobs success): legs a (1642 s), b (1416 s) and
+      arm64 (16604 s) built one image, keepcrypt-pi-0.1.0-st7789-240x240.img, SHA-256
+      4a2ee371d51083303d699bce82a0d7c6183718c06b63f28f789facccc0bf4456 (partition 1 9b31816c..., partition 2
+      749f22f7..., prefix 749f-22f7-52c1-f35d, keepcrypt-pi b6647b24...), the same as d0fd4a16's native legs, and
+      every scan passed on all three. The reproducible job: "all three legs built 0f492397... into
+      keepcrypt-pi-0.1.0-st7789-240x240.img, SHA-256 4a2ee371..., and every scan passed". The arm64 leg read back
+      `vm.legacy_va_layout = 1` (M7-9) and its emulated signature check passed (M7-8).
+- M7-8 (2026-11-22): the arm64 leg's QEMU. Ubuntu noble's qemu-user-static 8.2.2 ran apt under emulation on
+  GitHub's arm64 runner and every snapshot signature failed. Locally (an arm64 Ubuntu 24.04 container on Apple
+  silicon) trixie's own sqv, run directly under that same 8.2.2 and under Debian's 10.0.13, verified the snapshot's
+  Release both times, so the failure depends on the runner and was not reproduced. The leg also took whatever
+  qemu-user-static noble shipped that day, an unpinned input. Lead decision: QEMU comes from the build container's
+  own snapshot, Debian trixie's qemu-user 1:10.0.13+ds-0+deb13u1 (static, no dependencies) by SHA-256
+  c73711af...158d, and only its x86_64 handler is registered (the deb's line, flags OPF). A new step before the
+  build makes the pinned base image, under emulation and with no network, verify the snapshot's Release with its
+  own sqv and keyring; it fails closed and prints sqv's reason. Locally that check verifies the genuine Release
+  and refuses a one-byte change ("Message has been manipulated"). The same tool as C2's answer (QEMU), now
+  pinned; reported at the gate.
+- M7-9 (2026-11-22): the arm64 leg's address layout. Reproduced locally (an arm64 trixie container, the pinned qemu
+  10.0.13, the build image's own x86_64 rustc 1.98.1): `rustc --version` segfaults every time; cargo and rustup
+  run. qemu -strace: the guest's mmaps return 48-bit addresses (0x0000ffff91600000), and the fault address is the
+  same pointer sign-extended from bit 47 (0xffffffff91617c00). x86_64 Linux never gives a process addresses
+  above 47 bits unless asked, and rustc's jemalloc assumes it; qemu 10.0 does not cap a 64-bit guest
+  (include/user/guest-host.h, GUEST_ADDR_MAX is ~0 without -R), and -R cannot be used for x86_64 because the
+  vsyscall page sits at the top ("Cannot allocate vsyscall page"). The arm64 kernel's legacy bottom-up layout
+  starts mappings near 2^46: under `setarch -L` the same rustc runs three times out of three, its mappings at
+  0x00004000..., and compiles a test program through codegen. Lead decision: the emulation step sets
+  `vm.legacy_va_layout=1` on the arm64 runner (a global sysctl, so BuildKit's processes get it; the runner is
+  discarded after) and fails closed unless it reads back 1. Address layout is not an input to the image, which
+  a = b = arm64 checks. Reported at the gate.
+- M7-12 (2026-11-22): the Android build job's budget. D2a and D2b put lint and R8 into the build job without
+  re-measuring it, as its budget comment requires; run 44990020002 at 752cb9ef stopped at its 17 minutes (1032 s,
+  in android-emulator.sh's selftest, the last steps). Against 0f492397's green run (695 s): the Gradle build 487 s
+  (232 s), the canary's R8 build 89 s (29 s), android-rust.sh 244 s (184 s, the runner). The whole job comes to about
+  1080 s; lead decision: 23 minutes, the measured time with 25%, as the comment's rule gives; the next run re-measures
+  it. In the same push, the iPhone run 44990020044 failed one job: journeys-6 on macos-26, DynamicTypeUITests on the
+  narrow iPhone, "Failed to launch ... via Xcode: Timed out while launching application via Xcode" at 65 s, before
+  the app ran a line; the same test had passed on the iPhone 17 in that job (171 s), no iOS app file changed since
+  0f492397's green run, and no earlier run records this error. Recorded as a runner launch timeout, not rerun on its
+  own; the next push runs it again, and a second occurrence is a defect to chase (a warm launch on the fresh narrow
+  simulator first).
+  Push of 8cff2c27 (2026-11-22). Android run 45006519552: the build job took 887 s, within the 23 minutes (64%), and
+  apk-reproducible passed; every emulator leg failed closed in about 30 s in android-sdk-install.py: "system-images;
+  android-34;default;x86_64's source.properties gives revision ['2'], not 4". Google's index (sys-img2-3.xml) calls
+  x86_64-34_r04.zip revision 4, and the pin took 4 from it and from sdkmanager, but the zip's own source.properties
+  says Pkg.Revision=2 (read from dl.google.com with range requests; the other three packages' files match their
+  pins: 36 r02 gives 2, ps16k r07 gives 7, the emulator 37.3.10). My D4a error: the revision was copied from the
+  index, not from the package the installer checks. Fix: the pin records 2, the package's own revision, with a note
+  on the index's r04; the bytes stay pinned by size, SHA-1 and SHA-256, so nothing is loosened (lessons.md).
+  Local proof (the fixed API 34 line, the real download): android-sdk-install.py install gives "system-images;
+  android-34;default;x86_64 2 (downloaded): 720747116 bytes, SHA-256 b57f6386...9cb2b3", rc 0; its selftest passes.
+  Push of ad87d2fe (2026-11-22). Pi run 45016186522 green again with the arm64 leg skipped (a 1776 s, b 1626 s);
+  CI, release and nightly green. Android run 45016186578: the pinned images installed and booted on every leg; the
+  build job took 838 s (58% of 23 minutes); journeys and UI-alone passed on both levels, and API 34's registry part.
+  Three legs failed, two causes:
+  (1) CaptureTest, 3 of 11 on both levels and both flavours (everyScreenIsLaidOutAtFontScale2, ...OnA412DpPhone,
+  ...DrawnAndThenBlackInEveryCapture): "NoSuchMethodError: No virtual method getPositionInWindow-F1C5BW0()J in
+  class SemanticsNode". R8 (D2b) shrank it from the app, and android-link-check.py, there to catch exactly this,
+  skipped the call: its pattern for a method's name had no "-", and Kotlin names a function taking or giving an
+  inline value class (Offset here) name-HASH. My D2b error (lessons.md). Fix: the pattern reads any dex method name,
+  and any invoke line the check cannot read now fails it, never skipped (two new selftest cases on mangled names, one
+  on an unreadable call: 10 pass); test-keeps.pro keeps SemanticsNode. Local proof: the fixed check on the APKs built
+  before the keep finds exactly that method in both flavours, and none after it (rebuilt with Gradle's strict
+  build: "0 missing classes, 0 missing methods" for both).
+  (2) RecordingTest on API 36: "Quick Settings showed no screen-record tile on 4 pages"; the tiles read "Page 1 of
+  2" and the swipe never turned the page on CI's AOSP image. Fix: for the test, SystemUI's tile list
+  (sysui_qs_tiles, which the shell may write) has screenrecord put first, the rest after it, and the list is
+  restored in a finally; paging stays for an image that ignores the setting (kc37's, found in D4b's local runs).
+  The iPhone run 45016186645: journeys-6 passed on both runners; journeys-4 and journeys-5 on macos-26 failed, two
+  more tests, with XCUITest's pre-tap checks at 10-14 s again. Each failure was read, and each is a defect in a test
+  helper that the slow runner exposed, not in the app: journeys-5 (CheckEdgesUITests:73) failed hard in waitLabel,
+  which checked exists and then read the live label, and the read-back's header was replaced between the two
+  ("Failed to get matching snapshot"); now each look is one query for an element with both the id and the label, whose
+  exists never fails the test (a first form, try? element.snapshot(), was refused by the gate's SwFailOpen rule and
+  changed, not exempted). journeys-4
+  (SnapshotJourneyUITests) pressed New seed with press, which never checks that the touch reached the app, and Length
+  never came (screen home, nothing refused); now pressTo, which brings the button above the TestHooks panel, presses
+  again a touch that never arrived, and still fails a press the app saw that did nothing.
+  Local proof (Xcode 26, iPhone 17 simulator, TestHooks build-for-testing then the two classes alone): CheckEdgesUITests
+  passed (233 s), SnapshotJourneyUITests passed (196 s), TEST EXECUTE SUCCEEDED.
+  Again with waitLabel's query form (the gate clean, the canaries' 102 checks run): SnapshotJourneyUITests passed (195
+  s); CheckEdgesUITests passed (232 s) once the reused simulator's camera answer was reset (simctl privacy reset
+  camera; a first rerun found no prompt, the earlier run having refused it; CI's simulator is new each leg).
+  Local proof (kc37, API 37, android-local.sh --part capture then --part registry, the APKs built with R8 and the
+  keep): capture passed every class, CaptureTest's 10 in both flavours among them, and the 16 KB NativeTest; registry
+  passed all twelve, RecordingTest with "recorder: the screen-record tile put first in Quick Settings (it was wifi,bt,
+  ...,screenrecord,...)" and the recording's redaction. CI's API 36 legs owed.
+  The iPhone run 45006519588: journeys-6 on macos-26 failed a second time, the same test (DynamicTypeUITests, the
+  narrow iPhone), with another symptom: XCUITest's own "check for interrupting elements" before a tap stalled 68 s
+  on First launch's Continue, then 205 s on Home's About until "kAXErrorIPCTimeout ... Failed to get list of active
+  applications" (333 s). Chased: the runner image (macos-26-arm64 20261117.0516.1, macOS 26.7.2 25G332) and the iOS
+  tree are the same as 0f492397's green run (44965014701, 00:31 UTC), where this job passed; the failures were at
+  about 06:00 and 10:00 UTC, and the runs were slow throughout (macos-15's journeys-6 2480 s, against 1238 s). Both
+  stalls are inside the simulator's accessibility IPC, before the app is asked anything, and no app assertion failed.
+  Recorded as a runner fault; the next push (the pin fix) runs it again. A third occurrence goes to the owner at
+  the gate with two options: the test split so each launch at the largest size is its own test, or the job given
+  its own simulator boot and a warm launch first.
+  Run at 478b30c5 (link check, keep, helper fixes): CI 45030615032, release 45030614902, Pi 45030614915 (a 1950 s,
+  b 1977 s, arm64 skipped), nightly 45030614981 green. Android 45030614916: build 880 s; CaptureTest passed on API 34
+  and 36 (the capture jobs green, 1061 s and 1021 s), journeys and UI-alone green on both; API 36's registry part
+  failed in RecordingTest alone, "Quick Settings showed no screen-record tile on 4 pages" though the probe said the
+  tile was put first. iPhone 45030614911: every job green but journeys-6 on macos-26, the narrow iPhone a third time.
+  RecordingTest chased on the API 36 image itself (owner Q76/2026-11-16's emulator approval: arm64-v8a-36_r02.zip,
+  810,736,863 B, SHA-1 62ad6714... as sys-img2-3.xml gives, Pkg.Revision 2 as CI's x86_64 r02; AVD kc36, CI's screen):
+  SystemUI writes its own tile list back over sysui_qs_tiles at once (read back unchanged), so the setting does
+  nothing on any image the test runs on (API 34 returns early; kc37 ignores it too); UI Automator's device.swipe
+  never turned the tile pager, while the shell's `input swipe` across the same pager did ("Page 2 of 2", "Screen
+  record, Start"); a first expand-settings after boot can open only the shade's four tiles, with no pager; and the
+  API 36 dialog opens on "Record one app" (Cancel, Next), its spinner (screen_share_mode_options) offering "Record
+  this screen", whose button reads "Record screen". Fixed: the setting write and its restore removed; Quick Settings
+  awaited in full by its Edit control ("Edit order of Quick Settings.", which the shade's top tiles lack; a first form
+  waited for the page indicator, and kc37's panel has none: android-local's registry part failed there, "never
+  opened in full"), collapsed and expanded again up to three times; each page turned by the shell's input swipe inside
+  the smallest scrollable SystemUI node (the pager) and checked by SystemUI's labels changing within 3 s (read at 1 s,
+  kc37's hierarchy was still the old page's, though the page had turned); where the dialog has the mode spinner, the
+  whole screen chosen and checked before Start ("Record screen" added to START).
+  Local proof (the shipping app and its test APK built with R8, link check 0 missing in both flavours, RecordingTest
+  alone): kc36 (API 36 AOSP image, freshly booted) OK (1 test), the pager turned, the projection running, "recording
+  on: screen words, placeholder shown (redacted)", then "the page shown again, the session kept"; kc37 OK (1 test),
+  the same, then "the session discarded (Quick Settings over the app left it), Home saying why".
+  And android-local.sh --part registry on kc37 (its own build and boot): rc 0, all twelve runs PASS, RecordingTest
+  among them.
+  journeys-6 chased: in all three failures since 0f492397 (44990020044: the app's launch timed out; 45006519588 and
+  45030614911: kAXErrorIPCTimeout for pid 1102 while the app was 38484) the process that stopped answering was the
+  simulator's, never the app's, on the same image (20261111.635 by its job log) where four runs passed; the iOS tree
+  between them changed only the H3 job gating. The narrow step booted a second iOS 26.5 simulator with the leg's own
+  still booted, on a three-core runner. Changed: the leg's simulator is shut down before the narrow one boots (no
+  later step uses it), and a failure prints memory_pressure and the booted simulators. A pass or a fourth failure on
+  the next run is reported at the gate with the two options above.
+  Run at d0c1554b: Android 45041931642 and iPhone 45041931644. Both fixes held: API 36's registry part (RecordingTest)
+  and journeys-6 on macos-26 passed. Two other jobs failed:
+  - iPhone journeys-5 (macos-26, CheckEdgesUITests): XCTest's own "Failed to get screenshot: Timed out while requesting
+    screenshot" on the check QR (element found; no crash or hang report). One simulator was booted, so contention
+    between two simulators does not explain it. That is the fourth macos-26 failure in a row, each in the simulator's
+    services. Reported at the gate.
+  - Android API 34 capture: first_launch, at the start of everyScreenIsDrawnAndThenBlackInEveryCapture, had 106336 lit
+    pixels in takeScreenshot over the app's window, with screencap refused. Not reproduced locally: three CaptureTest
+    runs on kc34 (API 34, CI's 720x1280 screen; animations off as CI sets them, from part of run 1 on) gave 0 lit
+    pixels and OK (11 tests) each time. Animations are already off on the CI legs, so a window animation is ruled out.
+    The test before it (disable_secure_windows' probe) read 0 lit pixels with the setting at 1 (API 34 does not read
+    the setting) and 0 after. Changed so the next one explains itself: a lit capture's probe line gives the box that
+    holds the lit pixels and the windows dumpsys window windows marks isOnScreen=true, top first (Capture.litAccount;
+    the line format read on kc34: StatusBar, the launcher and the wallpaper on a home screen). The assertion is
+    unchanged.
+  Run at 0810da18 (2026-11-23): every workflow green (Android 45054051382, iPhone 45054051400, Pi image 45054051373,
+  Entropy CI 45054051356, release 45054051327, nightly 45054051359). API 34 capture passed (1067 s) and journeys-5 on
+  macos-26 passed (1494 s). Neither failure is explained: the API 34 lit capture did not recur (so litAccount's line
+  did not fire; its cause is open and stays a gate item), and the macos-26 timeouts remain four in eight runs.
+- M7-13 (2026-11-23, the owner's (b) at the gate): each journeys job, and journeys-6's narrow iPhone, warms its
+  simulator before its tests: scripts/ios-warmup.sh installs the TestHooks app, launches it, waits for its process
+  (120 s at most), lets it settle 20 s, then terminates and uninstalls it (no data container left for the tests). Any
+  step failing fails the job: no retry, no fallback. Local (iPhone 17, iOS 26.5, booted for it and shut down after):
+  running after 4 s, 24 s in all, the app no longer installed after; a missing app fails ("no app at ..."). Proof
+  owed: CI's macos-26 journeys green on it, and over the next runs whether the timeouts stop.
+  First CI run (45071035420 at 59ac470e): the warm-up ran (the app running after 30 s on macos-26, 4 s locally), and
+  journeys-2 (macos-26) failed where it never had: MatchFoundJourneyUITests' tap on show_check_qr reached the app as
+  a touch-down (the hooks' facts: last touch down at the tap, refused no) but no action fired, the facts froze from
+  that moment, and the check QR never came; after the check_now tap before it XCTest had waited 60 s for the app to
+  idle. No crash or hang report; WordsUITests then passed in the same job. A main thread that stalled (ours) and a
+  touch-up the simulator dropped (the runner's) read the same in that log. Fifth macos-26 failure in nine runs.
+- M7-14 (2026-11-23, the owner's word: "yes, add the sampler"): scripts/ios-sampled.sh runs the xcodebuild test
+  command while the app is sampled every 20 s, and on a failure prints the memory, the booted simulators, the
+  sampler's log and the main thread's heaviest frames of the last four samples; it returns the command's status.
+  Every journeys job uses it, and the narrow iPhone's step now calls it instead of its inline copy (the same loop,
+  errexit off as M7-3 found). Local (iPhone 17, iOS 26.5, booted for it and shut down after): a failing command
+  (exit 3) with the app running gave exit 3 and a sample whose call graph starts at the app's main thread; a
+  passing one gave exit 0 and printed nothing. Proof owed: CI green on it; the next macos-26 failure carries its
+  samples.
+  CI at a9066203 (run 45891831276, 2026-11-26): every job green but journeys-1 on both legs, cancelled at its 31
+  minutes while still passing (macos-15 had passed both classes 49 s before; macos-26 was in CannotCheck's
+  read-back at 980 s, 763 s in run 45071035420). Slow runners, not the sampler: the same image (20261111.635); in
+  macos-15's ScanUITests the median accessibility query went from 0.040 s to 0.110 s throughout, not in the
+  sampler's 2 s of every 22; TwentyFourWord, Snapshot and Lifecycle ran at 0.96-1.07 times run 45071035420 with
+  the sampler running too. Local A/B (iPhone 17 511E3FF6, booted for it and shut down after): ScanUITests 70.65 s
+  and 70.55 s plain, 70.50 s and 70.78 s sampled, three samples a run, each about 2.5 s. Re-run of the cancelled
+  jobs (attempt 2, 2026-11-27): green; macos-15 1200 s (CannotCheck 583 s, Scan 109 s), macos-26 1795 s
+  (CannotCheck 874 s, Scan 177 s), 65 s inside its 31 minutes. The timeout is the owner's to raise.
+- M7-15 (2026-11-28, the owner's word: "yes, raise it to 35 minutes"): macos-26's journeys-1 timeout goes from 31
+  to 35 minutes in .github/workflows/entropy-ios.yml; macos-15's stays at 31 (1200 s in the re-run). CI at 6995f477
+  (run 46054903424): macos-26's journeys-1 passed in 1895 s, past the old 31 minutes.
+- M7-16 (2026-11-28): run 46054903424's journeys-4 (macos-26) failed TwentyFourWordJourneyUITests: after insert 22
+  of 24 the bare tap of "next" changed nothing and insert_header waited 30 s for insert 23. The sampler's last four
+  samples show the app's main thread idle in its run loop (mach_msg), no crash or hang report: a lost tap, not an
+  app stall (what M7-14 added the sampler to tell). The words' "next" was a bare tap, outside M6-28's pressUntil.
+  Fix: JourneySupport.swift's pressToLabel presses "next" through pressUntil with the next insert's header as its
+  effect (a press that never reached the app or never fired is pressed again, named; one that fired and did nothing
+  fails); waitLabel's failure now prints the touch counts and the hooks' facts. Local (iPhone 17 511E3FF6, booted
+  for it and shut down after): TwentyFourWordJourneyUITests passed (309.8 s) and WordsUITests passed (85.2 s).
+  CI at 88d2166a (iPhone run 46067531463): every job green; macos-26's journeys-4 1487 s, journeys-1 1369 s. CI,
+  release, nightly and the Pi image green at 88d2166a too. Android run 46067531702 at 88d2166a (no Android file
+  changed; green at 6995f477): attempt 1 failed build b (the Kotlin plugin 2.4.20 "not found" in Google's Maven and
+  Maven Central) and API 36's RecordingTest (stopping the recorder, the tile pager's swipe did not turn it in 3 s;
+  not seen again, not chased: no later attempt reached the emulators); attempt 2 was my partial rerun
+  (tasks/lessons.md, 2026-11-28); attempt 3, whole, failed the build's dependency review, Maven Central answering
+  429 to all 1311 of its requests for twelve rounds (M7-17).
+- M7-17 (2026-11-28, the owner's choice of three, "Keep all Central files"): entropy-android.yml keeps the review's
+  Maven Central files (the mirror's repo.maven.apache.org/, 266 MB) between runs with actions/cache, by exact key
+  on verification-metadata.xml, the lockfiles and android-deps-review.py, restored before the review, so before any
+  Gradle line (canaries.sh's review_before_gradle). Google's Maven is not kept. Not done, and told to the owner: the
+  review's --gradle-files (commit 8x has the review run before Gradle, on bytes fetched by the review itself).
+  Still proven on every run from a restored entry: each Central file's bytes have the pinned SHA-256 and gpg verifies
+  its .asc with a committed trusted key. No longer asked on every run: Central's published .sha1 files and its 404
+  answers, as of the run that saved the entry (docs/audit.md, trust on first use). A changed pin, lockfile or review
+  script is a new key and asks Central for everything.
+  Local proof (this Mac has no gpg, so reviews ran with --skip-pgp, exit 3; the signature step is CI's): mirror A
+  from empty, the script's curl logged by a wrapper: 1740 requests to Central, 778 to Google's Maven in 3 rounds;
+  mirror B, only A's repo.maven.apache.org/ copied in (what CI restores): 0 requests to Central, 778 to Google's
+  Maven; A's and B's reviews print the same ("924 artifacts: 359 Google's Maven (SHA-256 matched), 551 Maven
+  Central (SHA-1 matched, PGP NOT CHECKED ...), 14 accepted by name ..., 0 failed"). On copies of B: one byte
+  appended to annotations-4.1.1.4.jar fails ("the file's SHA-256 is 0750..., the metadata's ba73...", exit 1); its
+  .sha1 replaced fails ("the published .sha1 0000... is not the file's a167...", exit 1). Workflow gate clean (6
+  workflows). Proof owed: CI: a first run that saves the entry, a second whose review asks Central for nothing,
+  both with gpg's signatures checked.
+- M7-6 (2026-11-22): the arm64 leg runs on every run of the image workflow, with GitHub's six-hour job limit as its
+  timeout, until its first runs measure it; if emulation takes most of that, it moves to the weekly schedule, tags and
+  dispatches, with the owner's word.
+  Measured (run 44965014583): 4 h 37 min, 77% of the limit: the container 5.5 min, `make source image` 4 h 00 min
+  (about 25 min on the native legs), the scan's selftest 29 min, the scan 2 min. That is most of the limit, and with
+  `pi-image result` required (H3) every PR touching the image's paths would wait about 4.6 hours. Recommendation for
+  the gate: the arm64 leg runs on the weekly schedule, on tags and on dispatch, and no longer on pull requests or
+  pushes; `pi-image result` then covers a, b and a = b on PRs, and a = b = arm64 on the others. Not changed until the
+  owner's word.
+  Owner's word (2026-11-22): "move the arm64 leg off PRs". Done: the changes job gains an `arm64` output, true for the
+  schedule, a dispatch and a tag push (refs/tags/), false for a PR or a branch push; build-arm64 runs only where it is
+  true. `reproducible` (now "pi-image reproducible (a = b, and = arm64 where it runs)") always requires a = b of one
+  commit with both legs successful, and where arm64 is true also the arm64 leg's success and equal image; where it is
+  false it fails unless the arm64 leg was skipped. `result` requires the arm64 leg to have succeeded where arm64 is
+  true and to have been skipped where it is false; any other arm64 value fails both. docs/audit.md's citation
+  follows. Local proof (scratchpad arm64off/t.sh, the three run scripts extracted from the YAML and run in bash): 22
+  cases pass: arm64 is true for schedule, dispatch and a v0.1.0 tag and false for a main push and a PR; reproducible
+  passes a PR with a = b and the arm64 leg skipped, and a tag with all three equal, and fails an arm64 leg that ran on
+  a PR, a != b, and on a tag a skipped, different or failed arm64 leg, and a missing output; result passes a PR with
+  or without a change and a tag with every job run, and fails a failed or cancelled arm64 leg on a tag, an arm64 leg
+  that ran on a PR, a failed reproducible, a failed changes job and a missing output. Workflow gate clean (6
+  workflows). CI owed: the next push's run shows the arm64 leg skipped and the result green; the next weekly run or
+  a dispatch shows all three.
+
+### Stage D: the Android APK, reproducible and release-shaped (:14104)
+- [x] D1 Two clean builds give one unsigned APK hash (CI compares, like the Pi's a = b).
+      Plan (2026-11-22): entropy-android.yml's build job prints the unsigned shipping APK's sums as an output; a new
+      job build-b, on another fresh runner, checks the commit out at another path (other/tree), in another time zone
+      (Asia/Kathmandu) and under umask 0077, builds libkeepcrypt.so and :app:assembleShippingRelease alone with the
+      same strict locking and verification, and prints the same sums; job apk-reproducible (a = b) compares them line
+      for line. scripts/android-repro.py (sums, compare, --selftest; the selftest runs in the build job) prints the
+      APK's SHA-256 and every entry's, in the APK's order, so a difference names its entries without moving an APK;
+      build-b also uploads its APK (android-apk-b, 7 days) for a byte diff. No new action or dependency.
+      Proof (run 44965014669 at 0f492397, 2026-11-22): job apk-reproducible printed
+      `a: ff9ae446746b3f12703cbbcf50bb4a986b14b6a39b99dd7952d2bad123698df0  apk, 112 entries`, the same line for b,
+      and "PASS: the two clean builds gave one unsigned APK". build-b built at
+      /home/runner/work/keepcrypt/keepcrypt/other/tree/Entropy, TZ=Asia/Kathmandu (+0545), umask 0077, in 247 s
+      (the build job 697 s); libkeepcrypt.so f7c610d8... (arm64-v8a), ba3f5f57... (armeabi-v7a), 0df018b0...
+      (x86_64) on both. The eight emulator jobs passed on the same run. Ticked once R8 (D2b) is proven a = b too.
+      Proof (CI at 0810da18, 2026-11-23): Android 45054051382 "android reproducible (a = b)" success, the two builds on R8.
+- [x] D2 R8 and lint on; the dex reference scan runs on the shrunk APK; targetSdk 37.
+      D2a, lint and targetSdk 37 (2026-11-22): lint needed no artifact outside the verification metadata (it ran
+      locally under strict verification). Release builds run its vital checks (checkReleaseBuilds), CI's strict
+      build runs `lintShippingRelease` and `lintWithTestRegistryRelease` with checkDependencies (so :screens,
+      :secure-ui and :core-ffi too), abortOnError and warningsAsErrors. Its first run found 2 errors and 5 warnings,
+      then 1 more in :secure-ui with dependencies checked. Fixed: GoAheadScanner opened the camera without checking
+      the permission at that moment (MissingPermission); a permission taken back after the prompt's yes would have
+      thrown into the crash path, and now refuses the scan (ScanStop.Refused). Suppressed at the element, each with
+      its reason in the source: LockedOrientationActivity and DiscouragedApi (Q77's portrait lock), MissingClass
+      (lint looks for the class a tools:node="remove" only removes), DefaultUncaughtExceptionDelegation (the crash
+      path must not delegate: no dialog, no crash report), InlinedApi (SCREEN_RECORDING_STATE_VISIBLE, a
+      compile-time int, read only in a callback registered on Android 15+), and MissingApplicationIcon: the
+      launcher icon is the owner's to supply before a release (an owner item). targetSdk 37 (libs.versions.toml;
+      the expected manifest summaries). Locally both flavours lint with "No issues found" and build. CI's emulators
+      are API 34 and 36, where target-37 behaviour changes do not apply; the local kc37 AVD (API 37) runs the
+      instrumented tests before the gate (a residual until then).
+      D2b, R8 (2026-11-22; lead decision M7-10): the release build type shrinks with R8 and does nothing else:
+      proguard-rules.pro sets -dontoptimize (the optimizer may remove a write it proves dead, and a wipe that zeroes
+      a secret array before letting it go is such a write, rule 5) and -dontobfuscate (the auditor, dexdump and
+      --apk's dex scan read the source's names), and keeps com.keepcrypt.** whole (the instrumented tests run
+      against this build; libkeepcrypt.so finds Native.call by name). AGP 9 refuses proguard-android.txt, so the
+      base file is proguard-android-optimize.txt, whose optimization the -dontoptimize switches off. The test APKs
+      get test-proguard-rules.pro (-dontshrink, -dontoptimize, -dontobfuscate; -dontwarn for Error Prone's
+      compile-time annotations that androidx.test names). R8 needed no artifact outside the verification metadata.
+      Locally the four app APKs build; the shipping APK holds one dex of 4,576 classes, 638 of them com.keepcrypt.
+      Kotlin's Random survives shrinking: androidx.activity's ActivityResultRegistry draws its request codes from
+      Random.Default (the camera prompt and the pickers register through it), and Kotlin's
+      PlatformImplementations names it. Library code is not judged (Q59 (b)); it goes on the audit list as a
+      library residual (no request code is a secret or reaches the pool). The dex scan already reads every dex of
+      the APK, now the shrunk one. Proof owed: CI's emulator legs on the shrunk APKs, and a = b with R8.
+      D2c, resources shrunk (2026-11-22): with R8 on, lint fails on isShrinkResources = false
+      (NotShrinkingResources), which D2b's commit missed because its local check built without lint. Resource
+      shrinking is on: aapt2's dump of either APK falls from 3,221 lines to 1,109, and the app's own resources
+      (app_name, "KeepCrypt TEST REGISTRY" in the test-registry APK, Theme.KeepCrypt, data_extraction_rules) stay.
+      Locally both flavours build and lint clean.
+      D2d, the test APKs linked (2026-11-22): the first local run on kc37 with R8 failed every class at the runner's
+      start (NoClassDefFoundError: kotlin.LazyKt): a test APK leaves out every library the app also carries and uses
+      the app's copy, so what only the tests use was shrunk away. Comparing the test APK's references with the shrunk
+      app's definitions found 37 classes (Kotlin's standard library, kotlinx's coroutines, androidx.concurrent.futures,
+      Guava's ListenableFuture) and 13 methods (Compose's ViewRootForTest, SemanticsOwner and TextLayoutResult,
+      androidx.tracing's Trace). app/test-keeps.pro keeps them in the release build (so the tests still run on the
+      shipped bytes); it names kotlinx.** rather than the coroutines package (the gate's KtFailOpen reads that name
+      anywhere under mobile/; the only kotlinx library in the APK is coroutines, 876 classes, so the rule keeps the
+      same). scripts/android-link-check.py (check, --selftest: 7 cases) makes the comparison a build-job step for both
+      flavours: a class neither APK defines, or a method no class in the chain defines (java.lang.Object counting for
+      its own methods alone), fails before any emulator boots. Both flavours: 0 missing classes, 0 missing methods.
+      Local run (kc37, API 37, android-local.sh --part registry, the R8 APKs, 2026-11-22): SnapshotDrillTest (4
+      tests), LifecycleTest (8), DeviceChangeTest (2), AwayTest (3), ScanRefusedTest, IdleClockTest, KillTest's four
+      runs and CrashTest passed (reported as local; CI is the gate).
+      Proof (CI at 0810da18, 2026-11-23): Android 45054051382, every emulator leg on the shrunk APKs green (API 34 and 36: capture, registry and edges, journeys, journeys through the UI alone), a = b green.
+- [ ] D3 F-Droid metadata (reproducible build recipe) and the release-signing steps (Q105); Data safety text.
+      Done in part (2026-11-22): mobile/android/fdroid/com.keepcrypt.entropy.yml, a draft recipe for fdroiddata
+      (the tag, the rustup srclib, NDK r30, android-rust.sh and android-gradle.sh as CI runs them, the unsigned
+      shipping APK as output, Binaries and AllowedAPKSigningKeys so F-Droid publishes our signed APK only when its
+      rebuild matches); docs/release.md "F-Droid and the store labels" (the submission's owner steps and Play's
+      Data safety answers: no data collected or shared). The signing steps were B4's (docs/release.md, step 4).
+      Owed: `fdroid lint` and `fdroid build` on the recipe (fdroidserver is a new tool, the owner's word first),
+      the release certificate's SHA-256 and the launcher icon (owner items).
+- [x] D4 Emulator system images and the AVD's packages pinned; an API 35 leg with MediaProjection automation for the
+      recording callback.
+      D4a, pinned (2026-11-22): the leg jobs no longer run sdkmanager, which installs the newest revision of the day.
+      mobile/android/expected/emulator-pins.txt pins emulator 37.3.10 and the API 34 r4, API 36 r2 and API 36 ps16k
+      r7 x86_64 images (the revisions run 44955420386 installed), each by URL, size, SHA-1 (Google's repository index,
+      fetched 2026-11-22: each matched our download) and SHA-256 (computed from that download: 3,764,461,225 bytes in
+      all). scripts/android-sdk-install.py (install, --selftest: 23 cases, run in each leg before the install) checks
+      every zip, a cached one too, before unpacking it; refuses entries outside the zip's top directory, absolute
+      names and ".."; and requires each source.properties to give the pinned revision. actions/cache keeps the zips
+      alone, keyed on the pins file. Proof owed: the leg jobs' first run on the pins.
+      D4b, a real recording (2026-11-22; lead decision M7-11): RecordingTest starts SystemUI's own screen recorder (a
+      MediaProjection of the whole screen) from its Quick Settings tile before the app starts (leaving the app on a
+      Protected screen discards the session), then takes dice-50-words12 to its words page past the gate through the
+      model: the model must hold the recording and the page show the redacted placeholder (REDACTED_LINE); the
+      recording stopped from the tile, the model must drop it and the placeholder go, and either the page is back with
+      the session kept or, Quick Settings over the app having stopped it, the session is discarded at once (Home,
+      notice Left, the slot at home); any other outcome fails. It runs
+      in the registry part on both levels and is made on API 36 (Android 15's callback exists from API 35); on API 34
+      it only says so, as IdleClockTest does. M7-11: no API 35 leg and no recorder of our own. A recorder in
+      capture-control needs a foreground service and its notification, which the gate refuses in every source set
+      (KtManifest, KtWindow); SystemUI's recorder needs neither, and API 36's jobs already run Android 15+. The API 35
+      image was looked up and hashed (x86_64-35_r02.zip, 782,404,023 bytes, SHA-256 6dd7de33...4ff4556) and is not
+      pinned. android-emulator.sh's registry part and its selftest (66 cases) name the class.
+      Local runs (kc37, API 37, --part registry, 2026-11-22), each found by the test's own output: no screen-record
+      tile on Quick Settings' first page (the image ignores sysui_qs_tiles, so the test now pages through the tiles
+      and changes no setting); the dialog's "Start recording" is a description, not text (now matched either way);
+      then the stop discarded the session (notice Left: Quick Settings over the app stopped it). The last run passed
+      all twelve classes: "recorder: SystemUI's screen recorder started from its tile, its projection running",
+      "recording on: screen words, placeholder shown (redacted)", and "a real recording (MediaProjection, the whole
+      screen): the words page redacted while recorded; once it ended, the session discarded (Quick Settings over the
+      app left it), Home saying why". Proof owed: CI's API 36 registry job.
+      Proof (CI at 0810da18, 2026-11-23): Android 45054051382 ran every leg on the pinned images; "android emulators (API 36, test registry and edges)" success (1288 s), RecordingTest in it. No API 35 leg (M7-11).
+- [x] D5 graphics-path's native library reviewed, rebuilt from source or removed (a finding in the Review).
+      Removed (2026-11-22): androidx.graphics:graphics-path 1.0.1 (from Compose ui-graphics) ships
+      libandroidx.graphics.path.so, a native path iterator for Android 13 and lower; from API 34, the minSdk, Compose
+      uses the platform's android.graphics.PathIterator. In the shrunk APK no class outside graphics-path names it:
+      only its own PathIteratorImpl, PathIteratorPreApi34Impl and ConicConverter remain (kept by the library's
+      keep rule for classes with native methods), and the System.loadLibrary("androidx.graphics.path") is in
+      PathIteratorImpl's class initializer, which nothing reaches. packaging.jniLibs.excludes drops the three
+      copies; expected/native-libs.txt lists libkeepcrypt.so alone, so no prebuilt native code ships. A load would
+      throw UnsatisfiedLinkError into the crash path (fail closed). Locally the APK's lib/ holds the three
+      libkeepcrypt.so alone. Proof owed: the emulator legs, which draw every screen.
+      Proof (CI at 0810da18, 2026-11-23): Android 45054051382, every screen drawn on API 34 and 36 with libkeepcrypt.so alone in lib/.
+
+### Stage E: the iPhone, release-shaped (BP:343; :1395)
+- [x] E1 The release scan's expected-symbol list for the iPhone app (`_CCRandomGenerateBytes`, nothing else).
+      Found met by M6: `--ios-app`'s artifact rules for *-apple-ios require the undefined _CCRandomGenerateBytes and
+      refuse libc's draws and seeders, arc4random* and SecRandomCopyBytes, on the simulator apps and the device
+      build (entropy-ios.yml). The self-test had no case for SecRandomCopyBytes, Security's generator and the one an
+      iOS developer reaches for first: added (a stand-in linked with Security.framework, "undefined
+      _SecRandomCopyBytes", 1 hit). Proof (local): `--selftest-ios-app` 37 passed, 0 failed (36 before).
+- [x] E2 `mobile/ios/BUILDING.md`: the exact Xcode, SDK and simulator versions, the build steps and what cannot be
+      reproduced, as MA:197 says.
+      Proof (2026-11-22, local): BUILDING.md written from entropy-ios.yml's legs (macos-26 Xcode 26.6 iOS 26.5,
+      macos-15 Xcode 16.4 iOS 18.6, target iOS 17.0); its device-build commands run as written: ios-rust.sh 0,
+      the unsigned generic-iOS build 0, `--ios-app Shipping` on it clean.
+
+### Stage F: the verifier's release (:4759-4766)
+- [x] F1 A release scan of verify.py reusing check 12's static and audit rules.
+      Done (2026-11-22; CI proof at the head carrying it): entropy-release.yml compares the release's verify.py with
+      the tag's byte for byte and runs `vectorgen.py --selftest --check 12 --verify-py` on that copy. Local: check 12
+      on a copy passed (4.7 s).
+      Proof (CI at 0810da18, 2026-11-23): release 45054051327 success.
+- [x] F2 Its `--selftest` run on the Python that current Tails ships (the version read from Tails' own release notes
+      at that time; CI runs that Python version).
+      Read 2026-11-22: the current Tails is 7.17.1 (tails.net's install feed); Tails 7.0's notes call it "the first
+      version of Tails based on Debian 13 (Trixie)", and Tails ships Debian's python3. The pinned Pi build container
+      is trixie at the 2026-11-03 snapshot: python3 3.13.5-1 (python3.13 3.13.5-2+deb13u5). entropy-release.yml
+      builds it and runs verify.py selftest and vectorgen --selftest in it, native on the x86_64 runner.
+      Finding (M7-7): under x86_64 emulation (Docker on an Apple-silicon Mac) check 12 failed twice, the closed-stdin
+      run exiting 2 and not 70 and the pseudo-terminal Ctrl-C timing out; natively on trixie arm64 with the same
+      Python, check 12 passed. The emulator in the process takes fd 0 and slows the pty: an emulation artefact, not
+      Python 3.13's or verify.py's. So F2 runs natively, never emulated; the Pi arm64 leg runs no verifier check.
+      Proof (CI at 0810da18, 2026-11-23): release 45054051327 success (the trixie container's selftests in it).
+- [x] F3 The release copies verify.py byte for byte from the tag; its SHA-256 goes in the notes.
+      Done with B3 (release-notes.py prints the copy's SHA-256) and F1's cmp; run 44937973937 at c6590498 wrote it.
+      Proof (CI at 0810da18, 2026-11-23): release 45054051327 success.
+
+### Stage G: threat-model review and the audit packet
+- [ ] G1 A threat-model review against design.md's table (DS:55-70), as it stands after M6: each threat, the code and
+      tests that answer it, and what is left; findings fixed or listed. One finding per line, for the owner's review.
+- [ ] G2 `docs/audit.md`: the scope (Q102), the build and reproduce steps, the full residual and trust-on-first-use list
+      collected above, and the questions for the auditor (dm-verity, the watchdog, the kernel's FAT/USB paths).
+      Done (2026-11-22): docs/audit.md, listed in CLAUDE.md's docs table. G1's review is its "Threat-model review"
+      (each of DS:60-64's five threats and P1-P7: what answers it, the tests, what is left), drafted by a reviewer
+      agent and checked line by line against the cited code by the lead. G2: the scope (Q102), build and reproduce
+      pointers, the residual and trust-on-first-use list, 16 questions for the auditor. Findings for the owner's
+      review (one per line in docs/audit.md, "All findings"): 7, high 0, medium 1, low 6.
+      1. (new, medium) device-chosen plaintext random fields (backup salt, nonce and name; the check nonce) are an
+         exfiltration channel no one can verify; DS:61 names only signature nonces. For the owner and auditor.
+      2. (new, low) the boot integrity prefix covers the root (partition 2) only, not the FAT boot partition.
+      3. (new, low) DS:224's wipe-and-restore check is replaced by read-back and a prompt; DS not updated.
+      4. (known, low) BP:350's audit scope lacked tools/verify: fixed in this commit (BP:350 now matches Q102).
+      5. (known, low) the birthday test's description (DS:198/:278) vs BP:320: H2.
+      6. (known, low) HWRNG_BITS_PER_BYTE = 4 lacks its test data (DS:167): M8.
+      7. (known, low) no committed release public key yet (PF:181): the owner's key, Q100.
+      Ticked at the gate with the owner's review of the findings.
+
+### Stage H: docs and CI
+- [x] H1 The user guide shared by all platforms (MA:168); owner item 13's figure from a committed script (Q108 (b)).
+      Figure done (2026-11-22): `tools/figures/seed_pipeline.py` (stdlib) draws `docs/img/seed-pipeline.svg`, the old
+      PNG's layout and text, its numbers computed: the three roll quotas read from core/src/dice.rs (each must appear
+      once), log2(6) = 2.585 bits per roll, 50 rolls 129.2 bits, 99 rolls 255.9 (the PNG said 256; design.md:262's
+      rounding note goes), and two facts the PNG left out (99 rolls after a collision; dice-only E = SHA-256(R)).
+      design.md:260 names the SVG; the PNG, with no source, is removed (git keeps it). CI's verifier (python 3.9) job
+      runs `--check`, which fails unless the committed SVG is byte for byte what the script draws (lessons.md,
+      2026-10-09: CI re-runs every computed number). Proof (local): `--check` passes on 3.9.6 and Homebrew's 3.x;
+      a hand edit (255.9 to 256) fails it, rc 1; a bad flag rc 2; the gate clean; the rendering looked at.
+      The guide (2026-11-22): `docs/user-guide.md`, 421 lines, one guide for the Pi, Android and iPhone in the shared
+      screen order (MA:170-186), with "On the Pi:" / "On Android:" / "On iPhone:" notes where they differ: before you
+      start (verifying a download, offline, the Pi's image and first-boot checklist), the ceremony, the collision check,
+      recording (words, SeedBook, read-back, `.age` backup), watch-only, the verifier, never offered and failures. A
+      subagent drafted it from the docs and screens.json alone; I checked its sources and resolved its 1 disagreement
+      and 6 gaps from the shipped code: the check button is "Check now (recommended)" on all three (pi-firmware.md:93
+      shortens it), dice-only skips Device entropy, Commitment and Reveal D on phones too (CeremonyModel.start), the
+      phones' dice end on Done at the minimum, Device swap says "Words 13-24 go on device 2 of 2" with Continue, the
+      iPhone's stop screen is the same (Close app), iPhone 0.1.0 is source and build steps (Q106). It holds no seed,
+      roll, passphrase or vector value. For the owner's review at the gate; not yet linked from the README.
+- [x] H2 design.md:278's "Gate" line and BP:320 agree on where the birthday test runs (Q42 (b) already decided).
+      Proof (2026-11-22): no edit. design.md:278 is phase 1's gate, "birthday-collision ... pass in CI"; BP:320 runs the
+      test nightly on core in CI (Stage A, entropy-nightly.yml) and leaves the Pi's reboots to M8's bench image. Q42 (b)
+      (approved 2026-10-14; :9867) kept design.md untouched and BP:315 (now :320) as it reads, so the two agree: the core
+      part is CI's from M7, and design.md:278's box stays unticked until M8's reboot part runs, as Q42 (b) intended.
+- [ ] H3 For Q108 (a): the three workflows' job names frozen and listed for the owner's ruleset change.
+      Found (2026-11-22): Android, iPhone and Pi image filter pull_request by path, so a required check of theirs would
+      stay pending ("Expected") on every PR outside their paths, the trap entropy-ci.yml's changes job avoids (Q12).
+      Fix, as there: no paths: on pull_request; a first job, `<x> changes (its paths or this workflow)`, diffs the PR's
+      merge commit with its first parent over the push trigger's paths (git's spelling; any other event runs every
+      job); every root job needs it and runs only when it says so; a last job, `<x> result`, runs always (a cancelled
+      run too) and fails unless the changes job succeeded and every job then succeeded (a change) or was skipped (none).
+      So the ruleset needs one name per workflow, and matrix names may change freely:
+      `android result`, `iphone result`, `pi-image result` (the job names to add, app GitHub Actions, as the 14).
+      The changes job's output is `needed`, not `run`: the gate's workflow rule read `run: ${{ ... }}` as a run step
+      with an expression (3 hits, fixed by the name, the rule unchanged).
+      Proof (local, 2026-11-22): the workflows gate clean (6 workflows); each workflow's pathspecs on scratch merge
+      commits, 18 cases as wanted (docs only: Android 0, iPhone 0, Pi 1; the workflow itself 1, another's 0;
+      `scripts/android-*` and nested testdata 1; commonMain 1 for iPhone, 0 for Android's app files); the result
+      script on 8 cases (all success, all skipped, a failure, a cancel, a job run when none was needed, the changes job
+      failed or cancelled, no answer). Owed: CI on the push (every result job green), and one PR touching none of the
+      three's paths showing the three results green with every other job skipped.
+
+### Verification (the gate, BP:302, and the deliverables)
+- [x] The nightly birthday job green on core with 1,000,000 legs, and its canary catching the 32- and 36-bit stubs.
+      Proof (CI at 0810da18, 2026-11-23): nightly 45054051359, "birthday (1,000,000 real device legs)" success (2937 s)
+      and "birthday canary (24- and 28-bit states)" success (418 s); the canary's states are 24 and 28 bits (M7-1, A2).
+- [ ] A `v0.1.0` draft release from release.yml: every artifact, SHA256SUMS, the SBOMs, the release scans green.
+- [ ] SHA256SUMS signed by the owner offline (Q100); `minisign -Vm` checks against the committed public key.
+- [ ] Pi image: two clean containers and the arm64 host give one hash; a third party reproduces it (Q103).
+- [ ] Android APK: two clean builds give one hash; a third party (or F-Droid) reproduces it (Q103, Q105).
+- [ ] The threat-model review and the audit packet delivered; the auditor's sign-off recorded (Q102).
+- [ ] Before the release: I0-I5 and P1 done; a Pixel and a Samsung capture check; the duplicate-seed, watch-only and
+      metal read-back drills (BP:330-332) on Pi, Android and iPhone.
+
 ## Review
 _Added after completion, with pasted proof for every ticked item._
 
